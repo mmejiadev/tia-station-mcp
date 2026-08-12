@@ -25,12 +25,24 @@ Plazo: **mes y medio** desde 2026-08-12 → objetivo ~2026-09-25 (inicio de clas
 | Node.js | v24.15.0 |
 | Git | 2.55.0.windows.4 |
 
-### Pendiente de verificar
+### Verificado 2026-08-12
 
-- [ ] Usuario pertenece al grupo Windows `Siemens TIA Openness`
-- [ ] Variable de entorno `TiaPortalLocation`
-- [ ] Whitelist de aplicación externa en TIA Portal
-- [ ] ¿Hay .NET Framework 4.8 Developer Pack? (necesario para compilar)
+- ✅ .NET Framework **4.8.1** (release 533509) — suficiente para el target 4.8
+- ✅ El grupo local `Siemens TIA Openness` **existe** en la máquina
+- ❌ **BLOQUEANTE**: el usuario actual pertenece a `MANUELA\Siemens TIA Engineer`
+  pero **NO** a `MANUELA\Siemens TIA Openness`. Sin esto, Openness no conecta.
+- ❌ `TiaPortalLocation` no definida (ni proceso ni usuario)
+- ⬜ Whitelist de aplicación externa en TIA Portal (se comprueba al primer conectar)
+
+### Cómo desbloquear
+
+PowerShell **como administrador**, y después **cerrar sesión y volver a entrar**
+(la pertenencia a grupos solo se refresca al crear el token de sesión):
+
+```powershell
+Add-LocalGroupMember -Group "Siemens TIA Openness" -Member "$env:USERNAME"
+[System.Environment]::SetEnvironmentVariable('TiaPortalLocation', 'C:\Program Files\Siemens\Automation\Portal V20', 'User')
+```
 
 ## Decisiones tomadas
 
