@@ -1,0 +1,38 @@
+<Project>
+
+  <!--
+    Propiedades comunes a todos los proyectos de la solución.
+    Aquí es donde las reglas de CLAUDE.md dejan de ser recomendaciones
+    y pasan a ser errores de compilación.
+  -->
+
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+
+    <!-- Un warning es un error. Sin excepciones. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <WarningLevel>9999</WarningLevel>
+    <AnalysisLevel>latest-all</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+
+    <!-- Obliga a documentar los miembros públicos (CS1591 pasa a error) -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <!-- Openness es x64 exclusivamente -->
+    <PlatformTarget>x64</PlatformTarget>
+
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+
+  <!--
+    Los tests conservan TreatWarningsAsErrors pero se les permite
+    omitir la documentación XML: documentar cada [TestMethod] es ruido.
+  -->
+  <PropertyGroup Condition="$(MSBuildProjectName.EndsWith('.Test'))">
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+</Project>

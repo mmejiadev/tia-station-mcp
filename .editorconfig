@@ -1,0 +1,119 @@
+root = true
+
+[*]
+charset = utf-8-bom
+end_of_line = crlf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{json,yml,yaml,md}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.cs]
+indent_size = 4
+
+# ---- Formato obligatorio ----
+csharp_new_line_before_open_brace = all
+csharp_new_line_before_else = true
+csharp_new_line_before_catch = true
+csharp_new_line_before_finally = true
+csharp_indent_case_contents = true
+csharp_indent_switch_labels = true
+csharp_prefer_braces = true:error
+
+# ---- var: solo cuando el tipo es evidente ----
+csharp_style_var_for_built_in_types = false:error
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_var_elsewhere = false:error
+
+# ---- Modificadores y accesibilidad explícitos ----
+dotnet_style_require_accessibility_modifiers = always:error
+dotnet_style_readonly_field = true:error
+csharp_preferred_modifier_order = public,private,protected,internal,static,extern,new,virtual,abstract,sealed,override,readonly,unsafe,volatile,async:error
+
+# ---- Null safety ----
+dotnet_style_coalesce_expression = true:error
+dotnet_style_null_propagation = true:error
+csharp_style_throw_expression = true:suggestion
+
+# ---- Guard clauses / patrones ----
+csharp_style_pattern_matching_over_is_with_cast_check = true:error
+csharp_style_pattern_matching_over_as_with_null_check = true:error
+csharp_prefer_simple_using_statement = true:suggestion
+
+# ---- Calidad ----
+dotnet_style_object_initializer = true:suggestion
+dotnet_style_prefer_auto_properties = true:error
+dotnet_style_explicit_tuple_names = true:error
+
+# ==========================================================
+#  Analizadores elevados a ERROR — no negociables
+# ==========================================================
+
+# Código muerto / no usado
+dotnet_diagnostic.IDE0051.severity = error   # miembro privado sin usar
+dotnet_diagnostic.IDE0052.severity = error   # campo privado escrito pero nunca leído
+dotnet_diagnostic.CS0168.severity  = error   # variable declarada sin usar
+dotnet_diagnostic.CS0219.severity  = error   # variable asignada pero nunca usada
+dotnet_diagnostic.IDE0005.severity = error   # using innecesario
+
+# Recursos — crítico con objetos TIA Portal
+dotnet_diagnostic.CA1001.severity = error   # tipo con campo IDisposable debe ser IDisposable
+dotnet_diagnostic.CA2000.severity = error   # liberar objetos antes de perder el ámbito
+dotnet_diagnostic.CA2213.severity = error   # campos disposable deben liberarse
+
+# Excepciones
+dotnet_diagnostic.CA1031.severity = warning # no capturar Exception genérica
+dotnet_diagnostic.CA2200.severity = error   # relanzar preservando la pila (throw, no throw ex)
+dotnet_diagnostic.CA1065.severity = error   # no lanzar desde sitios inesperados
+dotnet_diagnostic.RCS1075.severity = error  # bloque catch vacío
+
+# Async
+dotnet_diagnostic.CA2007.severity = none    # ConfigureAwait: innecesario en app de consola
+dotnet_diagnostic.CS1998.severity = error   # async sin await
+dotnet_diagnostic.CS4014.severity = error   # llamada async no esperada
+dotnet_diagnostic.VSTHRD100.severity = error # evitar async void
+
+# Diseño
+dotnet_diagnostic.CA1062.severity = warning # validar argumentos de métodos públicos
+dotnet_diagnostic.CA1822.severity = warning # miembros que pueden ser static
+dotnet_diagnostic.CA1707.severity = none    # permitir guiones bajos en nombres de test
+
+# Globalización — ruido innecesario en este proyecto
+dotnet_diagnostic.CA1303.severity = none
+dotnet_diagnostic.CA1304.severity = none
+dotnet_diagnostic.CA1305.severity = none
+dotnet_diagnostic.CA1310.severity = none
+
+# ---- Nomenclatura ----
+dotnet_naming_rule.private_fields_underscore.severity = error
+dotnet_naming_rule.private_fields_underscore.symbols  = private_fields
+dotnet_naming_rule.private_fields_underscore.style    = underscore_camel
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private
+dotnet_naming_style.underscore_camel.required_prefix = _
+dotnet_naming_style.underscore_camel.capitalization  = camel_case
+
+dotnet_naming_rule.public_members_pascal.severity = error
+dotnet_naming_rule.public_members_pascal.symbols  = public_members
+dotnet_naming_rule.public_members_pascal.style    = pascal
+dotnet_naming_symbols.public_members.applicable_kinds = property,method,event,class,struct,interface,enum
+dotnet_naming_symbols.public_members.applicable_accessibilities = public,protected,internal
+dotnet_naming_style.pascal.capitalization = pascal_case
+
+dotnet_naming_rule.interfaces_prefix_i.severity = error
+dotnet_naming_rule.interfaces_prefix_i.symbols  = interfaces
+dotnet_naming_rule.interfaces_prefix_i.style    = i_pascal
+dotnet_naming_symbols.interfaces.applicable_kinds = interface
+dotnet_naming_style.i_pascal.required_prefix = I
+dotnet_naming_style.i_pascal.capitalization  = pascal_case
+
+# ---- Tests: se relajan las reglas de argumentos ----
+[tests/**/*.cs]
+dotnet_diagnostic.CA1062.severity = none
+dotnet_diagnostic.CA1031.severity = none
