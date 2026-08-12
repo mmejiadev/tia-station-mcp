@@ -18,6 +18,7 @@ using System.Net;
 using System.Security;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 
 namespace TiaMcpServer.Siemens
 {
@@ -438,6 +439,51 @@ namespace TiaMcpServer.Siemens
             if (Directory.Exists(projectDirectory))
             {
                 throw new PortalException(PortalErrorCode.InvalidState, $"Target already exists, refusing to overwrite: {projectDirectory}");
+            }
+        }
+
+        /// <summary>
+        /// Exports a PLC program to plain text under <paramref name="targetDirectory"/>, laid out
+        /// for version control. See <see cref="SourceSnapshotExporter"/> for what text means here
+        /// and why some blocks cannot be included.
+        /// </summary>
+        /// <param name="softwarePath">Full path to the PLC software, for example <c>Group1/PLC_1</c>.</param>
+        /// <param name="targetDirectory">Root of the snapshot.</param>
+        /// <param name="cancellationToken">Cancels between items.</param>
+        /// <returns>What was written and what was left out, with reasons.</returns>
+        /// <exception cref="PortalException">
+        /// No project is open, the software path does not resolve, or the arguments are invalid.
+        /// </exception>
+        public SnapshotResult ExportSourceSnapshot(string softwarePath, string targetDirectory, CancellationToken cancellationToken = default)
+        {
+            _logger?.LogInformation("Exporting source snapshot of {SoftwarePath} to {TargetDirectory}...", softwarePath, targetDirectory);
+
+            try
+            {
+                if (string.IsNullOrWhiteSpace(softwarePath))
+                {
+                    throw new PortalException(PortalErrorCode.InvalidParams, "softwarePath is required");
+                }
+
+                if (IsProjectNull())
+                {
+                    throw new PortalException(PortalErrorCode.InvalidState, "Open a project before exporting a snapshot");
+                }
+
+                var software = GetPlcSoftware(softwarePath)
+                    ?? throw new PortalException(PortalErrorCode.NotFound, $"PLC software not found: {softwarePath}");
+
+                return new SourceSnapshotExporter(software, _logger).ExportSnapshot(targetDirectory, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                var pex = ex as PortalException ?? new PortalException(PortalErrorCode.ExportFailed, $"Snapshot export failed: {ex.Message}", null, ex);
+
+                pex.Data["softwarePath"] = softwarePath;
+                pex.Data["targetDirectory"] = targetDirectory;
+
+                _logger?.LogError(pex, "ExportSourceSnapshot failed for {SoftwarePath} -> {TargetDirectory}", softwarePath, targetDirectory);
+                throw pex;
             }
         }
 

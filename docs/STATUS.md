@@ -29,11 +29,13 @@ State during the session of 2026-08-12 (afternoon):
    under our own strict rules: **0 warnings, 0 errors**, down from 1581 errors on first
    attempt. `Test1Portal` + `Test6Retrieve` 6/6 passing from here in 16 s, no orphan process.
    See "The fork" below for what was switched off, what was really fixed, and what is debt.
-9. ➡️ **Next action:** the bulk export to text — the actual point of phase 2. Read
-   `repos/TiaExportBlocks/Program.cs` first; it solves this in a single file and exports
-   tag tables, which upstream cannot do.
-10. ⏳ **Waiting on the user:** nothing is committed, in either repository. The upstream clone
-    still holds the same fixes on `fix/portal-lifecycle-and-errors`, worth offering as a PR.
+9. ✅ **Bulk export to text works.** `SourceSnapshotExporter` writes real SCL / DB / UDT source
+   plus tag tables, mirroring the group hierarchy. `Test7Snapshot` 4/4 passing; output inspected
+   by hand, not just asserted. See "Bulk export to text" below, including the LAD limitation.
+10. ➡️ **Next action:** expose `ExportSourceSnapshot` as an MCP tool. The `Portal` layer is done,
+    the `ModelContextProtocol` layer is not wired up yet.
+11. ⏳ **Note:** the upstream clone still holds the same three fixes on
+    `fix/portal-lifecycle-and-errors`, uncommitted, worth offering as a PR.
 
 Required reading at startup: this file, `../CLAUDE.md` and `REFERENCE-REPOS.md`.
 
@@ -234,13 +236,61 @@ the six inherited test classes (`Test2ProjectSession`, `Test21Project`, `Test22S
 **the same orphan-process leak that was fixed in `Test1Portal`**. They cannot run at all today
 because `Settings.cs` points them at absolute `D:\` paths, so both problems get fixed together.
 
+### Bulk export to text — done
+
+`SourceSnapshotExporter`, a collaborator rather than more code in `Portal.cs`, which is already
+102 KB. Reached through `Portal.ExportSourceSnapshot(softwarePath, targetDirectory, ct)`.
+
+This is **not** upstream's `ExportBlock`. That writes SimaticML XML: faithful, enormous,
+unreadable in a diff. Here blocks go through `PlcExternalSourceSystemGroup.GenerateSource`, which
+produces the real SCL / DB / STL text — the whole point of putting a project in Git. Layout:
+
+```
+snapshot/
+  blocks/<Group>/<Subgroup>/Name.scl|.db|.awl
+  types/<Group>/Name.udt
+  tags/<Group>/Name.xml
+```
+
+`SnapshotResult` reports four lists — `Exported`, `Inconsistent`, `Unsupported`, `Failed` — because
+a snapshot is legitimately partial and failing the whole export over one block would make the
+operation useless.
+
+**The limitation that matters: LAD, FBD and GRAPH have no text form.** They exist only as
+SimaticML. A text snapshot therefore never describes a program that contains graphical blocks.
+This is reported in `Unsupported`, not hidden. Measured against `TestProject1`, the snapshot
+produced 8 files and left out 5 LAD blocks — **including `Main`, the main OB**. For our own
+four-station cell this is fine, since we already decided to generate SCL, but it means a snapshot
+is not a backup and must never be treated as one.
+
+Verified by inspecting real output, not only by tests going green:
+
+```
+blocks/1_Tests/FC_Block_1.scl                              types/Common/CarrierRegister/*.udt (4)
+blocks/1_Tests/DB_Block_1.db                               tags/Standard-Variablentabelle.xml
+blocks/Common/CarrierRegister/GLOBAL_POSITIONING.db
+```
+
+The generated `.scl` is genuine readable source (`FUNCTION "FC_Block_1" : Void … END_FUNCTION`),
+and the group hierarchy is mirrored as folders.
+
+Two improvements over `repos/TiaExportBlocks/Program.cs`, the reference for this phase:
+
+1. It **never recursed into type user groups**, so UDTs filed in subgroups were silently missing
+   from its exports. Confirmed by reflection that `PlcTypeGroup` exposes `Groups`, and recursed.
+   On `TestProject1` this is the difference between 4 UDTs and 0.
+2. Added a `CancellationToken`, checked between items. A bulk export is exactly what CLAUDE.md
+   requires to be cancellable.
+
+`Test7Snapshot`: 4/4 passing in 38 s, happy path plus tag-table coverage plus two error cases.
+
 ### Next in phase 2
 
-1. Walk a retrieved project: `GetProjectTree` / `GetSoftwareTree` against `TestProject1`.
-2. Bulk export to text, which is what phase 2 is actually for. Read
-   `repos/TiaExportBlocks/Program.cs` first: it solves exactly this in a single file, and it
-   exports **tag tables**, which upstream cannot do.
-3. Decide the on-disk layout of `export/` so diffs stay readable between snapshots.
+1. Expose `ExportSourceSnapshot` as an MCP tool so the LLM can call it. The `Portal` layer is
+   done; the `ModelContextProtocol` layer is not wired up yet.
+2. Decide what lands in `export/` and whether a snapshot is committed automatically.
+3. Consider a companion XML export for the LAD blocks, so a snapshot can be complete even if
+   half of it is not human-readable.
 
 Do not extract to `D:\`: only 2.3 GB free. The tests use a fresh directory under `%TEMP%`.
 
