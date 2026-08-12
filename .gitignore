@@ -21,10 +21,10 @@ AdditionalFiles/
 TMP/
 *.tia_backup
 
-# No versionar las DLL de Openness (propiedad de Siemens, están en la instalación local)
+# Do not version the Openness DLLs (Siemens property, they live in the local installation)
 Siemens.Engineering*.dll
 
-# Exports de trabajo (los snapshots versionados van en export/)
+# Working exports (versioned snapshots go in export/)
 tmp/
 scratch/
 

@@ -1,120 +1,130 @@
-# CLAUDE.md — tia-station-mcp
+﻿# CLAUDE.md — tia-station-mcp
 
-Reglas de trabajo para agentes en este repositorio. **Son vinculantes, no orientativas.**
+Working rules for agents in this repository. **They are binding, not advisory.**
 
-Parte están heredadas de `repos/tiaportal-mcp` (MIT), cuyo `AGENTS.md`, `style.md` y
-`docs/error-model.md` hemos adoptado para mantener lógica compartida y poder contribuir
-aguas arriba sin fricción.
+Some are inherited from `repos/tiaportal-mcp` (MIT), whose `AGENTS.md`, `style.md` and
+`docs/error-model.md` we adopted so we share logic with upstream and can contribute back
+without friction.
 
-## Al empezar una sesión
+## Language — everything in English
 
-Lee **`docs/ESTADO.md`** antes de hacer nada. Su sección "▶ RETOMAR AQUÍ" dice en qué punto
-quedó el trabajo, qué está bloqueado y cuál es la siguiente acción. Es la fuente de verdad
-del proyecto y se actualiza al cierre de cada sesión.
+**Every artifact committed to this repository is written in English. No exceptions.**
 
-Los repositorios de referencia están en `../repos/` y su análisis en `docs/REPOS-REFERENCIA.md`.
+That means: source code, identifiers, comments, XML doc, log and exception messages,
+MCP tool descriptions, Markdown documents, file names, and commit messages.
 
-La usuaria escribe en español; respóndele en español.
+The only thing that is not English is the conversation: the user writes in Spanish, so
+reply to her in Spanish. What lands in the repo is still English.
 
-## Contexto del proyecto
+Rationale: the base is an English MIT project we want to contribute back to, the Openness
+API and its documentation are in English, and mixed-language code is a mess to search.
 
-Servidor MCP en C# que expone la API TIA Portal Openness a un LLM, orientado a:
+## Starting a session
 
-1. Generar y verificar código PLC (SCL) para una célula de 4 estaciones.
-2. Cerrar el bucle generar → compilar → testear (PLCSIM Advanced) → corregir.
-3. Versionar proyectos TIA en Git mediante export masivo a texto.
+Read **`docs/STATUS.md`** before doing anything else. Its "▶ RESUME HERE" section states
+where the work stopped, what is blocked, and the next action. It is the project's source of
+truth and is updated at the end of every session.
 
-Entorno de destino: **TIA Portal V20**, **.NET Framework 4.8**, **Windows x64**.
+Reference repositories live in `../repos/` and are analysed in `docs/REFERENCE-REPOS.md`.
+
+## Project context
+
+An MCP server in C# exposing the TIA Portal Openness API to an LLM, aimed at:
+
+1. Generating and verifying PLC code (SCL) for a four-station cell.
+2. Closing the generate → compile → test (PLCSIM Advanced) → fix loop.
+3. Versioning TIA projects in Git through bulk export to text.
+
+Target environment: **TIA Portal V20**, **.NET Framework 4.8**, **Windows x64**.
 
 ---
 
-# Arquitectura
+# Architecture
 
-## Regla de dependencia — la más importante del repositorio
+## The dependency rule — the most important one in the repository
 
-Las dependencias fluyen en **una sola dirección**. Nunca al revés.
+Dependencies flow in **one direction only**. Never the other way.
 
 ```
 McpServer  ──►  Portal  ──►  Openness  ──►  Siemens.Engineering
- (protocolo)   (dominio)    (adaptador)      (API externa)
+ (protocol)    (domain)     (adapter)        (external API)
 ```
 
-- `ModelContextProtocol/` **no puede** contener un `using Siemens.Engineering`.
-  Si necesitas algo de Openness, se expone primero en la capa `Portal`.
-- `Siemens/` **no puede** conocer MCP: ni `McpException`, ni tipos de respuesta MCP,
-  ni serialización JSON. Lanza `PortalException` y ya.
-- Los tipos de Openness (`PlcBlock`, `Device`, `Project`…) **no cruzan** hacia la capa MCP.
-  Se traducen a DTOs propios en `Portal`.
+- `ModelContextProtocol/` **must not** contain a `using Siemens.Engineering`.
+  If it needs something from Openness, expose it in the `Portal` layer first.
+- `Siemens/` **must not** know about MCP: no `McpException`, no MCP response types,
+  no JSON serialization. It throws `PortalException` and nothing else.
+- Openness types (`PlcBlock`, `Device`, `Project`…) **do not cross** into the MCP layer.
+  They are translated into our own DTOs in `Portal`.
 
-Si una tarea parece exigir romper esto, la tarea está mal planteada. Pregunta antes.
+If a task seems to require breaking this, the task is wrong. Ask first.
 
-## Tamaño y forma
+## Size and shape
 
-| Regla | Límite |
+| Rule | Limit |
 |---|---|
-| Longitud de método | ≤ 30 líneas |
-| Longitud de clase | ≤ 300 líneas |
-| Parámetros por método | ≤ 4 (más → objeto de parámetros) |
-| Niveles de anidamiento | ≤ 2 |
-| Complejidad ciclomática | ≤ 10 |
+| Method length | ≤ 30 lines |
+| Class length | ≤ 300 lines |
+| Parameters per method | ≤ 4 (more → parameter object) |
+| Nesting levels | ≤ 2 |
+| Cyclomatic complexity | ≤ 10 |
 
-Un método hace **una cosa** y opera en **un solo nivel de abstracción**. Si tienes que
-escribir un comentario para separar "bloques" dentro de un método, esos bloques son métodos.
+A method does **one thing** and operates at **a single level of abstraction**. If you have
+to write a comment to separate "blocks" inside a method, those blocks are methods.
 
-Cuando `McpServer.cs` o `Portal.cs` superen las 300 líneas (en la base upstream tienen
-90 KB y 95 KB), se dividen por área funcional en clases parciales o colaboradoras:
-`PortalBlocks`, `PortalTags`, `PortalCompile`. **No replicamos el fichero monolítico.**
+When `McpServer.cs` or `Portal.cs` exceed 300 lines (upstream they are 90 KB and 95 KB),
+split them by functional area into partial or collaborating classes: `PortalBlocks`,
+`PortalTags`, `PortalCompile`. **We do not reproduce the monolithic file.**
 
 ---
 
-# Estilo de código C#
+# C# code style
 
-- Target **.NET Framework 4.8**, `LangVersion` moderno para disponer de nullable reference types.
-- Indentación de **cuatro espacios**, sin tabuladores.
-- Llave de apertura **en línea nueva**.
-- `PascalCase` para clases y miembros públicos; `camelCase` para parámetros y locales;
-  `_camelCase` para campos privados.
-- Directivas `using` agrupadas arriba, separadas del namespace por una línea en blanco.
-- `Task`/`Task<T>` para operaciones potencialmente largas. **Nunca `async void`** salvo
-  manejadores de eventos.
-- `CancellationToken` en toda operación que pueda tardar (compilar, exportar en masa, descargar).
-- `Microsoft.Extensions.Logging` para logging.
+- Target **.NET Framework 4.8**, modern `LangVersion` so nullable reference types are available.
+- **Four-space** indentation, no tabs.
+- Opening brace **on a new line**.
+- `PascalCase` for classes and public members; `camelCase` for parameters and locals;
+  `_camelCase` for private fields.
+- `using` directives grouped at the top, separated from the namespace by a blank line.
+- `Task`/`Task<T>` for potentially long operations. **Never `async void`** except for
+  event handlers.
+- `CancellationToken` on every operation that can take a while (compile, bulk export, download).
+- `Microsoft.Extensions.Logging` for logging.
 
-## Nombres
+## Naming
 
-- Sin abreviaturas: `blockPath`, no `blkPth`. Sin `tmp`, `aux`, `data`, `obj`, `res`.
-- Prohibidos los sufijos vacíos: `Manager`, `Helper`, `Utils`, `Processor`, `Handler`
-  cuando no describen nada. Si una clase se llama `BlockHelper`, no sabes qué hace.
-  Nómbrala por su responsabilidad: `BlockExporter`, `SclSourceBuilder`.
-- Los booleanos se leen como afirmación: `isConsistent`, `hasTagTable`, `canDownload`.
-- Los métodos empiezan por verbo: `ExportBlock`, no `BlockExport`.
+- No abbreviations: `blockPath`, not `blkPth`. No `tmp`, `aux`, `data`, `obj`, `res`.
+- Empty suffixes are banned: `Manager`, `Helper`, `Utils`, `Processor`, `Handler` when they
+  describe nothing. If a class is called `BlockHelper`, you cannot tell what it does.
+  Name it after its responsibility: `BlockExporter`, `SclSourceBuilder`.
+- Booleans read as an assertion: `isConsistent`, `hasTagTable`, `canDownload`.
+- Methods start with a verb: `ExportBlock`, not `BlockExport`.
 
-## Inmutabilidad y estado
+## Immutability and state
 
-- `readonly` por defecto en campos. Un campo mutable debe justificarse.
-- DTOs y objetos de respuesta: **inmutables**, sin setters públicos.
-- Sin estado estático mutable. Sin singletons. **Sin variables globales.**
-- Inyección de dependencias por constructor. Nada de `new` de colaboradores dentro de
-  la lógica de negocio.
+- `readonly` by default on fields. A mutable field must be justified.
+- DTOs and response objects: **immutable**, no public setters.
+- No mutable static state. No singletons. **No global variables.**
+- Constructor dependency injection. No `new`-ing collaborators inside business logic.
 
-## Flujo de control
+## Control flow
 
-- **Guard clauses al principio**, retorno temprano. Nada de pirámides de `if`.
-- `else` después de un `return` está prohibido.
-- Nada de números ni cadenas mágicas: constantes con nombre.
-- Sin `switch` gigantes sobre tipos: polimorfismo o diccionario de estrategias.
+- **Guard clauses first**, early return. No pyramids of `if`.
+- `else` after a `return` is forbidden.
+- No magic numbers or strings: named constants.
+- No giant `switch` over types: polymorphism or a strategy dictionary.
 
 ```csharp
-// mal
+// bad
 if (block != null)
 {
     if (block.IsConsistent)
     {
-        // 20 líneas
+        // 20 lines
     }
 }
 
-// bien
+// good
 if (block == null)
 {
     throw new PortalException(PortalErrorCode.NotFound, $"Block not found: {blockPath}");
@@ -125,67 +135,67 @@ if (!block.IsConsistent)
     throw new PortalException(PortalErrorCode.InvalidState, "Compile the block before exporting");
 }
 
-// 20 líneas, sin anidar
+// 20 lines, no nesting
 ```
 
-## Comentarios
+## Comments
 
-- El código explica **qué** hace. Los comentarios explican **por qué**.
-- Un comentario que parafrasea la línea siguiente se borra.
-- Los comentarios que documentan rarezas de Openness **sí se quedan** y son valiosos.
-  Ejemplo: por qué hay que comprobar `IsConsistent`, por qué LAD necesita `.s7res`.
-- `///` XML doc en todo miembro público de la capa `Portal`.
-- Sin código comentado. Para eso está Git.
-- Sin `TODO` sin fecha y responsable. Si no lo vas a hacer, no lo escribas.
-
----
-
-# Reglas de dominio — Openness
-
-Estas no son estilo, son correctitud. Romperlas causa fallos reales.
-
-- **Todo objeto TIA se libera con `using` o `Dispose()`.** Si no, TIA Portal queda como
-  proceso zombie ocupando la licencia y hay que matarlo desde el administrador de tareas.
-  Es el fallo más común y el más molesto de diagnosticar.
-- **Nunca asumas que un bloque es consistente.** Comprueba `IsConsistent` antes de exportar.
-  TIA Portal no exporta bloques inconsistentes y el error nativo no lo explica.
-- **Rutas siempre completas**: `Grupo/Subgrupo/Nombre`. Un nombre suelto es ambiguo.
-- **Toda escritura va precedida de un export del estado anterior.** Si vamos a sobrescribir
-  un bloque, primero se guarda una copia. Sin excepciones.
-- **Cero rutas hardcodeadas.** Todo por configuración o parámetro.
-- Nunca supongas que hay proyecto abierto: valida el estado primero.
+- The code explains **what** it does. Comments explain **why**.
+- A comment that paraphrases the next line gets deleted.
+- Comments documenting Openness quirks **do stay** and are valuable.
+  For example: why `IsConsistent` must be checked, why LAD needs `.s7res`.
+- `///` XML doc on every public member of the `Portal` layer.
+- No commented-out code. That is what Git is for.
+- No `TODO` without a date and an owner. If you are not going to do it, do not write it.
 
 ---
 
-# Seguridad operacional
+# Domain rules — Openness
 
-- **Nunca** descargues a un PLC físico sin confirmación explícita e inequívoca en ese
-  mismo turno de conversación. Una autorización previa no se extiende a la siguiente vez.
-- Por defecto, todo despliegue va contra **PLCSIM Advanced**.
-- Las herramientas que escriben en el proyecto deben ser idempotentes o hacer backup previo.
+These are not style, they are correctness. Breaking them causes real failures.
+
+- **Every TIA object is released with `using` or `Dispose()`.** Otherwise TIA Portal is left
+  as a zombie process holding the licence and has to be killed from Task Manager.
+  It is the most common failure and the most annoying to diagnose.
+- **Never assume a block is consistent.** Check `IsConsistent` before exporting.
+  TIA Portal will not export inconsistent blocks and the native error does not explain why.
+- **Always full paths**: `Group/Subgroup/Name`. A bare name is ambiguous.
+- **Every write is preceded by an export of the previous state.** If we are about to
+  overwrite a block, save a copy first. No exceptions.
+- **Zero hardcoded paths.** Everything through configuration or parameters.
+- Never assume a project is open: validate the state first.
 
 ---
 
-# Errores
+# Operational safety
 
-Categorías:
+- **Never** download to a physical PLC without explicit, unambiguous confirmation in that
+  same conversation turn. A previous authorization does not carry over to the next time.
+- By default, every deployment targets **PLCSIM Advanced**.
+- Tools that write to the project must be idempotent or take a backup first.
 
-- **Validación** — entrada inválida, recurso ausente → `PortalErrorCode.InvalidParams` → MCP `InvalidParams`.
-- **Estado inválido** — el ítem no permite la operación (p. ej. bloque inconsistente)
-  → `PortalErrorCode.InvalidState` → MCP `InvalidParams` con guía accionable.
-- **Fallo de operación** — entorno, E/S, API subyacente → `PortalErrorCode.ExportFailed`
-  → MCP `InternalError` con razón concisa.
+---
 
-Reglas duras:
+# Errors
 
-- **Nunca un `catch` vacío.** Nunca tragarse una excepción.
-- **Nunca `catch (Exception)` sin relanzar** fuera del punto único de decoración.
-- No uses excepciones para flujo de control normal.
-- El mensaje al usuario es conciso y accionable; el detalle estructurado va al log.
+Categories:
 
-Punto único de decoración: **no** adjuntes `Exception.Data` en el sitio del `throw`.
-Cada método público de la capa portal adjunta el contexto en un **único bloque catch**
-justo antes de relanzar:
+- **Validation** — invalid input, missing resource → `PortalErrorCode.InvalidParams` → MCP `InvalidParams`.
+- **Invalid state** — the item does not allow the operation (e.g. inconsistent block)
+  → `PortalErrorCode.InvalidState` → MCP `InvalidParams` with actionable guidance.
+- **Operation failure** — environment, I/O, underlying API → `PortalErrorCode.ExportFailed`
+  → MCP `InternalError` with a concise reason.
+
+Hard rules:
+
+- **Never an empty `catch`.** Never swallow an exception.
+- **Never `catch (Exception)` without rethrowing** outside the single decoration point.
+- Do not use exceptions for normal control flow.
+- The user-facing message is concise and actionable; the structured detail goes to the log.
+
+Single decoration point: do **not** attach `Exception.Data` at the `throw` site.
+Every public method of the portal layer attaches context in a **single catch block**
+right before rethrowing:
 
 ```csharp
 catch (Exception ex)
@@ -201,28 +211,28 @@ catch (Exception ex)
 }
 ```
 
-Consistencia: los exports individuales lanzan `InvalidState` pidiendo compilar primero.
-Los exports masivos saltan los inconsistentes y los reportan en una lista `Inconsistent`.
+Consistency: individual exports throw `InvalidState` asking to compile first.
+Bulk exports skip inconsistent items and report them in an `Inconsistent` list.
 
 ---
 
 # Tests
 
-- **MSTest** con `[TestClass]` y `[TestMethod]`.
-- Ficheros con el patrón `Test<Area>.cs`. Assets en `assets/`.
-- Nombres: `Metodo_Escenario_ResultadoEsperado`.
-  Ejemplo: `ExportBlock_BloqueInconsistente_LanzaInvalidState`.
-- Estructura **AAA**: Arrange, Act, Assert, separadas por línea en blanco.
-- **Un concepto verificado por test.** Varios `Assert` valen si comprueban el mismo concepto.
-- Toda corrección de bug entra con un test que fallaba antes.
-- Los tests no dependen del orden de ejecución ni comparten estado.
-- La capa `Portal` es la que debe estar cubierta: es donde vive la lógica.
+- **MSTest** with `[TestClass]` and `[TestMethod]`.
+- Files follow the `Test<Area>.cs` pattern. Assets in `assets/`.
+- Naming: `Method_Scenario_ExpectedResult`.
+  For example: `ExportBlock_InconsistentBlock_ThrowsInvalidState`.
+- **AAA** structure: Arrange, Act, Assert, separated by blank lines.
+- **One concept verified per test.** Several `Assert`s are fine if they check the same concept.
+- Every bug fix ships with a test that failed before.
+- Tests do not depend on execution order and do not share state.
+- The `Portal` layer is the one that must be covered: that is where the logic lives.
 
-## Política de ejecución
+## Execution policy
 
-- Ofrece ejecutar los tests, pero **ejecútalos solo tras confirmación explícita**.
-- Requieren TIA Portal instalado, licencias y assets. No asumas que van a pasar.
-- Si la usuaria declina, da instrucciones concisas para que los ejecute ella.
+- Offer to run the tests, but **only run them after explicit confirmation**.
+- They require TIA Portal installed, licences and assets. Do not assume they will pass.
+- If the user declines, give concise instructions so she can run them herself.
 
 ```powershell
 dotnet test
@@ -230,54 +240,54 @@ dotnet test
 
 ---
 
-# Formato y codificación — crítico
+# Formatting and encoding — critical
 
-- Preserva el estilo de indentación existente.
-- **No cambies la codificación**; mantén el BOM UTF-8 donde exista.
-- **Mantén CRLF de Windows.** Los ficheros C# de la capa portal y sus tests deben
-  conservar CRLF: los scripts de despliegue de Siemens fallan al parsear LF.
-- Los `.md` commiteados desde Windows también en CRLF y UTF-8 con BOM.
+- Preserve the existing indentation style.
+- **Do not change the encoding**; keep the UTF-8 BOM where it exists.
+- **Keep Windows CRLF.** The C# files of the portal layer and their tests must keep CRLF:
+  Siemens deployment scripts fail to parse LF.
+- `.md` files committed from Windows are also CRLF and UTF-8 with BOM.
 
 ## Markdown
 
-- `#` para encabezados, con línea en blanco después de cada bloque de encabezado.
-- Bloques de código vallados con pista de lenguaje.
+- `#` for headings, with a blank line after every heading block.
+- Code blocks fenced with a language hint.
 
 ---
 
-# Definición de "hecho"
+# Definition of "done"
 
-Una tarea no está terminada hasta que:
+A task is not finished until:
 
-1. Compila **sin warnings**.
-2. Tiene tests que cubren el camino feliz y al menos un caso de error.
-3. Los miembros públicos tienen XML doc.
-4. No hay código muerto, comentado ni `TODO` huérfano.
-5. Los errores están mapeados según el modelo de arriba.
-6. `docs/ESTADO.md` refleja el nuevo estado.
+1. It compiles **without warnings**.
+2. It has tests covering the happy path and at least one error case.
+3. Public members have XML doc.
+4. There is no dead code, commented-out code or orphan `TODO`.
+5. Errors are mapped according to the model above.
+6. `docs/STATUS.md` reflects the new state.
 
 ---
 
-# Entorno — limitaciones conocidas
+# Environment — known limitations
 
-- Usuario en el grupo Windows **`Siemens TIA Openness`** (requiere re-login para el token).
+- User must be in the Windows group **`Siemens TIA Openness`** (needs re-login for the token).
 - `TiaPortalLocation` → `C:\Program Files\Siemens\Automation\Portal V20`.
-- TIA Portal pide confirmación de whitelist la primera vez que conecta una app externa.
-- Transporte MCP actual: **stdio**. Con stdio, **todos los logs van a stderr**.
-- Importar bloques **LAD** desde documentos SIMATIC SD requiere el `.s7res` acompañante
-  con tags en en-US; si no, falla (limitación de Openness).
-- `ExportBlock` exige ruta completa; un nombre suelto es ambiguo.
+- TIA Portal asks for whitelist confirmation the first time an external app connects.
+- Current MCP transport: **stdio**. With stdio, **all logs go to stderr**.
+- Importing **LAD** blocks from SIMATIC SD documents requires the accompanying `.s7res`
+  with en-US tags; without it, it fails (Openness limitation).
+- `ExportBlock` requires a full path; a bare name is ambiguous.
 
-Si un comando falla por limitaciones del entorno, **no reintentes de forma destructiva**:
-reporta el fallo exacto y sugiere alternativas.
+If a command fails because of environment limitations, **do not retry destructively**:
+report the exact failure and suggest alternatives.
 
 ---
 
-# Una nota sobre el rigor
+# A note on rigour
 
-Estas reglas existen para que el código aguante crecer y para que los fallos aparezcan
-en compilación en vez de en un PLC. No existen para producir código ceremonioso.
+These rules exist so the code survives growth and so failures show up at compile time
+instead of in a PLC. They do not exist to produce ceremonious code.
 
-Si aplicar una regla al pie de la letra hace el código **menos** claro, dilo y propón la
-alternativa en vez de aplicarla a ciegas. Tres capas de abstracción para leer un fichero
-no son clean code: son lo contrario.
+If applying a rule literally makes the code **less** clear, say so and propose the
+alternative instead of applying it blindly. Three layers of abstraction to read a file
+are not clean code: they are the opposite.

@@ -1,61 +1,61 @@
-# tia-station-mcp
+﻿# tia-station-mcp
 
-Servidor MCP para Siemens TIA Portal orientado a la generación verificada de código PLC
-y a la coordinación de células multi-estación.
+An MCP server for Siemens TIA Portal aimed at verified PLC code generation and at
+coordinating multi-station cells.
 
-Proyecto final del CFGS de Automatización y Robótica Industrial.
+Final project for the CFGS in Industrial Automation and Robotics.
 
-## Qué pretende
+## What it is for
 
-Cerrar el bucle completo, no solo generar código:
+Closing the whole loop, not just generating code:
 
 ```
-especificación → generar SCL → importar a TIA → compilar → leer errores
+specification → generate SCL → import into TIA → compile → read errors
                       ↑                                        │
-                      └────────────── corregir ←───────────────┘
+                      └──────────────── fix ←──────────────────┘
                                           │
                                           ▼
-                              test en PLCSIM Advanced
+                              test on PLCSIM Advanced
                                           │
                                           ▼
-                                    export a Git
+                                    export to Git
 ```
 
-Un LLM generando código PLC no acierta el 100 % de las veces. La fiabilidad no viene del
-modelo: viene del **compilador y de los tests**. Por eso el bucle cerrado es el núcleo del
-diseño y no un extra.
+An LLM generating PLC code does not get it right 100 % of the time. Reliability does not
+come from the model: it comes from **the compiler and the tests**. That is why the closed
+loop is the core of the design and not an add-on.
 
-## Estado
+## Status
 
-Fase 0 completada (análisis). Ver [`docs/ESTADO.md`](docs/ESTADO.md).
+See [`docs/STATUS.md`](docs/STATUS.md).
 
-## Base y atribución
+## Base and attribution
 
-Construido sobre [heilingbrunner/tiaportal-mcp](https://github.com/heilingbrunner/tiaportal-mcp)
-(MIT), del que heredamos arquitectura, convenciones de código y modelo de errores.
+Built on [heilingbrunner/tiaportal-mcp](https://github.com/heilingbrunner/tiaportal-mcp)
+(MIT), from which we inherit the architecture, code conventions and error model.
 
-Análisis de los siete repositorios de referencia en
-[`docs/REPOS-REFERENCIA.md`](docs/REPOS-REFERENCIA.md).
+Analysis of the seven reference repositories in
+[`docs/REFERENCE-REPOS.md`](docs/REFERENCE-REPOS.md).
 
-## Requisitos
+## Requirements
 
 - Windows x64
-- TIA Portal V20 con componente Openness
-- Usuario en el grupo Windows `Siemens TIA Openness`
+- TIA Portal V20 with the Openness component
+- User in the `Siemens TIA Openness` Windows group
 - .NET Framework 4.8
-- PLCSIM Advanced (para la fase de tests)
+- PLCSIM Advanced (for the test phase)
 
-## Aportación sobre la base
+## What this adds on top of the base
 
-Lo que `tiaportal-mcp` no cubre y añadimos aquí:
+What `tiaportal-mcp` does not cover and we add here:
 
-- Tablas de variables (`PlcTagTable`) — export/import
-- Escritura directa de SCL vía external source
-- Integración con PLCSIM Advanced para tests automatizados
-- Snapshot completo del proyecto a texto para Git
-- Generador del patrón "estación" instanciable
+- Tag tables (`PlcTagTable`) — export/import
+- Writing SCL directly through an external source
+- PLCSIM Advanced integration for automated tests
+- Full project snapshot to text for Git
+- An instantiable "station" pattern generator
 
-## Seguridad
+## Safety
 
-Por defecto, **todo despliegue va contra PLCSIM Advanced**. La descarga a un PLC físico
-requiere confirmación explícita. Ver [`CLAUDE.md`](CLAUDE.md).
+By default, **every deployment targets PLCSIM Advanced**. Downloading to a physical PLC
+requires explicit confirmation. See [`CLAUDE.md`](CLAUDE.md).

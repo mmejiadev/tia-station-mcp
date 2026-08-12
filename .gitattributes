@@ -1,0 +1,38 @@
+﻿# Line endings are a correctness issue in this repository, not a preference:
+# Siemens deployment scripts fail to parse LF. See CLAUDE.md.
+#
+# "eol=crlf" guarantees a CRLF working copy on every platform, not just on Windows with
+# core.autocrlf set. Without this file, the result depends on each developer's git config.
+
+* text=auto eol=crlf
+
+# Source and documents: explicit, so nothing depends on git's content heuristics.
+*.cs        text eol=crlf diff=csharp
+*.csproj    text eol=crlf
+*.props     text eol=crlf
+*.config    text eol=crlf
+*.sln       text eol=crlf
+*.md        text eol=crlf
+*.json      text eol=crlf
+*.editorconfig text eol=crlf
+
+# TIA Portal text exports. These are the point of the whole project: they must diff cleanly.
+*.scl       text eol=crlf
+*.db        text eol=crlf
+*.udt       text eol=crlf
+*.xml       text eol=crlf
+*.s7res     text eol=crlf
+
+# TIA Portal binaries. Marked explicitly so git never tries to normalize them: a .zap
+# archive that goes through line-ending conversion is silently corrupted.
+*.zap*      binary
+*.ap1*      binary
+*.ap2*      binary
+*.als*      binary
+*.zip       binary
+*.dll       binary
+*.exe       binary
+*.pdf       binary
+*.png       binary
+*.jpg       binary
+*.gif       binary
