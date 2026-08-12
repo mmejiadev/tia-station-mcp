@@ -521,6 +521,58 @@ namespace TiaMcpServer.Siemens
             }
         }
 
+        /// <summary>
+        /// Writes SCL into a PLC program, generating the blocks it declares.
+        /// </summary>
+        /// <param name="softwarePath">Full path to the PLC software, for example <c>Group1/PLC_1</c>.</param>
+        /// <param name="sclCode">The SCL source. May declare more than one block.</param>
+        /// <param name="backupDirectory">
+        /// Where the current blocks are exported before anything is written. Required: this
+        /// operation overwrites blocks that already carry the same names, and the repository rule
+        /// is that every write is preceded by an export of the previous state.
+        /// </param>
+        /// <returns>The names of the blocks that were generated.</returns>
+        /// <exception cref="PortalException">
+        /// The arguments are invalid, no project is open, the software path does not resolve, the
+        /// backup could not be taken, or the SCL produced no blocks.
+        /// </exception>
+        public IReadOnlyList<string> WriteScl(string softwarePath, string sclCode, string backupDirectory)
+        {
+            _logger?.LogInformation("Writing SCL into {SoftwarePath}...", softwarePath);
+
+            try
+            {
+                if (string.IsNullOrWhiteSpace(backupDirectory))
+                {
+                    throw new PortalException(PortalErrorCode.InvalidParams, "backupDirectory is required: SCL generation overwrites blocks");
+                }
+
+                if (IsProjectNull())
+                {
+                    throw new PortalException(PortalErrorCode.InvalidState, "Open a project before writing SCL");
+                }
+
+                var software = GetPlcSoftware(softwarePath)
+                    ?? throw new PortalException(PortalErrorCode.NotFound, $"PLC software not found: {softwarePath}");
+
+                // Deliberately the full XML export rather than the text snapshot: a snapshot cannot
+                // represent LAD, and a backup that silently omits half the program is not a backup.
+                ExportBlocks(softwarePath, backupDirectory, string.Empty, preservePath: true);
+
+                return new SclBlockGenerator(software, _logger).Generate(sclCode);
+            }
+            catch (Exception ex)
+            {
+                var pex = ex as PortalException ?? new PortalException(PortalErrorCode.WriteFailed, $"Writing SCL failed: {ex.Message}", null, ex);
+
+                pex.Data["softwarePath"] = softwarePath;
+                pex.Data["backupDirectory"] = backupDirectory;
+
+                _logger?.LogError(pex, "WriteScl failed for {SoftwarePath}", softwarePath);
+                throw pex;
+            }
+        }
+
         private void CloseOpenProject()
         {
             (_project as Project)?.Close();
@@ -848,56 +900,71 @@ namespace TiaMcpServer.Siemens
             return null;
         }
 
-        public CompilerResult? CompileSoftware(string softwarePath, string password = "")
+        /// <summary>
+        /// Compiles a PLC software and returns what the compiler said, flattened into data.
+        /// </summary>
+        /// <param name="softwarePath">Full path to the PLC software, for example <c>Group1/PLC_1</c>.</param>
+        /// <param name="password">Password for the safety administration, when the software needs one.</param>
+        /// <returns>
+        /// The report. A failed compile is a normal outcome and comes back as a report with
+        /// errors, not as an exception: the caller's next step is to read them and fix the code.
+        /// </returns>
+        /// <exception cref="PortalException">
+        /// No project is open, the software path does not resolve, or the safety login failed —
+        /// none of which the compiler's output can explain.
+        /// </exception>
+        public CompilationReport CompileSoftware(string softwarePath, string password = "")
         {
-            _logger?.LogInformation($"Compiling software by path: {softwarePath}");
+            _logger?.LogInformation("Compiling software by path: {SoftwarePath}", softwarePath);
 
-            if (IsProjectNull())
+            try
             {
-                return null; // "Error, no project";
+                if (IsProjectNull())
+                {
+                    throw new PortalException(PortalErrorCode.InvalidState, "Open a project before compiling");
+                }
+
+                var softwareContainer = GetSoftwareContainer(softwarePath);
+
+                LoginToSafetyProgram(softwareContainer, password);
+
+                if (!(softwareContainer?.Software is PlcSoftware plcSoftware))
+                {
+                    throw new PortalException(PortalErrorCode.NotFound, $"PLC software not found: {softwarePath}");
+                }
+
+                var result = plcSoftware.GetService<ICompilable>().Compile();
+
+                return CompilerResultReader.Read(result);
+            }
+            catch (Exception ex)
+            {
+                var pex = ex as PortalException ?? new PortalException(PortalErrorCode.CompileFailed, $"Compile failed: {ex.Message}", null, ex);
+
+                pex.Data["softwarePath"] = softwarePath;
+
+                _logger?.LogError(pex, "CompileSoftware failed for {SoftwarePath}", softwarePath);
+                throw pex;
+            }
+        }
+
+        private static void LoginToSafetyProgram(SoftwareContainer? softwareContainer, string password)
+        {
+            if (string.IsNullOrEmpty(password))
+            {
+                return;
             }
 
-            var softwareContainer = GetSoftwareContainer(softwarePath);
+            var admin = (softwareContainer?.Parent as DeviceItem)?.GetService<SafetyAdministration>();
 
-            if (!string.IsNullOrEmpty(password))
+            if (admin == null || admin.IsLoggedOnToSafetyOfflineProgram)
             {
-                var deviceItem = softwareContainer?.Parent as DeviceItem;
-
-                var admin = deviceItem?.GetService<SafetyAdministration>();
-                if (admin != null)
-                {
-                    if (!admin.IsLoggedOnToSafetyOfflineProgram)
-                    {
-                        SecureString secString = new NetworkCredential("", password).SecurePassword;
-                        try
-                        {
-                            admin.LoginToSafetyOfflineProgram(secString);
-                        }
-                        catch (Exception)
-                        {
-                            return null; // "Error, login to safety offline program failed";
-                        }
-                    }
-                }
+                return;
             }
 
-            if (softwareContainer?.Software is PlcSoftware plcSoftware)
-            {
-                try
-                {
-                    ICompilable compileService = plcSoftware.GetService<ICompilable>();
+            SecureString secureString = new NetworkCredential(string.Empty, password).SecurePassword;
 
-                    CompilerResult result = compileService.Compile();
-
-                    return result;
-                }
-                catch (Exception)
-                {
-                    return null; // "Error, compiling failed";
-                }
-            }
-
-            return null; // "Error";
+            admin.LoginToSafetyOfflineProgram(secureString);
         }
 
         #endregion

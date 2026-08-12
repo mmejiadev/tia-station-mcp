@@ -37,9 +37,17 @@ State during the session of 2026-08-12 (afternoon):
     Writing those tests exposed a **fourth upstream defect**: `DisconnectPortal` never closed the
     open project, leaving TIA Portal holding file handles on its directory. Fixed by modelling
     portal ownership, since closing the project is only ours to do when we started the portal.
-11. ➡️ **Next action:** decide what lands in `export/` and whether snapshots are committed.
-12. ⏳ **Note:** the upstream clone still holds the same three fixes on
-    `fix/portal-lifecycle-and-errors`, uncommitted, worth offering as a PR.
+11. ✅ **The inherited tests are alive.** `Settings.cs` holds no filesystem paths any more and the
+    six dead test classes run: **66 tests, 63 passing, 3 skipped, 0 failing** in 2 m 12 s.
+    The three skips are the multiuser session tests, which need an asset that cannot exist here.
+12. ✅ **Phase 3 done: the loop is closed.** The server can now write SCL into a project, compile
+    it, and say what is wrong in terms a caller can act on. 34 tools.
+    **74 tests, 71 passing, 3 skipped, 0 failing** in 2 m 15 s.
+13. ➡️ **Next action:** phase 4, PLCSIM Advanced, or the `FB_Station` pattern itself. There is now
+    a working loop to build either on.
+14. ⏳ **Note:** the upstream clone still holds the same three fixes on
+    `fix/portal-lifecycle-and-errors`, uncommitted, worth offering as a PR. There is now a fourth
+    fix — the project not being closed on disconnect — that upstream also needs.
 
 Required reading at startup: this file, `../CLAUDE.md` and `REFERENCE-REPOS.md`.
 
@@ -97,16 +105,36 @@ The Siemens resolver locates the assemblies correctly:
 Outputs: `src/TiaMcpServer/bin/Debug/net48/TiaMcpServer.exe` and
 `tests/TiaMcpServer.Test/bin/Debug/net48/TiaMcpServer.Test.dll`.
 
-### Warning about the upstream tests
+### The inherited tests — revived
 
-`tests/TiaMcpServer.Test/Settings.cs` has **hardcoded paths to `D:\Siemens\...`** that do not
-exist on this machine (D: only has 2.3 GB free). The real asset is at
-`tests/TiaMcpServer.Test/assets/TestProject1.zap20` and is an archive: it must be retrieved
-into an `.ap20` before it can be used.
+They used to be dead: `Settings.cs` pinned every one of them to absolute paths under
+`D:\Siemens\...` that existed only on the original author's machine. Six of the eight test
+classes could not run anywhere else.
 
-Only `Test1Portal` (connect/disconnect from the portal) runs without changes. The rest needs
-its paths fixed — and those hardcoded paths violate our CLAUDE.md, so in the fork they are
-replaced by configuration.
+`Settings.cs` now contains **no filesystem paths at all**. What remains are paths *inside* the
+project (`PLC_0`, `Group1/PLC_1`, …), which belong to the fixture rather than to a machine, and
+stay `const` because `[DataRow]` accepts only compile-time constants. The project itself is built
+at run time: `AssemblyHooks` retrieves `assets/TestProject1.zap20` once per run and publishes the
+resulting path.
+
+**66 tests, 63 passing, 3 skipped, 0 failing, in 2 m 12 s.** No orphan process, working directory
+removed.
+
+Three things worth knowing about how they were revived:
+
+- **Several of them asserted nothing.** `Assert.IsNotNull(success)` on a `bool` can never fail, so
+  those tests passed by construction. They now check something real: that the project tree names
+  `PLC_0`, that the software tree names `Main`, that an empty result is an empty list and not null.
+- **The multiuser session tests are skipped, not faked.** A local session is an `.alsNN` produced
+  by a TIA Portal Multiuser server; no such asset ships here and one cannot be synthesised
+  offline. They carry `[Ignore]` with that reason rather than being deleted, because a deleted
+  test stops recording that the surface is uncovered. `GetSessions` with no session open is a real
+  test and does run.
+- **Block and type paths come from a snapshot that was actually inspected**, not from what the
+  upstream fixture assumed. The import tests are round trips — export first, then import what was
+  exported — so they cannot fail on a fixture document that the installed TIA version rejects.
+
+`Common.cs` and `Helper.cs` were left unused by this and were deleted.
 
 ## Upstream defects found on first connect (2026-08-12)
 
@@ -333,10 +361,65 @@ the project, locking the directory. `ClassCleanup` deletes best-effort for the s
 1. Decide what lands in `export/` and whether a snapshot is committed automatically.
 2. Consider a companion XML export for the LAD blocks, so a snapshot can be complete even if
    half of it is not human-readable.
-3. Fix `Settings.cs`: the six inherited test classes are still dead because of absolute `D:\`
-   paths, and they still leak portals. Both are the same piece of work.
+3. Remove `CA1001`/`CA2000` from the test project's NoWarn ledger. They were suppressed because
+   the inherited test classes each held a `Portal` and never disposed it; none of them owns a
+   portal any more, so the rules should be armed again and the ledger should shrink.
 
 Do not extract to `D:\`: only 2.3 GB free. The tests use a fresh directory under `%TEMP%`.
+
+## Phase 3 — the closed loop
+
+The half of the project that reading a project cannot provide. `WriteScl` and a repaired
+`CompileSoftware` mean the server can now generate code, compile it, and explain the failure.
+
+### `CompileSoftware` was losing the answer
+
+The tool interpolated the Openness `CompilerResult` into a string, so a failed build reported the
+object's type name and nothing else. Compiling from an agent was pointless: the caller could tell
+*that* it failed and never *why*.
+
+`CompileSoftware` now returns a `CompilationReport` of our own, which also removes an Openness
+type that was crossing into the MCP layer against the dependency rule. A failed compile is a
+normal return value, not an exception — the errors are the answer the caller asked for.
+
+The messages arrive as a **tree**: the device holds messages for its software, which hold messages
+per block, which hold the real diagnostics. Only leaves carry a description and only branches
+carry a path, so flattening from either side alone produces nothing usable.
+`CompilerResultReader` walks the tree joining parent names, which turns this:
+
+```
+CompilerResult
+```
+
+into this:
+
+```
+Error: PLC_0/Program blocks/FC_Inspect (FC2)/1 — Tag #NoSuchVariable not defined.
+Error: PLC_0/Program blocks/FC_Inspect (FC2)/1 — Tag "AlsoMissing" not defined.
+```
+
+`Errors` also drops messages with no description. TIA marks every branch with the worst severity
+beneath it, so one bad line yields three empty "Error" entries — for the device, the folder and
+the block — that bury the two lines naming the problem. This was only visible by reading real
+output; all seven tests passed either way.
+
+### `WriteScl`
+
+Openness has no "create a block from this text". The only route is to write the text to a file,
+register it as an external source, and generate blocks from it. Three things worth knowing, all
+commented at the point they matter:
+
+- The external source is a real object that **stays in the project tree**, so it is deleted after
+  generating. Otherwise every generation leaves another entry behind.
+- Generation reports failure by **producing nothing**, not by throwing. An empty result is the
+  error.
+- `GenerateBlockOption.KeepOnError` keeps the existing blocks when the source does not parse,
+  rather than half-replacing a working program with a broken one.
+
+`backupDirectory` is **required**, not optional: generation overwrites blocks of the same name,
+and the repository rule is that every write is preceded by an export. The backup deliberately uses
+the full XML export rather than the text snapshot, because a snapshot cannot represent LAD and a
+backup that silently omits half the program is not a backup.
 
 ## Decisions taken
 
@@ -402,7 +485,7 @@ This is our added value. There is no reference at all to:
 | 0 | Clone and analyse reference repositories | ✅ Done |
 | 1 | Build `tiaportal-mcp` and connect to real TIA | ✅ Done |
 | 2 | Bulk export → Git (project snapshot to text) | 🔄 `RetrieveProject` done |
-| 3 | `WriteScl` through external source + `Compile` with parsed errors | ⬜ |
+| 3 | `WriteScl` through external source + `Compile` with parsed errors | ✅ Done |
 | 4 | PLCSIM Advanced integration → automated tests | ⬜ |
 | 5 | "Station" pattern generator from a specification | ⬜ |
 | 6 | Documentation, demo, project report | ⬜ |

@@ -279,6 +279,36 @@ namespace TiaMcpServer.ModelContextProtocol
             }
         }
 
+        [McpServerTool(Name = "WriteScl"), Description("Write SCL source into a PLC program, generating the blocks it declares. The existing blocks are exported to backupDirectory first, because generation overwrites blocks of the same name. Compile afterwards to find out whether the code is valid.")]
+        public static ResponseWriteScl WriteScl(
+            [Description("softwarePath: full path in the project structure to the plc software, e.g. 'Group1/PLC_1'")] string softwarePath,
+            [Description("sclCode: the SCL source text; it may declare more than one block")] string sclCode,
+            [Description("backupDirectory: where the current blocks are exported before anything is written; required")] string backupDirectory)
+        {
+            try
+            {
+                var generated = Portal.WriteScl(softwarePath, sclCode, backupDirectory);
+
+                return new ResponseWriteScl(generated)
+                {
+                    Message = $"Generated {generated.Count} block(s): {string.Join(", ", generated)}. Compile the software to check them.",
+                    Meta = new JsonObject
+                    {
+                        ["timestamp"] = DateTime.Now,
+                        ["success"] = true
+                    }
+                };
+            }
+            catch (TiaMcpServer.Siemens.PortalException pex)
+            {
+                throw ToMcpException(pex, $"Failed writing SCL into '{softwarePath}'");
+            }
+            catch (Exception ex) when (ex is not McpException)
+            {
+                throw new McpException($"Unexpected error writing SCL into '{softwarePath}': {ex.Message}", ex, McpErrorCode.InternalError);
+            }
+        }
+
         [McpServerTool(Name = "ExportSourceSnapshot"), Description("Export a PLC program to plain text (SCL/DB/AWL sources, UDTs and tag tables) laid out for version control. Blocks written in LAD, FBD or GRAPH have no text form and are reported as unsupported instead of being exported.")]
         public static ResponseExportSnapshot ExportSourceSnapshot(
             [Description("softwarePath: full path in the project structure to the plc software, e.g. 'Group1/PLC_1'")] string softwarePath,
@@ -691,23 +721,30 @@ namespace TiaMcpServer.ModelContextProtocol
         {
             try
             {
-                var result = Portal.CompileSoftware(softwarePath, password);
-                if (result != null && !result.State.ToString().Equals("Error"))
+                var report = Portal.CompileSoftware(softwarePath, password);
+
+                // A compile that finds errors is a successful call: the errors are the answer.
+                // Throwing here would discard them, which is what the previous version did — it
+                // interpolated the CompilerResult object, so a failed build reported nothing but
+                // a type name and the caller had no idea what to fix.
+                return new ResponseCompileSoftware(
+                    report.ErrorCount,
+                    report.WarningCount,
+                    report.Errors.Select(error => error.ToString()).ToList())
                 {
-                    return new ResponseCompileSoftware
+                    Message = report.IsSuccessful
+                        ? $"Software '{softwarePath}' compiled: {report.WarningCount} warning(s)"
+                        : $"Software '{softwarePath}' has {report.ErrorCount} error(s) and {report.WarningCount} warning(s); see Messages",
+                    Meta = new JsonObject
                     {
-                        Message = $"Software '{softwarePath}' compiled with {result}",
-                        Meta = new JsonObject
-                        {
-                            ["timestamp"] = DateTime.Now,
-                            ["success"] = true
-                        }
-                    };
-                }
-                else
-                {
-                    throw new McpException($"Failed compiling software '{softwarePath}': {result}", McpErrorCode.InternalError);
-                }
+                        ["timestamp"] = DateTime.Now,
+                        ["success"] = report.IsSuccessful
+                    }
+                };
+            }
+            catch (TiaMcpServer.Siemens.PortalException pex)
+            {
+                throw ToMcpException(pex, $"Failed compiling software '{softwarePath}'");
             }
             catch (Exception ex) when (ex is not McpException)
             {

@@ -1,5 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
-using System;
+﻿using System.IO;
 using TiaMcpServer.Siemens;
 
 namespace TiaMcpServer.Test
@@ -8,153 +7,64 @@ namespace TiaMcpServer.Test
     [DoNotParallelize]
     public sealed class Test21Project
     {
-        private bool _isInitialized = false;
-        private Portal? _portal;
-
-        [TestInitialize]
-        public void ClassInit()
-        {
-            if (!_isInitialized)
-            {
-                Openness.Initialize();
-            }
-
-            var loggerFactory = LoggerFactory.Create(builder =>
-            {
-                builder.AddConsole(); // or AddDebug(), AddTraceSource(), etc.
-                builder.SetMinimumLevel(LogLevel.Debug);
-            });
-
-            ILogger<Portal> logger = loggerFactory.CreateLogger<Portal>();
-            _portal ??= new(logger);
-
-            var result = _portal.ConnectPortal();
-
-            Assert.IsTrue(result, "TiaPortal instance is not initialized");
-        }
-
         [TestCleanup]
-        public void ClassCleanup()
+        public void TestCleanup()
         {
-            if (_portal != null)
-            {
-                _portal.CloseProject();
-            }
+            // These tests open and close the shared project. Leave it closed so the next class
+            // starts from a known state rather than inheriting whatever this one left open.
+            AssemblyHooks.SharedPortal.CloseProject();
         }
 
         [TestMethod]
-        public void Test_211_GetOpenProjects()
+        public void GetProjects_ProjectOpen_ReturnsIt()
         {
-            if (_portal == null)
-            {
-                Assert.Fail("TiaPortal instance is not initialized");
-            }
+            AssemblyHooks.SharedPortal.OpenProject(AssemblyHooks.ProjectPath);
 
-            var projects = _portal.GetProjects();
+            var projects = AssemblyHooks.SharedPortal.GetProjects();
 
-            projects?.ForEach(project =>
-            {
-                Console.WriteLine($"Project: Name = '{project.Name}', Author = '{project.Author}'");
-                TiaMcpServer.ModelContextProtocol.Helper.GetAttributeList(project).ForEach(attribute =>
-                {
-                    Console.WriteLine($"- {attribute.Name}: {attribute.Value}");
-                });
-            });
-
-            Assert.IsNotNull(projects, "Failed to retrieve open projects");
-
-            // Assert.IsTrue(projects?.Count > 0, "No open projects found");
-        }
-
-        
-
-        [TestMethod]
-        [DataRow(Settings.Project1ProjectPath)]
-        public void Test_212_OpenProject(string path)
-        {
-            if (_portal == null)
-            {
-                Assert.Fail("TiaPortal instance is not initialized");
-            }
-
-            var result = _portal.OpenProject(path);
-
-            Console.WriteLine($"OpenProject: {path}, result={result}");
-
-            Assert.IsTrue(result, "Failed to open project");
+            Assert.IsNotNull(projects);
+            Assert.IsTrue(projects.Count > 0, "An open project was not reported by GetProjects");
         }
 
         [TestMethod]
-        public void Test_213_GetOpenProjects()
+        public void OpenProject_RetrievedProject_Succeeds()
         {
-            if (_portal == null)
-            {
-                Assert.Fail("TiaPortal instance is not initialized");
-            }
+            var result = AssemblyHooks.SharedPortal.OpenProject(AssemblyHooks.ProjectPath);
 
-            var projects = _portal.GetProjects();
-
-            projects?.ForEach(project =>
-            {
-                Console.WriteLine($"Project: Name = '{project.Name}', Author = '{project.Author}'");
-                TiaMcpServer.ModelContextProtocol.Helper.GetAttributeList(project).ForEach(attribute =>
-                {
-                    Console.WriteLine($"- {attribute.Name}: {attribute.Value}");
-                });
-            });
-
-            Assert.IsNotNull(projects, "Failed to retrieve open projects");
-
-            // Assert.IsTrue(projects?.Count > 0, "No open projects found");
+            Assert.IsTrue(result, $"Failed to open {AssemblyHooks.ProjectPath}");
         }
 
         [TestMethod]
-        [DataRow(Settings.Project1ProjectPath)]
-        public void Test_214_CloseProject(string path)
+        public void CloseProject_OpenProject_Succeeds()
         {
-            if (_portal == null)
-            {
-                Assert.Fail("TiaPortal instance is not initialized");
-            }
+            AssemblyHooks.SharedPortal.OpenProject(AssemblyHooks.ProjectPath);
 
-            var result = _portal.OpenProject(path);
-            result &= _portal.CloseProject();
+            var result = AssemblyHooks.SharedPortal.CloseProject();
 
-            Console.WriteLine($"CloseProject: {path}, result={result}");
-
-            Assert.IsTrue(result, "Failed to close project");
+            Assert.IsTrue(result, "Failed to close the project");
+            Assert.AreEqual(0, AssemblyHooks.SharedPortal.GetProjects().Count, "A project is still open after closing");
         }
 
         [TestMethod]
-        [DataRow(Settings.Project1ProjectPath)]
-        public void Test_215_SaveProject(string path)
+        public void SaveProject_OpenProject_Succeeds()
         {
-            if (_portal == null)
-            {
-                Assert.Fail("TiaPortal instance is not initialized");
-            }
+            AssemblyHooks.SharedPortal.OpenProject(AssemblyHooks.ProjectPath);
 
-            var result = _portal.OpenProject(path);
-            result &= _portal.SaveProject();
+            var result = AssemblyHooks.SharedPortal.SaveProject();
 
-            Console.WriteLine($"SaveProject: {path}, result={result}");
-
-            Assert.IsTrue(result, "Failed to save project");
+            Assert.IsTrue(result, "Failed to save the project");
         }
 
         [TestMethod]
-        [DataRow(Settings.Project1ProjectPath, Settings.Project1PathNew)]
-        public void Test_216_SaveAsProject(string path, string newPath)
+        public void SaveAsProject_NewLocation_WritesProjectFile()
         {
-            if (_portal == null)
-            {
-                Assert.Fail("TiaPortal instance is not initialized");
-            }
+            AssemblyHooks.SharedPortal.OpenProject(AssemblyHooks.ProjectPath);
+            var target = Path.Combine(AssemblyHooks.CreateTestDirectory(), "TestProject1Copy");
 
-            var result = _portal.OpenProject(path);
-            result &= _portal.SaveAsProject(newPath);
+            var result = AssemblyHooks.SharedPortal.SaveAsProject(target);
 
-            Assert.IsTrue(result, "Failed to save project as new project");
+            Assert.IsTrue(result, $"Failed to save the project as {target}");
+            Assert.IsTrue(Directory.Exists(target), $"SaveAs reported success but wrote nothing to {target}");
         }
     }
 }

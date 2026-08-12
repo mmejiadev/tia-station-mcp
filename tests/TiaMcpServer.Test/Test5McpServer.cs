@@ -1,269 +1,109 @@
-﻿using System;
-using System.Linq;
+﻿using System.Linq;
 using TiaMcpServer.ModelContextProtocol;
-using TiaMcpServer.Siemens;
 
 namespace TiaMcpServer.Test
 {
+    /// <remarks>
+    /// Covers the MCP tool layer over the same project the portal tests use. The shared portal is
+    /// injected rather than letting McpServer start one of its own, since it keeps its Portal in a
+    /// static field and would otherwise leave a second TIA Portal running for the rest of the run.
+    /// </remarks>
     [TestClass]
     [DoNotParallelize]
-    public class Test5McpServer
+    public sealed class Test5McpServer
     {
-        private readonly bool _isInitialized = false;
-
         [TestInitialize]
-        public void ClassInit()
+        public void TestInit()
         {
-            if (!_isInitialized)
-            {
-                Openness.Initialize();
-            }
-
-            var response = McpServer.Connect();
+            McpServer.Portal = AssemblyHooks.SharedPortal;
+            McpServer.OpenProject(AssemblyHooks.ProjectPath);
         }
 
         [TestCleanup]
-        public void ClassCleanup()
+        public void TestCleanup()
         {
-            McpServer.Disconnect();
-        }
-
-        [TestMethod]
-        [DataRow(Settings.Project1ProjectPath)]
-        [DataRow(Settings.Session1ProjectPath)]
-        public void Test_500_McpServer_OpenCloseProject(string projectPath)
-        {
-
-            McpServer.OpenProject(projectPath);
-
-            var success = true;
-            var response = McpServer.CloseProject();
-            WriteMessage("McpServer.CloseProject()", response);
-
-            Assert.IsTrue(success, "McpServer failed");
-        }
-
-        [TestMethod]
-        [DataRow(Settings.Project1ProjectPath)]
-        [DataRow(Settings.Session1ProjectPath)]
-        public void Test_501_McpServer_GetProjectTree(string projectPath)
-        {
-
-            McpServer.Connect();
-            McpServer.OpenProject(projectPath);
-
-            var success = true;
-            var response = McpServer.GetProjectTree();
-            WriteMessage("McpServer.GetProjectTree()", response);
-
-            Console.WriteLine("Structure: " + response?.Tree);
-
             McpServer.CloseProject();
-
-            Assert.IsTrue(success, "McpServer failed");
         }
 
         [TestMethod]
-        [DataRow(Settings.Project1ProjectPath)]
-        [DataRow(Settings.Session1ProjectPath)]
-        public void Test_502_McpServer_GetState(string projectPath)
+        public void GetState_ProjectOpen_ReportsConnectedAndNamesProject()
         {
-
-            McpServer.Connect();
-            McpServer.OpenProject(projectPath);
-
-            var success = true;
             var response = McpServer.GetState();
-            WriteMessage("McpServer.GetState()", response);
 
-            Console.WriteLine("GetState: Project = '" + response?.Project + "'");
-            Console.WriteLine("GetState: Session = '" + response?.Session + "'");
-            Console.WriteLine("GetState: IsConnected = '" + response?.IsConnected + "'");
-
-            McpServer.CloseProject();
-
-            Assert.IsTrue(success, "McpServer failed");
+            Assert.IsTrue(response.IsConnected == true, "GetState reports no connection while a project is open");
+            Assert.IsFalse(string.IsNullOrWhiteSpace(response.Project), "GetState does not name the open project");
         }
 
         [TestMethod]
-        //[DataRow(Settings.Project1ProjectPath)]
-        //[DataRow(Settings.Session1ProjectPath)]
-        public void Test_503_McpServer_GetProjects()
+        public void GetProjects_ProjectOpen_ReturnsIt()
         {
-
-            McpServer.Connect();
-            //McpServer.OpenProject(projectPath);
-
-            var success = true;
             var response = McpServer.GetProjects();
 
-            if (response == null)
-            {
-                Console.WriteLine("McpServer.GetProjects(): response is null");
-            }
-            else
-            {
-                WriteMessage($"McpServer.GetProjects()", response);
-                
-                if (response.Items != null)
-                {
-                    response.Items.ToList().ForEach(item =>
-                    {
-                        Console.WriteLine($"Project {item.Name}");
-                        WriteAttributes(item);
-                    });
-                }
-                else
-                {
-                    Console.WriteLine("McpServer.GetProjects(): no attributes found");
-                }
-            }
-
-            //McpServer.CloseProject();
-
-            Assert.IsTrue(success, "McpServer failed");
+            Assert.IsNotNull(response.Items);
+            Assert.IsTrue(response.Items.Any(), "No project was returned while one is open");
         }
 
         [TestMethod]
-        [DataRow(Settings.Project1ProjectPath)]
-        [DataRow(Settings.Session1ProjectPath)]
-        public void Test_504_McpServer_GetDevices(string projectPath)
+        public void GetProjectTree_ProjectOpen_NamesDevices()
         {
+            var response = McpServer.GetProjectTree();
 
-            McpServer.Connect();
-            McpServer.OpenProject(projectPath);
+            Assert.IsFalse(string.IsNullOrWhiteSpace(response.Tree), "The project tree is empty");
+            Assert.IsTrue(response.Tree!.Contains("PLC_0"), $"The tree does not mention PLC_0:\n{response.Tree}");
+        }
 
-            var success = true;
+        [TestMethod]
+        public void GetDevices_ProjectOpen_ReturnsDevices()
+        {
             var response = McpServer.GetDevices();
-            WriteMessage("McpServer.GetDevices()", response);
 
-            Console.WriteLine("GetDevices:");
-            response?.Items?.ToList().ForEach(item => Console.WriteLine($"- '{item}'"));
-
-            McpServer.CloseProject();
-
-            Assert.IsTrue(success, "McpServer failed");
+            Assert.IsNotNull(response.Items);
+            Assert.IsTrue(response.Items.Any(), "The project has devices but none were returned");
         }
 
         [TestMethod]
-        [DataRow(Settings.Project1ProjectPath, Settings.Project1PlcSoftwarePath0)]
-        [DataRow(Settings.Session1ProjectPath, Settings.Session1PlcSoftwarePath)]
-        public void Test_505_McpServer_GetSoftwareInfo(string projectPath, string softwarePath)
+        public void GetSoftwareInfo_PlcSoftware_ReturnsName()
         {
+            var response = McpServer.GetSoftwareInfo(Settings.Project1PlcSoftwarePath0);
 
-            McpServer.Connect();
-            McpServer.OpenProject(projectPath);
-
-            var success = true;
-            var response = McpServer.GetSoftwareInfo(softwarePath);
-            WriteMessage("McpServer.GetSoftwareInfo()", response);
-
-            McpServer.CloseProject();
-
-            Assert.IsTrue(success, "McpServer failed");
+            Assert.IsFalse(string.IsNullOrWhiteSpace(response.Name), "No software name returned");
         }
 
         [TestMethod]
-        [DataRow(Settings.Project1ProjectPath, "HMI_0")]
-        [DataRow(Settings.Session1ProjectPath, "PC-System_1")]
-        public void Test_506_McpServer_GetDeviceInfo(string projectPath, string devicePath)
+        [DataRow("HMI_0")]
+        [DataRow("PC-System_0")]
+        public void GetDeviceInfo_ExistingDevice_ReturnsName(string devicePath)
         {
-
-            McpServer.Connect();
-            McpServer.OpenProject(projectPath);
-
-            var success = true;
             var response = McpServer.GetDeviceInfo(devicePath);
-            WriteMessage("McpServer.GetDeviceInfo()", response);
 
-            McpServer.CloseProject();
-
-            Assert.IsTrue(success, "McpServer failed");
+            Assert.IsFalse(string.IsNullOrWhiteSpace(response.Name), $"No name returned for '{devicePath}'");
         }
 
         [TestMethod]
-        [DataRow(Settings.Project1ProjectPath, "PC-System_0/PLC_0")]
-        [DataRow(Settings.Session1ProjectPath, "PC-System_1/Software PLC_1")]
-        public void Test_507_McpServer_GetDeviceItemInfo(string projectPath, string deviceItemPath)
+        [DataRow("PLC_0")]
+        [DataRow("PC-System_0/Software PLC_0")]
+        public void GetDeviceItemInfo_ExistingDeviceItem_ReturnsName(string deviceItemPath)
         {
-
-            McpServer.Connect();
-            McpServer.OpenProject(projectPath);
-
-            var success = true;
             var response = McpServer.GetDeviceItemInfo(deviceItemPath);
-            WriteMessage("McpServer.GetDeviceItemInfo()", response);
 
-            McpServer.CloseProject();
-
-            Assert.IsTrue(success, "McpServer failed");
+            Assert.IsFalse(string.IsNullOrWhiteSpace(response.Name), $"No name returned for '{deviceItemPath}'");
         }
-
 
         [TestMethod]
-        [DataRow(Settings.Project1ProjectPath, Settings.Project1PlcSoftwarePath0, "0_OBs/Main_1")]
-        [DataRow(Settings.Session1ProjectPath, Settings.Session1PlcSoftwarePath, "0_OBs/Main_1")]
-        public void Test_508_McpServer_GetBlockInfo(string projectPath, string softwarePath, string blockPath)
+        public void GetBlockInfo_ExistingBlock_ReturnsNameAndLanguage()
         {
+            var response = McpServer.GetBlockInfo(Settings.Project1PlcSoftwarePath0, "1_Tests/FC_Block_1");
 
-            McpServer.Connect();
-            McpServer.OpenProject(projectPath);
-
-            var success = true;
-            var response = McpServer.GetBlockInfo(softwarePath, blockPath);
-            WriteMessage("McpServer.GetBlockInfo()", response);
-
-            McpServer.CloseProject();
-
-            Assert.IsTrue(success, "McpServer failed");
+            Assert.AreEqual("FC_Block_1", response.Name);
+            Assert.IsFalse(string.IsNullOrWhiteSpace(response.ProgrammingLanguage), "No programming language reported");
         }
-
 
         [TestMethod]
-        [DataRow(Settings.Project1ProjectPath, Settings.Project1PlcSoftwarePath0, "Common/CarrierRegister/ML_SubstratState")]
-        public void Test_509_McpServer_GetTypeInfo(string projectPath, string softwarePath, string blockPath)
+        public void GetTypeInfo_ExistingType_ReturnsName()
         {
+            var response = McpServer.GetTypeInfo(Settings.Project1PlcSoftwarePath0, "Common/CarrierRegister/ML_SubstratState");
 
-            McpServer.Connect();
-            McpServer.OpenProject(projectPath);
-
-            var success = true;
-            var response = McpServer.GetTypeInfo(softwarePath, blockPath);
-            WriteMessage("McpServer.GetTypeInfo()", response);
-
-            McpServer.CloseProject();
-
-            Assert.IsTrue(success, "McpServer failed");
+            Assert.AreEqual("ML_SubstratState", response.Name);
         }
-
-        private static void WriteMessage(string method, ResponseMessage? rm)
-        {
-            if (rm == null)
-            {
-                Console.WriteLine($"{method}: content is null");
-            }
-            else
-            {
-
-                Console.WriteLine($"{method}: {rm.Message}");
-            }
-        }
-
-        private static void WriteAttributes(ResponseAttributes? ra)
-        {
-            if (ra != null && ra.Attributes != null)
-            {
-                foreach (var attribute in ra.Attributes)
-                {
-                    Console.WriteLine($"- {attribute.Name}: {attribute.Value}");
-                }
-            }
-            else
-            {
-                Console.WriteLine($"no attributes found");
-            }
-        }
-
-
     }
 }
