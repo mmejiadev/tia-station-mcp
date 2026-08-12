@@ -1,149 +1,69 @@
-﻿using Microsoft.Extensions.Logging;
-using System;
-using TiaMcpServer.Siemens;
-
-namespace TiaMcpServer.Test
+﻿namespace TiaMcpServer.Test
 {
+    /// <remarks>
+    /// The device and device-item paths stay in <c>[DataRow]</c>: they describe the inside of the
+    /// project, so they are part of the fixture and are the same on every machine. Only the
+    /// project's location on disk had to move out, and it now comes from <see cref="AssemblyHooks"/>.
+    /// </remarks>
     [TestClass]
     [DoNotParallelize]
     public sealed class Test3Devices
     {
-        private bool _isInitialized = false;
-        private Portal? _portal;
-
         [TestInitialize]
-        public void ClassInit()
+        public void TestInit()
         {
-            if (!_isInitialized)
-            {
-                Openness.Initialize();
-            }
-
-            var loggerFactory = LoggerFactory.Create(builder =>
-            {
-                builder.AddConsole(); // or AddDebug(), AddTraceSource(), etc.
-                builder.SetMinimumLevel(LogLevel.Debug);
-            });
-
-            ILogger<Portal> logger = loggerFactory.CreateLogger<Portal>();
-            _portal ??= new(logger);
-
-            var result = _portal.ConnectPortal();
+            AssemblyHooks.SharedPortal.OpenProject(AssemblyHooks.ProjectPath);
         }
 
         [TestCleanup]
-        public void ClassCleanup()
+        public void TestCleanup()
         {
-            if (_portal != null)
-            {
-                _portal.CloseSession();
-            }
+            AssemblyHooks.SharedPortal.CloseProject();
         }
 
         [TestMethod]
-        [DataRow(Settings.Project1ProjectPath, "HMI_0")]
-        [DataRow(Settings.Project1ProjectPath, "PC-System_0")]
-        [DataRow(Settings.Project1ProjectPath, "Group1/PC-System_1")]
-        [DataRow(Settings.Project1ProjectPath, "Group1/Group1.1/PC-System_1.1")]
-        [DataRow(Settings.Project1ProjectPath, "Group1/Group1.1/Group1.1.1/PC-System_1.1.1")]
-        public void Test_302_GetDevice(string projectPath, string devicePath)
+        [DataRow("HMI_0")]
+        [DataRow("PC-System_0")]
+        [DataRow("Group1/PC-System_1")]
+        [DataRow("Group1/Group1.1/PC-System_1.1")]
+        [DataRow("Group1/Group1.1/Group1.1.1/PC-System_1.1.1")]
+        public void GetDevice_ExistingPath_ReturnsDevice(string devicePath)
         {
-            if (_portal == null)
-            {
-                Assert.Fail("TiaPortal instance is not initialized");
-            }
+            var device = AssemblyHooks.SharedPortal.GetDevice(devicePath);
 
-            bool success = Common.OpenProject(_portal, projectPath);
-
-            var result = _portal.GetDevice(devicePath);
-            if (result != null)
-            {
-                Console.WriteLine($"Device: {result?.Name} found under {devicePath}");
-            }
-            else
-            {
-                Console.WriteLine($"Device not found under {devicePath}");
-            }
-
-            success &= result != null;
-
-            success &= Common.CloseProject(_portal, projectPath);
-
-            Console.WriteLine($"success={success}");
-
-            Assert.IsTrue(success, "No Device found");
+            Assert.IsNotNull(device, $"No device found at '{devicePath}'");
         }
 
         [TestMethod]
-        [DataRow(Settings.Project1ProjectPath, "PLC_0")]
-        [DataRow(Settings.Project1ProjectPath, "PC-System_0/Software PLC_0")]
-        [DataRow(Settings.Project1ProjectPath, "HMI_0/HMI_RT_1")]
-        [DataRow(Settings.Project1ProjectPath, "Group1/PLC_1")]
-        [DataRow(Settings.Project1ProjectPath, "Group1/PC-System_1/Software PLC_1")]
-        [DataRow(Settings.Project1ProjectPath, "Group1/Group1.1/PLC_1.1")]
-        [DataRow(Settings.Project1ProjectPath, "Group1/Group1.1/PC-System_1.1/Software PLC_1.1")]
-        public void Test_302_GetDeviceItem(string projectPath, string deviceItemPath)
+        [DataRow("PLC_0")]
+        [DataRow("PC-System_0/Software PLC_0")]
+        [DataRow("HMI_0/HMI_RT_1")]
+        [DataRow("Group1/PLC_1")]
+        [DataRow("Group1/PC-System_1/Software PLC_1")]
+        [DataRow("Group1/Group1.1/PLC_1.1")]
+        [DataRow("Group1/Group1.1/PC-System_1.1/Software PLC_1.1")]
+        public void GetDeviceItem_ExistingPath_ReturnsDeviceItem(string deviceItemPath)
         {
-            if (_portal == null)
-            {
-                Assert.Fail("TiaPortal instance is not initialized");
-            }
+            var deviceItem = AssemblyHooks.SharedPortal.GetDeviceItem(deviceItemPath);
 
-            bool success = Common.OpenProject(_portal, projectPath);
-
-            var result = _portal.GetDeviceItem(deviceItemPath);
-            if (result != null)
-            {
-                Console.WriteLine($"DeviceItem: {result?.Name} found under {deviceItemPath}");
-            }
-            else
-            {
-                Console.WriteLine($"DeviceItem not found under {deviceItemPath}");
-            }
-
-            success &= result != null;
-
-            success &= Common.CloseProject(_portal, projectPath);
-
-            Console.WriteLine($"success={success}");
-
-            Assert.IsTrue(success, "No DeviceItem found");
+            Assert.IsNotNull(deviceItem, $"No device item found at '{deviceItemPath}'");
         }
 
         [TestMethod]
-        [DataRow(Settings.Project1ProjectPath)]
-        [DataRow(Settings.Session1ProjectPath)]
-        public void Test_303_GetDevices(string projectPath)
+        public void GetDevice_UnknownPath_ReturnsNull()
         {
-            if (_portal == null)
-            {
-                Assert.Fail("TiaPortal instance is not initialized");
-            }
+            var device = AssemblyHooks.SharedPortal.GetDevice("NoSuchGroup/NoSuchDevice");
 
-            bool success = Common.OpenProject(_portal, projectPath);
+            Assert.IsNull(device, "An unknown path returned a device");
+        }
 
-            var list = _portal.GetDevices();
-            if (list != null)
-            {
-                Console.WriteLine($"Devices: {list.Count} found");
+        [TestMethod]
+        public void GetDevices_OpenProject_ReturnsEveryDevice()
+        {
+            var devices = AssemblyHooks.SharedPortal.GetDevices();
 
-                list.ForEach(device =>
-                {
-                    Console.WriteLine($"Device: {device.Name}");
-                });
-            }
-            else
-            {
-                Console.WriteLine($"Devices not found");
-            }
-
-            success &= list != null;
-
-            success &= Common.CloseProject(_portal, projectPath);
-
-            Console.WriteLine($"success={success}");
-
-            Assert.IsTrue(success, "No Devices found");
+            Assert.IsNotNull(devices);
+            Assert.IsTrue(devices.Count > 0, "The project has devices but none were returned");
         }
     }
 }

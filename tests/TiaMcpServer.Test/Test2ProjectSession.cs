@@ -1,112 +1,48 @@
-﻿using Microsoft.Extensions.Logging;
-using System;
-using TiaMcpServer.Siemens;
-
-namespace TiaMcpServer.Test
+﻿namespace TiaMcpServer.Test
 {
     [TestClass]
     [DoNotParallelize]
-    public class Test2ProjectSession
+    public sealed class Test2ProjectSession
     {
-        private bool _isInitialized = false;
-        private Portal? _portal;
-
-        [TestInitialize]
-        public void ClassInit()
-        {
-            if (!_isInitialized)
-            {
-                Openness.Initialize();
-            }
-
-            var loggerFactory = LoggerFactory.Create(builder =>
-            {
-                builder.AddConsole(); // or AddDebug(), AddTraceSource(), etc.
-                builder.SetMinimumLevel(LogLevel.Debug);
-            });
-
-            ILogger<Portal> logger = loggerFactory.CreateLogger<Portal>();
-            _portal ??= new(logger);
-
-            var result = _portal.ConnectPortal();
-        }
-
         [TestCleanup]
-        public void ClassCleanup()
+        public void TestCleanup()
         {
-            if (_portal != null)
-            {
-                //_portal.CloseSession();
-            }
+            AssemblyHooks.SharedPortal.CloseProject();
         }
 
         [TestMethod]
-        public void Test_20_GetProjects()
+        public void GetProjects_ProjectOpen_ListsProjectsAndSessions()
         {
-            if (_portal == null)
-            {
-                Assert.Fail("TiaPortal instance is not initialized");
-            }
+            AssemblyHooks.SharedPortal.OpenProject(AssemblyHooks.ProjectPath);
 
-            var projects = _portal.GetProjects();
+            var projects = AssemblyHooks.SharedPortal.GetProjects();
+            projects.AddRange(AssemblyHooks.SharedPortal.GetSessions());
 
-            projects.AddRange(_portal.GetSessions());
-
-            projects?.ForEach(project =>
-            {
-                Console.WriteLine($"Project: Name = '{project.Name}', Author = '{project.Author}'");
-                TiaMcpServer.ModelContextProtocol.Helper.GetAttributeList(project).ForEach(attribute =>
-                {
-                    Console.WriteLine($"- {attribute.Name}: {attribute.Value}");
-                });
-            });
-
-            Assert.IsNotNull(projects, "Failed to retrieve open projects");
-            // Assert.IsTrue(projects?.Count > 0, "No open projects found");
+            Assert.IsTrue(projects.Count > 0, "Neither a project nor a session was reported");
         }
 
         [TestMethod]
-        [DataRow(Settings.Project1ProjectPath)]
-        [DataRow(Settings.Session1ProjectPath)]
-        public void Test_21_GetProjectTree(string projectPath)
+        public void GetProjectTree_OpenProject_DescribesTheProject()
         {
-            if (_portal == null)
-            {
-                Assert.Fail("TiaPortal instance is not initialized");
-            }
+            AssemblyHooks.SharedPortal.OpenProject(AssemblyHooks.ProjectPath);
 
-            bool success = Common.OpenProject(_portal, projectPath);
+            var tree = AssemblyHooks.SharedPortal.GetProjectTree();
 
-            var result = _portal.GetProjectTree();
-
-            success &= Common.CloseProject(_portal, projectPath);
-
-            Console.WriteLine($"GetProjectTree:");
-            Console.WriteLine(result);
-
-            Assert.IsNotNull(success, "No code block found");
+            // The original test asserted IsNotNull on a bool, which can never fail. A tree is
+            // useful only if it actually names the devices, so that is what is checked.
+            Assert.IsFalse(string.IsNullOrWhiteSpace(tree), "The project tree is empty");
+            Assert.IsTrue(tree!.Contains("PLC_0"), $"The project tree does not mention PLC_0:\n{tree}");
         }
 
         [TestMethod]
-        [DataRow(Settings.Project1ProjectPath, Settings.Project1PlcSoftwarePath0)]
-        [DataRow(Settings.Session1ProjectPath, Settings.Session1PlcSoftwarePath)]
-        public void Test_22_GetSoftwareTree(string projectPath, string softwarePath)
+        public void GetSoftwareTree_PlcSoftware_DescribesTheProgram()
         {
-            if (_portal == null)
-            {
-                Assert.Fail("TiaPortal instance is not initialized");
-            }
+            AssemblyHooks.SharedPortal.OpenProject(AssemblyHooks.ProjectPath);
 
-            bool success = Common.OpenProject(_portal, projectPath);
+            var tree = AssemblyHooks.SharedPortal.GetSoftwareTree(Settings.Project1PlcSoftwarePath0);
 
-            var result = _portal.GetSoftwareTree(softwarePath);
-
-            success &= Common.CloseProject(_portal, projectPath);
-
-            Console.WriteLine($"GetSoftwareTree:");
-            Console.WriteLine(result);
-
-            Assert.IsNotNull(result, "No software found");
+            Assert.IsFalse(string.IsNullOrWhiteSpace(tree), "The software tree is empty");
+            Assert.IsTrue(tree!.Contains("Main"), $"The software tree does not mention the Main block:\n{tree}");
         }
     }
 }

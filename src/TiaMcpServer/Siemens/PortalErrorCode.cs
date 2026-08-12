@@ -7,7 +7,9 @@ namespace TiaMcpServer.Siemens
         InvalidParams,
         InvalidState,
         ConnectFailed,
-        RetrieveFailed
+        RetrieveFailed,
+        CompileFailed,
+        WriteFailed
     }
 }
 

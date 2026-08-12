@@ -10,20 +10,17 @@
     Inherited-test debt ledger. Same rules as src/TiaMcpServer/TiaMcpServer.csproj: this list
     is meant to shrink, and nothing we write ourselves should need adding to it.
 
-    CA1001 and CA2000 are the resource rules we care most about, and they are suppressed here
-    only because the inherited test classes (Test2ProjectSession, Test21Project, Test22Session,
-    Test3Devices, Test4Software, Test5McpServer) hold a Portal field and never dispose it —
-    the same orphan-process leak that was fixed in Test1Portal. Those classes cannot run at all
-    yet because Settings.cs points them at absolute D:\ paths, so they are fixed together with
-    those paths. See docs/STATUS.md.
+    CA1001 and CA2000 used to be here, suppressed because every inherited test class held its own
+    Portal field and never disposed it. Reviving those classes removed the last of them: the one
+    portal for the run is owned by AssemblyHooks. The two rules are armed again and the entries
+    are gone, which is what shrinking this list looks like.
   -->
   <PropertyGroup>
-    <NoWarn>$(NoWarn);IDE0008</NoWarn>                    <!-- use explicit type instead of var: 64 -->
-    <NoWarn>$(NoWarn);CA2000;CA1001</NoWarn>              <!-- leaked Portal in inherited tests: 18 -->
-    <NoWarn>$(NoWarn);CA1805</NoWarn>                     <!-- explicit default initialisation: 12 -->
-    <NoWarn>$(NoWarn);IDE0044;IDE0031;IDE0005;IDE0051</NoWarn> <!-- style / dead code: 22 -->
-    <NoWarn>$(NoWarn);CA1508;CA1852;CA1052;CA1812</NoWarn> <!-- type shape nits: 12 -->
-    <NoWarn>$(NoWarn);CA1307;CA1309</NoWarn>              <!-- string comparison: 4 -->
+    <NoWarn>$(NoWarn);IDE0008</NoWarn>                    <!-- use explicit type instead of var -->
+    <NoWarn>$(NoWarn);CA1805</NoWarn>                     <!-- explicit default initialisation -->
+    <NoWarn>$(NoWarn);IDE0044;IDE0031;IDE0005;IDE0051</NoWarn> <!-- style / dead code -->
+    <NoWarn>$(NoWarn);CA1508;CA1852;CA1052;CA1812</NoWarn> <!-- type shape nits -->
+    <NoWarn>$(NoWarn);CA1307;CA1309</NoWarn>              <!-- string comparison -->
   </PropertyGroup>
 
   <ItemGroup>
