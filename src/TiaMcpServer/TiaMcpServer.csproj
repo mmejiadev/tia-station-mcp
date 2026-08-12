@@ -1,0 +1,52 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>Latest</LangVersion>
+    <OutputType>Exe</OutputType>
+    <AssemblyVersion>0.0.18</AssemblyVersion>
+    <BaseOutputPath>.\bin</BaseOutputPath>
+  </PropertyGroup>
+
+  <!--
+    Inherited-code debt ledger.
+
+    Directory.Build.props turns every warning into an error. The code forked from
+    heilingbrunner/tiaportal-mcp predates those rules and trips ~950 of them, so building it
+    at full strictness is impossible today. Rather than switch the strictness off, each
+    diagnostic is suppressed here explicitly and tracked in docs/STATUS.md.
+
+    This list is meant to SHRINK. When an area is cleaned up, delete its code from here so the
+    analyzer starts guarding it again. Do not add to the list for code we write ourselves.
+  -->
+  <PropertyGroup>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>          <!-- missing XML doc on public members: 424 -->
+    <NoWarn>$(NoWarn);IDE0008</NoWarn>         <!-- use explicit type instead of var: 216 -->
+    <NoWarn>$(NoWarn);CA2254</NoWarn>          <!-- logging template is not a static expression: 94 -->
+    <NoWarn>$(NoWarn);CA1062</NoWarn>          <!-- validate arguments of public methods: 56 -->
+    <NoWarn>$(NoWarn);IDE0011</NoWarn>         <!-- add braces to single-line statements: 36 -->
+    <NoWarn>$(NoWarn);CA1508</NoWarn>          <!-- avoid dead conditional code: 22 -->
+    <NoWarn>$(NoWarn);CA1829</NoWarn>          <!-- use Length/Count instead of Count(): 18 -->
+    <NoWarn>$(NoWarn);CA1822</NoWarn>          <!-- member can be static: 14 -->
+    <NoWarn>$(NoWarn);CA1002</NoWarn>          <!-- do not expose List&lt;T&gt;: 12 -->
+    <NoWarn>$(NoWarn);CA1861</NoWarn>          <!-- constant arrays as arguments: 10 -->
+    <NoWarn>$(NoWarn);CA1307;CA1309;CA1311;CA1308</NoWarn> <!-- string comparison / casing: 28 -->
+    <NoWarn>$(NoWarn);CA1860</NoWarn>          <!-- prefer Count over Any(): 8 -->
+    <NoWarn>$(NoWarn);CA1032;CA1052;CA1724;CA1711;CA2227;CA1024;IDE0270</NoWarn> <!-- API shape nits: 26 -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0-preview.4.25258.110" />
+    <PackageReference Include="ModelContextProtocol" Version="0.3.0-preview.4" />
+    <PackageReference Include="Siemens.Collaboration.Net.OperatingSystem.Windows" Version="3.0.1725521661" />
+    <PackageReference Include="Siemens.Collaboration.Net.TiaPortal.Openness.Resolver" Version="1.1.1725480302" />
+    <PackageReference Include="Siemens.Collaboration.Net.TiaPortal.Packages.Openness" Version="20.0.1744190253" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Resolved from the targeting pack. Upstream pinned an absolute HintPath into
+         "C:\Program Files (x86)\Reference Assemblies\...", which does not exist on every
+         machine and breaks the no-hardcoded-paths rule. -->
+    <Reference Include="System.Management" />
+  </ItemGroup>
+</Project>

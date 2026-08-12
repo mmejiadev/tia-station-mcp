@@ -1,4 +1,4 @@
-root = true
+﻿root = true
 
 [*]
 charset = utf-8-bom
@@ -17,7 +17,7 @@ trim_trailing_whitespace = false
 [*.cs]
 indent_size = 4
 
-# ---- Formato obligatorio ----
+# ---- Mandatory formatting ----
 csharp_new_line_before_open_brace = all
 csharp_new_line_before_else = true
 csharp_new_line_before_catch = true
@@ -26,12 +26,17 @@ csharp_indent_case_contents = true
 csharp_indent_switch_labels = true
 csharp_prefer_braces = true:error
 
-# ---- var: solo cuando el tipo es evidente ----
+# ---- var: only when the type is obvious ----
+# csharp_style_var_elsewhere stays a suggestion rather than an error. As an error it fires
+# (IDE0008) on every `var x = SomethingReturningAnObviousType()` the analyzer cannot prove is
+# obvious, which is most of them, and forcing explicit types there makes the code longer
+# without making it clearer. CLAUDE.md asks for judgement here, not a machine verdict.
 csharp_style_var_for_built_in_types = false:error
 csharp_style_var_when_type_is_apparent = true:suggestion
-csharp_style_var_elsewhere = false:error
+csharp_style_var_elsewhere = false:suggestion
+dotnet_diagnostic.IDE0008.severity = suggestion
 
-# ---- Modificadores y accesibilidad explícitos ----
+# ---- Explicit modifiers and accessibility ----
 dotnet_style_require_accessibility_modifiers = always:error
 dotnet_style_readonly_field = true:error
 csharp_preferred_modifier_order = public,private,protected,internal,static,extern,new,virtual,abstract,sealed,override,readonly,unsafe,volatile,async:error
@@ -41,56 +46,66 @@ dotnet_style_coalesce_expression = true:error
 dotnet_style_null_propagation = true:error
 csharp_style_throw_expression = true:suggestion
 
-# ---- Guard clauses / patrones ----
+# ---- Guard clauses / patterns ----
 csharp_style_pattern_matching_over_is_with_cast_check = true:error
 csharp_style_pattern_matching_over_as_with_null_check = true:error
 csharp_prefer_simple_using_statement = true:suggestion
 
-# ---- Calidad ----
+# ---- Quality ----
 dotnet_style_object_initializer = true:suggestion
 dotnet_style_prefer_auto_properties = true:error
 dotnet_style_explicit_tuple_names = true:error
 
 # ==========================================================
-#  Analizadores elevados a ERROR — no negociables
+#  Analyzers raised to ERROR — non-negotiable
 # ==========================================================
 
-# Código muerto / no usado
-dotnet_diagnostic.IDE0051.severity = error   # miembro privado sin usar
-dotnet_diagnostic.IDE0052.severity = error   # campo privado escrito pero nunca leído
-dotnet_diagnostic.CS0168.severity  = error   # variable declarada sin usar
-dotnet_diagnostic.CS0219.severity  = error   # variable asignada pero nunca usada
-dotnet_diagnostic.IDE0005.severity = error   # using innecesario
+# Dead / unused code
+dotnet_diagnostic.IDE0051.severity = error   # unused private member
+dotnet_diagnostic.IDE0052.severity = error   # private field written but never read
+dotnet_diagnostic.CS0168.severity  = error   # variable declared but never used
+dotnet_diagnostic.CS0219.severity  = error   # variable assigned but never used
+dotnet_diagnostic.IDE0005.severity = error   # unnecessary using
 
-# Recursos — crítico con objetos TIA Portal
-dotnet_diagnostic.CA1001.severity = error   # tipo con campo IDisposable debe ser IDisposable
-dotnet_diagnostic.CA2000.severity = error   # liberar objetos antes de perder el ámbito
-dotnet_diagnostic.CA2213.severity = error   # campos disposable deben liberarse
+# Resources — critical with TIA Portal objects
+dotnet_diagnostic.CA1001.severity = error   # type with IDisposable field must be IDisposable
+dotnet_diagnostic.CA2000.severity = error   # dispose objects before losing scope
+dotnet_diagnostic.CA2213.severity = error   # disposable fields must be disposed
 
-# Excepciones
-dotnet_diagnostic.CA1031.severity = warning # no capturar Exception genérica
-dotnet_diagnostic.CA2200.severity = error   # relanzar preservando la pila (throw, no throw ex)
-dotnet_diagnostic.CA1065.severity = error   # no lanzar desde sitios inesperados
-dotnet_diagnostic.RCS1075.severity = error  # bloque catch vacío
+# Exceptions
+# CA1031 is off on purpose: the error model in CLAUDE.md *requires* a single
+# catch (Exception) per public portal method to decorate and rethrow as PortalException.
+# The rule that matters here is "never swallow", which RCS1075 below enforces.
+dotnet_diagnostic.CA1031.severity = none    # do not catch general Exception
+dotnet_diagnostic.CA2200.severity = error   # rethrow preserving the stack (throw, not throw ex)
+dotnet_diagnostic.CA1065.severity = error   # do not throw from unexpected locations
+dotnet_diagnostic.RCS1075.severity = error  # empty catch block
 
 # Async
-dotnet_diagnostic.CA2007.severity = none    # ConfigureAwait: innecesario en app de consola
-dotnet_diagnostic.CS1998.severity = error   # async sin await
-dotnet_diagnostic.CS4014.severity = error   # llamada async no esperada
-dotnet_diagnostic.VSTHRD100.severity = error # evitar async void
+dotnet_diagnostic.CA2007.severity = none    # ConfigureAwait: unnecessary in a console app
+dotnet_diagnostic.CS1998.severity = error   # async without await
+dotnet_diagnostic.CS4014.severity = error   # unawaited async call
+dotnet_diagnostic.VSTHRD100.severity = error # avoid async void
 
-# Diseño
-dotnet_diagnostic.CA1062.severity = warning # validar argumentos de métodos públicos
-dotnet_diagnostic.CA1822.severity = warning # miembros que pueden ser static
-dotnet_diagnostic.CA1707.severity = none    # permitir guiones bajos en nombres de test
+# Logging
+# CA1848 wants compiled LoggerMessage delegates on every log call. That is a hot-path
+# optimisation; here every logged operation wraps a TIA Portal call that takes seconds, so the
+# allocation is irrelevant and the ceremony would hurt readability.
+dotnet_diagnostic.CA1848.severity = none    # use LoggerMessage delegates
+dotnet_diagnostic.CA2254.severity = warning # logging template should be a static expression
 
-# Globalización — ruido innecesario en este proyecto
+# Design
+dotnet_diagnostic.CA1062.severity = warning # validate arguments of public methods
+dotnet_diagnostic.CA1822.severity = warning # members that can be static
+dotnet_diagnostic.CA1707.severity = none    # allow underscores in test names
+
+# Globalization — unnecessary noise in this project
 dotnet_diagnostic.CA1303.severity = none
 dotnet_diagnostic.CA1304.severity = none
 dotnet_diagnostic.CA1305.severity = none
 dotnet_diagnostic.CA1310.severity = none
 
-# ---- Nomenclatura ----
+# ---- Naming ----
 dotnet_naming_rule.private_fields_underscore.severity = error
 dotnet_naming_rule.private_fields_underscore.symbols  = private_fields
 dotnet_naming_rule.private_fields_underscore.style    = underscore_camel
@@ -113,7 +128,7 @@ dotnet_naming_symbols.interfaces.applicable_kinds = interface
 dotnet_naming_style.i_pascal.required_prefix = I
 dotnet_naming_style.i_pascal.capitalization  = pascal_case
 
-# ---- Tests: se relajan las reglas de argumentos ----
+# ---- Tests: argument rules are relaxed ----
 [tests/**/*.cs]
 dotnet_diagnostic.CA1062.severity = none
 dotnet_diagnostic.CA1031.severity = none
