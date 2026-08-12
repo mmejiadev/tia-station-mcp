@@ -1,0 +1,33 @@
+# Build
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+*.user
+*.suo
+.vs/
+
+# NuGet
+packages/
+*.nupkg
+
+# Siemens / TIA
+*.ap20.~*
+Logs/
+IM/
+UserFiles/
+System/
+AdditionalFiles/
+TMP/
+*.tia_backup
+
+# No versionar las DLL de Openness (propiedad de Siemens, están en la instalación local)
+Siemens.Engineering*.dll
+
+# Exports de trabajo (los snapshots versionados van en export/)
+tmp/
+scratch/
+
+# OS
+Thumbs.db
+Desktop.ini
