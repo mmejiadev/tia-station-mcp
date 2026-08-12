@@ -3,6 +3,19 @@
 > Documento vivo. Actualízalo al final de cada sesión de trabajo.
 > Última actualización: **2026-08-12**
 
+## ▶ RETOMAR AQUÍ
+
+Estado al cierre de la sesión del 2026-08-12:
+
+1. ⏳ **Pendiente de la usuaria:** cerrar sesión de Windows y volver a entrar.
+   El usuario `MANUELA\mamem` ya está en el grupo `Siemens TIA Openness`, pero el token
+   de sesión aún no lo refleja. Sin esto, Openness no conecta.
+2. ⏳ **Pendiente de la usuaria:** instalar herramientas de compilación (ver más abajo).
+3. ➡️ **Siguiente acción del agente:** verificar ambas cosas, compilar `repos/tiaportal-mcp`
+   y hacer el primer `Connect` real contra `repos/tiaportal-mcp/tests/assets/TestProject1.zap20`.
+
+Lectura obligatoria al arrancar: este fichero, `../CLAUDE.md` y `REPOS-REFERENCIA.md`.
+
 ## Objetivo
 
 Servidor MCP que genere, verifique y despliegue código PLC para el proyecto final del
@@ -34,7 +47,32 @@ Plazo: **mes y medio** desde 2026-08-12 → objetivo ~2026-09-25 (inicio de clas
 - ❌ `TiaPortalLocation` no definida (ni proceso ni usuario)
 - ⬜ Whitelist de aplicación externa en TIA Portal (se comprueba al primer conectar)
 
-### Cómo desbloquear
+### Herramientas de compilación — BLOQUEANTE
+
+Verificado 2026-08-12: solo hay **.NET SDK 8.0.405**. No hay Visual Studio, ni Build Tools,
+ni MSBuild, ni NuGet CLI.
+
+`repos/tiaportal-mcp` es **legacy csproj + `packages.config`**, y `dotnet build` no restaura
+`packages.config`. Hace falta MSBuild real.
+
+Opción recomendada:
+
+```powershell
+winget install Microsoft.VisualStudio.2022.Community
+```
+
+Opción ligera (si se prefiere seguir en VS Code):
+
+```powershell
+winget install Microsoft.VisualStudio.2022.BuildTools
+winget install Microsoft.NuGet
+```
+
+Descartado por ahora: migrar a csproj SDK-style con `PackageReference`. Funcionaría con el
+`dotnet` actual y sería más limpio, pero aleja del upstream y complica contribuir de vuelta.
+Reconsiderar cuando el fork tenga vida propia.
+
+### Cómo desbloquear el grupo
 
 PowerShell **como administrador**, y después **cerrar sesión y volver a entrar**
 (la pertenencia a grupos solo se refresca al crear el token de sesión):

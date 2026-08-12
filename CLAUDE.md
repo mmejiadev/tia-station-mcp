@@ -6,6 +6,16 @@ Parte están heredadas de `repos/tiaportal-mcp` (MIT), cuyo `AGENTS.md`, `style.
 `docs/error-model.md` hemos adoptado para mantener lógica compartida y poder contribuir
 aguas arriba sin fricción.
 
+## Al empezar una sesión
+
+Lee **`docs/ESTADO.md`** antes de hacer nada. Su sección "▶ RETOMAR AQUÍ" dice en qué punto
+quedó el trabajo, qué está bloqueado y cuál es la siguiente acción. Es la fuente de verdad
+del proyecto y se actualiza al cierre de cada sesión.
+
+Los repositorios de referencia están en `../repos/` y su análisis en `docs/REPOS-REFERENCIA.md`.
+
+La usuaria escribe en español; respóndele en español.
+
 ## Contexto del proyecto
 
 Servidor MCP en C# que expone la API TIA Portal Openness a un LLM, orientado a:
