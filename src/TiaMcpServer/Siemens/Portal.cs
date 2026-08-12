@@ -30,6 +30,12 @@ namespace TiaMcpServer.Siemens
         private TiaPortal? _portal;
         private ProjectBase? _project;
         private LocalSession? _session;
+
+        // True only when this instance started the TIA Portal process. It decides whether we may
+        // close the open project on the way out: a portal we merely attached to belongs to the
+        // user, and closing their project would be destructive. A portal we started is ours, and
+        // closing the project is what actually releases the file handles on its directory.
+        private bool _ownsPortalProcess;
         private bool _isDisposed;
         private readonly ILogger<Portal>? _logger;
 
@@ -127,14 +133,7 @@ namespace TiaMcpServer.Siemens
                 return;
             }
 
-            try
-            {
-                (_project as Project)?.Close();
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogError(ex, "Failed to close the project while disposing the portal");
-            }
+            ReleaseProjectIfOwned();
 
             try
             {
@@ -145,10 +144,43 @@ namespace TiaMcpServer.Siemens
                 _logger?.LogError(ex, "Failed to release TIA Portal; the process may stay alive and hold the licence");
             }
 
+            _portal = null;
+            _ownsPortalProcess = false;
+            _isDisposed = true;
+        }
+
+        /// <summary>
+        /// Closes the open project and session, but only when this instance started TIA Portal.
+        /// </summary>
+        /// <remarks>
+        /// Closing matters for more than tidiness: until the project is closed, TIA Portal keeps
+        /// file handles open inside the project directory, so deleting or moving that directory
+        /// fails with a sharing violation. Disposing the portal alone does not release them in
+        /// time. When we are only attached to someone else's portal, we leave their project alone.
+        /// Never throws, so it is safe to call from Dispose.
+        /// </remarks>
+        private void ReleaseProjectIfOwned()
+        {
+            if (!_ownsPortalProcess)
+            {
+                _project = null;
+                _session = null;
+
+                return;
+            }
+
+            try
+            {
+                (_project as Project)?.Close();
+                _session?.Close();
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Failed to close the project while releasing the portal");
+            }
+
             _project = null;
             _session = null;
-            _portal = null;
-            _isDisposed = true;
         }
 
         #endregion
@@ -175,6 +207,7 @@ namespace TiaMcpServer.Siemens
                 _project = null;
                 _session = null;
                 _portal = null;
+                _ownsPortalProcess = false;
 
                 // Attaching does not take ownership of the process: Dispose() will only detach
                 // from it, leaving TIA Portal running for whoever started it.
@@ -192,6 +225,7 @@ namespace TiaMcpServer.Siemens
                 // We started it, so this instance owns the process: whoever holds this Portal
                 // must Dispose() it or TIA Portal is left running and holding the licence.
                 _portal = new TiaPortal(mode);
+                _ownsPortalProcess = true;
 
                 return true;
             }
@@ -243,11 +277,11 @@ namespace TiaMcpServer.Siemens
 
             try
             {
-                _project = null;
-                _session = null;
+                ReleaseProjectIfOwned();
 
                 _portal?.Dispose();
                 _portal = null;
+                _ownsPortalProcess = false;
 
                 return true;
             }

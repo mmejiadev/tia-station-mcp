@@ -1,4 +1,4 @@
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
@@ -247,6 +247,105 @@ namespace TiaMcpServer.ModelContextProtocol
             catch (Exception ex) when (ex is not McpException)
             {
                 throw new McpException($"Unexpected error opening project '{path}': {ex.Message}", ex, McpErrorCode.InternalError);
+            }
+        }
+
+        [McpServerTool(Name = "RetrieveProject"), Description("Retrieve a TIA-Portal project archive (.zapXX) into a directory and open it")]
+        public static ResponseRetrieveProject RetrieveProject(
+            [Description("archivePath: full path of the .zapXX archive to retrieve")] string archivePath,
+            [Description("targetDirectory: directory to extract into; the call is refused if the project folder already exists")] string targetDirectory)
+        {
+            try
+            {
+                var projectPath = Portal.RetrieveProject(archivePath, targetDirectory);
+
+                return new ResponseRetrieveProject(projectPath)
+                {
+                    Message = $"Archive '{archivePath}' retrieved to '{projectPath}'",
+                    Meta = new JsonObject
+                    {
+                        ["timestamp"] = DateTime.Now,
+                        ["success"] = true
+                    }
+                };
+            }
+            catch (TiaMcpServer.Siemens.PortalException pex)
+            {
+                throw ToMcpException(pex, $"Failed to retrieve archive '{archivePath}'");
+            }
+            catch (Exception ex) when (ex is not McpException)
+            {
+                throw new McpException($"Unexpected error retrieving archive '{archivePath}': {ex.Message}", ex, McpErrorCode.InternalError);
+            }
+        }
+
+        [McpServerTool(Name = "ExportSourceSnapshot"), Description("Export a PLC program to plain text (SCL/DB/AWL sources, UDTs and tag tables) laid out for version control. Blocks written in LAD, FBD or GRAPH have no text form and are reported as unsupported instead of being exported.")]
+        public static ResponseExportSnapshot ExportSourceSnapshot(
+            [Description("softwarePath: full path in the project structure to the plc software, e.g. 'Group1/PLC_1'")] string softwarePath,
+            [Description("targetDirectory: root directory of the snapshot; blocks, types and tags are written into subfolders")] string targetDirectory)
+        {
+            try
+            {
+                var snapshot = Portal.ExportSourceSnapshot(softwarePath, targetDirectory);
+
+                return new ResponseExportSnapshot(snapshot.Exported, snapshot.Inconsistent, snapshot.Unsupported, snapshot.Failed)
+                {
+                    Message = BuildSnapshotMessage(snapshot),
+                    Meta = new JsonObject
+                    {
+                        ["timestamp"] = DateTime.Now,
+                        ["success"] = true,
+                        ["isComplete"] = snapshot.IsComplete
+                    }
+                };
+            }
+            catch (TiaMcpServer.Siemens.PortalException pex)
+            {
+                throw ToMcpException(pex, $"Failed to export a snapshot of '{softwarePath}'");
+            }
+            catch (Exception ex) when (ex is not McpException)
+            {
+                throw new McpException($"Unexpected error exporting a snapshot of '{softwarePath}': {ex.Message}", ex, McpErrorCode.InternalError);
+            }
+        }
+
+        private static string BuildSnapshotMessage(TiaMcpServer.Siemens.SnapshotResult snapshot)
+        {
+            var message = $"Snapshot written: {snapshot.Exported.Count} file(s)";
+
+            // Say out loud when the snapshot is partial. A caller that assumes otherwise would
+            // treat it as a backup of the whole program, which it is not.
+            if (snapshot.Unsupported.Count > 0)
+            {
+                message += $"; {snapshot.Unsupported.Count} block(s) have no text representation and were left out";
+            }
+
+            if (snapshot.Inconsistent.Count > 0)
+            {
+                message += $"; {snapshot.Inconsistent.Count} inconsistent item(s) skipped, compile the software and export again";
+            }
+
+            if (snapshot.Failed.Count > 0)
+            {
+                message += $"; {snapshot.Failed.Count} item(s) failed";
+            }
+
+            return message;
+        }
+
+        private static McpException ToMcpException(TiaMcpServer.Siemens.PortalException portalException, string fallbackMessage)
+        {
+            Logger?.LogError(portalException, "{Message}", fallbackMessage);
+
+            switch (portalException.Code)
+            {
+                case TiaMcpServer.Siemens.PortalErrorCode.InvalidParams:
+                case TiaMcpServer.Siemens.PortalErrorCode.InvalidState:
+                case TiaMcpServer.Siemens.PortalErrorCode.NotFound:
+                    return new McpException(portalException.Message, McpErrorCode.InvalidParams);
+
+                default:
+                    return new McpException($"{fallbackMessage}. Reason: {portalException.Message}", McpErrorCode.InternalError);
             }
         }
 

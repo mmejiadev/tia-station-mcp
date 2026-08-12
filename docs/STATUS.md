@@ -32,9 +32,13 @@ State during the session of 2026-08-12 (afternoon):
 9. ✅ **Bulk export to text works.** `SourceSnapshotExporter` writes real SCL / DB / UDT source
    plus tag tables, mirroring the group hierarchy. `Test7Snapshot` 4/4 passing; output inspected
    by hand, not just asserted. See "Bulk export to text" below, including the LAD limitation.
-10. ➡️ **Next action:** expose `ExportSourceSnapshot` as an MCP tool. The `Portal` layer is done,
-    the `ModelContextProtocol` layer is not wired up yet.
-11. ⏳ **Note:** the upstream clone still holds the same three fixes on
+10. ✅ **Both operations exposed as MCP tools**, 30 → 32. `RetrieveProject` and
+    `ExportSourceSnapshot` are callable by the LLM, with error mapping centralised.
+    Writing those tests exposed a **fourth upstream defect**: `DisconnectPortal` never closed the
+    open project, leaving TIA Portal holding file handles on its directory. Fixed by modelling
+    portal ownership, since closing the project is only ours to do when we started the portal.
+11. ➡️ **Next action:** decide what lands in `export/` and whether snapshots are committed.
+12. ⏳ **Note:** the upstream clone still holds the same three fixes on
     `fix/portal-lifecycle-and-errors`, uncommitted, worth offering as a PR.
 
 Required reading at startup: this file, `../CLAUDE.md` and `REFERENCE-REPOS.md`.
@@ -284,13 +288,53 @@ Two improvements over `repos/TiaExportBlocks/Program.cs`, the reference for this
 
 `Test7Snapshot`: 4/4 passing in 38 s, happy path plus tag-table coverage plus two error cases.
 
+### Exposed as MCP tools
+
+Both new operations are reachable by the LLM, taking the server from 30 tools to 32:
+
+- `RetrieveProject(archivePath, targetDirectory)`
+- `ExportSourceSnapshot(softwarePath, targetDirectory)`
+
+The tool description states the LAD limitation, and the response message repeats it whenever a
+snapshot is partial. A caller that never reads `Unsupported` still cannot mistake a partial
+snapshot for a complete one.
+
+Error mapping is centralised in a small `ToMcpException` helper rather than the copy-pasted
+`switch` upstream repeats per tool. Missing paths and invalid state map to `InvalidParams`, so a
+caller's mistake is never reported as an `InternalError`.
+
+The two new response objects are **immutable**, as CLAUDE.md requires. The 30 inherited ones
+still carry public setters; converting them is a separate change, since doing two of thirty makes
+`Responses.cs` inconsistent for no gain.
+
+### A fourth defect, found by the MCP tests
+
+Wiring the tools up made `Test8McpSnapshot` fail in cleanup with a sharing violation on
+`PEData.idx`: TIA Portal still held the retrieved project directory.
+
+The cause was `DisconnectPortal` setting `_project = null` without closing the project. Until a
+project is closed, TIA Portal keeps file handles inside its directory, and disposing the portal
+does not release them in time. `Portal.Dispose()` did close the project, which is why
+`Test7Snapshot` passed and the MCP tests did not.
+
+The naive fix — always close the project on disconnect — would be **destructive**: when we merely
+attached to a TIA Portal the user started, closing their project is not ours to do. So the
+ownership distinction noted earlier is now modelled. `_ownsPortalProcess` is set when
+`ConnectPortal` calls `new TiaPortal(...)` and cleared when it attaches, and
+`ReleaseProjectIfOwned` closes the project only for a portal we started.
+
+This also explains the test structure: one portal per class rather than per test. A portal does
+not die the moment it is disposed, so a per-test connect/disconnect cycle makes the next test
+attach to the previous, still-closing process — and an attached portal correctly refuses to close
+the project, locking the directory. `ClassCleanup` deletes best-effort for the same reason.
+
 ### Next in phase 2
 
-1. Expose `ExportSourceSnapshot` as an MCP tool so the LLM can call it. The `Portal` layer is
-   done; the `ModelContextProtocol` layer is not wired up yet.
-2. Decide what lands in `export/` and whether a snapshot is committed automatically.
-3. Consider a companion XML export for the LAD blocks, so a snapshot can be complete even if
+1. Decide what lands in `export/` and whether a snapshot is committed automatically.
+2. Consider a companion XML export for the LAD blocks, so a snapshot can be complete even if
    half of it is not human-readable.
+3. Fix `Settings.cs`: the six inherited test classes are still dead because of absolute `D:\`
+   paths, and they still leak portals. Both are the same piece of work.
 
 Do not extract to `D:\`: only 2.3 GB free. The tests use a fresh directory under `%TEMP%`.
 
