@@ -1,4 +1,4 @@
-﻿# Line endings are a correctness issue in this repository, not a preference:
+# Line endings are a correctness issue in this repository, not a preference:
 # Siemens deployment scripts fail to parse LF. See CLAUDE.md.
 #
 # "eol=crlf" guarantees a CRLF working copy on every platform, not just on Windows with

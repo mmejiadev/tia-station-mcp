@@ -19,6 +19,33 @@ reply to her in Spanish. What lands in the repo is still English.
 Rationale: the base is an English MIT project we want to contribute back to, the Openness
 API and its documentation are in English, and mixed-language code is a mess to search.
 
+## Never commit — the commits are the user's
+
+**Do not run `git commit`, `git push`, `git tag`, or anything that rewrites history.**
+Not "unless asked", not "when it seems finished": never on your own initiative.
+
+Stage nothing on the user's behalf either. Leave the work in the working tree, say what
+changed and why, and let the user commit it themselves. If a commit message would help,
+write it out in the reply so it can be copied — do not run the command.
+
+This holds even when the user has authorised a commit earlier in the conversation. That
+authorisation covered that commit and no other.
+
+The one exception is an explicit, unambiguous instruction in the current turn, naming the
+action: "commit this", "push it". Wanting the work finished is not that instruction.
+
+### Never push to `main`
+
+`main` moves through a pull request the user merges on GitHub, and no other way.
+
+Even when a commit has been explicitly authorised, it goes on a branch. Never
+`git push origin main`, and never push a branch to the same commit as `main` — with nothing
+to compare, GitHub offers no pull request and the review the user wanted silently does not
+happen. That mistake was made on 2026-08-12; it is why this rule exists.
+
+Work goes on a branch, the branch is pushed **ahead of `main`**, and the user opens and
+merges the pull request. Reviewing the diff is the point, not a formality.
+
 ## Starting a session
 
 Read **`docs/STATUS.md`** before doing anything else. Its "▶ RESUME HERE" section states
@@ -244,6 +271,10 @@ dotnet test
 
 - Preserve the existing indentation style.
 - **Do not change the encoding**; keep the UTF-8 BOM where it exists.
+- **`.gitattributes` and `.gitignore` must have no BOM.** Git does not strip it, so the byte
+  order mark becomes part of the first line: a leading `#` stops being a comment and git
+  parses the whole line as a rule. It fails with `is not a valid attribute name` and every
+  rule in the file is suspect. Verified the hard way on 2026-08-12.
 - **Keep Windows CRLF.** The C# files of the portal layer and their tests must keep CRLF:
   Siemens deployment scripts fail to parse LF.
 - `.md` files committed from Windows are also CRLF and UTF-8 with BOM.

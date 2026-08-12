@@ -32,6 +32,13 @@ namespace TiaMcpServer.Test
         /// <summary>Root directory tests write into. Removed once the shared portal is released.</summary>
         public static string WorkingRoot { get; private set; } = string.Empty;
 
+        /// <summary>
+        /// Full path of the sample project on disk, retrieved once from the archive that ships in
+        /// <c>assets/</c>. This is what replaced the absolute <c>D:\Siemens\...</c> paths the
+        /// inherited tests were pinned to: the fixture now builds itself on any machine.
+        /// </summary>
+        public static string ProjectPath { get; private set; } = string.Empty;
+
         /// <summary>Starts the shared TIA Portal.</summary>
         /// <param name="context">Supplied by MSTest.</param>
         [AssemblyInitialize]
@@ -43,6 +50,11 @@ namespace TiaMcpServer.Test
 
             _sharedPortal = new Portal();
             _sharedPortal.ConnectPortal();
+
+            // Retrieved once for the whole run. Tests that need the project open reopen it by
+            // path; tests that mutate it (SaveAs, import) work inside the temp copy, so nothing
+            // they do can affect the archive in the repository.
+            ProjectPath = _sharedPortal.RetrieveProject(Settings.Project1ArchivePath, Path.Combine(WorkingRoot, "project"));
         }
 
         /// <summary>Releases the shared TIA Portal and deletes the working directory.</summary>
