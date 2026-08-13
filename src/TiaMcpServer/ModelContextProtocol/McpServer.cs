@@ -279,6 +279,212 @@ namespace TiaMcpServer.ModelContextProtocol
             }
         }
 
+        [McpServerTool(Name = "GetNetworkTopology"), Description("List every device interface in the project with its address and subnet. Read this before writing code that addresses remote IO, or before configuring a PROFINET or PROFIBUS network: an interface with no subnet is wired to nothing.")]
+        public static ResponseNetworkTopology GetNetworkTopology()
+        {
+            try
+            {
+                var nodes = Portal.GetNetworkTopology();
+
+                var lines = nodes
+                    .Select(node => $"{node.DevicePath} | {node.InterfaceName} | {node.NetworkType} | {node.Address} | {(node.IsConnected ? node.SubnetName : "<not connected>")}")
+                    .ToList();
+
+                var unconnected = nodes.Count(node => !node.IsConnected);
+
+                return new ResponseNetworkTopology(lines)
+                {
+                    Message = unconnected == 0
+                        ? $"{nodes.Count} interface(s), all connected to a subnet"
+                        : $"{nodes.Count} interface(s), {unconnected} not connected to any subnet",
+                    Meta = new JsonObject
+                    {
+                        ["timestamp"] = DateTime.Now,
+                        ["success"] = true
+                    }
+                };
+            }
+            catch (TiaMcpServer.Siemens.PortalException pex)
+            {
+                throw ToMcpException(pex, "Failed to read the network topology");
+            }
+        }
+
+        #region simulation
+
+        [McpServerTool(Name = "ListSimulationInstances"), Description("List the PLCSIM Advanced virtual controllers and the runtime's network mode. Call this before downloading: a controller with no address, or a runtime in the wrong network mode, is why a download cannot connect.")]
+        public static ResponseSimulationInstances ListSimulationInstances()
+        {
+            try
+            {
+                var instances = new TiaMcpServer.Siemens.SimulationRuntime(Logger).ListInstances();
+
+                return new ResponseSimulationInstances(instances.Select(ToResponse).ToList(), TiaMcpServer.Siemens.SimulationRuntime.NetworkMode)
+                {
+                    Message = $"{instances.Count} simulation instance(s)",
+                    Meta = new JsonObject
+                    {
+                        ["timestamp"] = DateTime.Now,
+                        ["success"] = true
+                    }
+                };
+            }
+            catch (TiaMcpServer.Siemens.PortalException pex)
+            {
+                throw ToMcpException(pex, "Failed to list simulation instances");
+            }
+        }
+
+        [McpServerTool(Name = "CreateSimulationInstance"), Description("Create a PLCSIM Advanced virtual controller and give it an address. The address must match the CPU's address in the project, otherwise TIA Portal cannot download to it.")]
+        public static ResponseSimulationInstance CreateSimulationInstance(
+            [Description("instanceName: a name for the virtual controller, unique within the runtime")] string instanceName,
+            [Description("ipAddress: the address to assign, matching the CPU in the project, e.g. '192.168.0.1'")] string ipAddress,
+            [Description("subnetMask: usually '255.255.255.0'")] string subnetMask = "255.255.255.0")
+        {
+            try
+            {
+                var runtime = new TiaMcpServer.Siemens.SimulationRuntime(Logger);
+
+                runtime.CreateInstance(instanceName);
+
+                return Describe(runtime.SetInstanceAddress(instanceName, ipAddress, subnetMask), $"Instance '{instanceName}' created at {ipAddress}");
+            }
+            catch (TiaMcpServer.Siemens.PortalException pex)
+            {
+                throw ToMcpException(pex, $"Failed to create simulation instance '{instanceName}'");
+            }
+        }
+
+        [McpServerTool(Name = "StartSimulationInstance"), Description("Put a virtual controller into RUN. It must have a program: a controller that has never been downloaded to cannot start.")]
+        public static ResponseSimulationInstance StartSimulationInstance(
+            [Description("instanceName: the virtual controller to start")] string instanceName)
+        {
+            try
+            {
+                var started = new TiaMcpServer.Siemens.SimulationRuntime(Logger).StartInstance(instanceName);
+
+                return Describe(started, $"Instance '{instanceName}' is {started.OperatingState}");
+            }
+            catch (TiaMcpServer.Siemens.PortalException pex)
+            {
+                throw ToMcpException(pex, $"Failed to start simulation instance '{instanceName}'");
+            }
+        }
+
+        [McpServerTool(Name = "StopSimulationInstance"), Description("Put a virtual controller into STOP.")]
+        public static ResponseSimulationInstance StopSimulationInstance(
+            [Description("instanceName: the virtual controller to stop")] string instanceName)
+        {
+            try
+            {
+                var stopped = new TiaMcpServer.Siemens.SimulationRuntime(Logger).StopInstance(instanceName);
+
+                return Describe(stopped, $"Instance '{instanceName}' is {stopped.OperatingState}");
+            }
+            catch (TiaMcpServer.Siemens.PortalException pex)
+            {
+                throw ToMcpException(pex, $"Failed to stop simulation instance '{instanceName}'");
+            }
+        }
+
+        [McpServerTool(Name = "DeleteSimulationInstance"), Description("Power off a virtual controller and remove it from the runtime.")]
+        public static ResponseMessage DeleteSimulationInstance(
+            [Description("instanceName: the virtual controller to remove")] string instanceName)
+        {
+            try
+            {
+                new TiaMcpServer.Siemens.SimulationRuntime(Logger).DeleteInstance(instanceName);
+
+                return new ResponseMessage
+                {
+                    Message = $"Instance '{instanceName}' removed",
+                    Meta = new JsonObject
+                    {
+                        ["timestamp"] = DateTime.Now,
+                        ["success"] = true
+                    }
+                };
+            }
+            catch (TiaMcpServer.Siemens.PortalException pex)
+            {
+                throw ToMcpException(pex, $"Failed to remove simulation instance '{instanceName}'");
+            }
+        }
+
+        [McpServerTool(Name = "GetSimulationTargetName"), Description("Report which PC interface a download would go through, without downloading. It is always a PLCSIM interface: this server refuses to download through a real network adapter.")]
+        public static ResponseMessage GetSimulationTargetName(
+            [Description("softwarePath: full path to the CPU in the project, e.g. 'PLC_0'")] string softwarePath)
+        {
+            try
+            {
+                var target = Portal.GetSimulationTargetName(softwarePath);
+
+                return new ResponseMessage
+                {
+                    Message = $"A download of '{softwarePath}' would go through: {target}",
+                    Meta = new JsonObject
+                    {
+                        ["timestamp"] = DateTime.Now,
+                        ["success"] = true
+                    }
+                };
+            }
+            catch (TiaMcpServer.Siemens.PortalException pex)
+            {
+                throw ToMcpException(pex, $"Failed to resolve a download target for '{softwarePath}'");
+            }
+        }
+
+        [McpServerTool(Name = "DownloadToSimulation"), Description("Download hardware and software to a PLCSIM Advanced virtual controller. There is no equivalent for physical hardware, by design. Compile first, and make sure an instance exists at the CPU's address.")]
+        public static ResponseCompileSoftware DownloadToSimulation(
+            [Description("softwarePath: full path to the CPU in the project, e.g. 'PLC_0'")] string softwarePath)
+        {
+            try
+            {
+                var report = Portal.DownloadToSimulation(softwarePath);
+
+                return new ResponseCompileSoftware(
+                    report.ErrorCount,
+                    report.WarningCount,
+                    report.Errors.Select(error => error.ToString()).ToList())
+                {
+                    Message = report.IsSuccessful
+                        ? $"'{softwarePath}' downloaded to simulation"
+                        : $"Download of '{softwarePath}' reported {report.ErrorCount} error(s); see Messages",
+                    Meta = new JsonObject
+                    {
+                        ["timestamp"] = DateTime.Now,
+                        ["success"] = report.IsSuccessful
+                    }
+                };
+            }
+            catch (TiaMcpServer.Siemens.PortalException pex)
+            {
+                throw ToMcpException(pex, $"Failed to download '{softwarePath}' to simulation");
+            }
+        }
+
+        private static ResponseSimulationInstance ToResponse(TiaMcpServer.Siemens.SimulationInstanceInfo instance)
+        {
+            return new ResponseSimulationInstance(instance.Name, instance.OperatingState, instance.CpuType, instance.IpAddresses);
+        }
+
+        private static ResponseSimulationInstance Describe(TiaMcpServer.Siemens.SimulationInstanceInfo instance, string message)
+        {
+            var response = ToResponse(instance);
+
+            response.Message = message;
+            response.Meta = new JsonObject
+            {
+                ["timestamp"] = DateTime.Now,
+                ["success"] = true
+            };
+
+            return response;
+        }
+
+        #endregion
+
         [McpServerTool(Name = "WriteScl"), Description("Write SCL source into a PLC program, generating the blocks it declares. The existing blocks are exported to backupDirectory first, because generation overwrites blocks of the same name. Compile afterwards to find out whether the code is valid.")]
         public static ResponseWriteScl WriteScl(
             [Description("softwarePath: full path in the project structure to the plc software, e.g. 'Group1/PLC_1'")] string softwarePath,

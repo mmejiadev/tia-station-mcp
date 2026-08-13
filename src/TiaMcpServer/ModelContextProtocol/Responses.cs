@@ -227,6 +227,84 @@ namespace TiaMcpServer.ModelContextProtocol
         public string ProjectPath { get; }
     }
 
+    /// <summary>The project's network layout.</summary>
+    public sealed class ResponseNetworkTopology : ResponseMessage
+    {
+        /// <summary>Creates the response.</summary>
+        /// <param name="nodes">One line per interface: device, interface, type, address, subnet.</param>
+        public ResponseNetworkTopology(IReadOnlyList<string> nodes)
+        {
+            Nodes = nodes;
+        }
+
+        /// <summary>
+        /// One line per interface, as <c>device | interface | type | address | subnet</c>. An empty
+        /// subnet means the interface is wired to nothing, which is a common and otherwise silent
+        /// reason a download or an IO connection fails.
+        /// </summary>
+        public IReadOnlyList<string> Nodes { get; }
+    }
+
+    /// <summary>One PLCSIM Advanced virtual controller.</summary>
+    public sealed class ResponseSimulationInstance : ResponseMessage
+    {
+        /// <summary>Creates the response.</summary>
+        /// <param name="name">The instance name.</param>
+        /// <param name="operatingState">Off, Stop, Run and so on.</param>
+        /// <param name="cpuType">The CPU being emulated.</param>
+        /// <param name="ipAddresses">Addresses the controller answers on.</param>
+        public ResponseSimulationInstance(
+            string name,
+            string operatingState,
+            string cpuType,
+            IReadOnlyList<string> ipAddresses)
+        {
+            Name = name;
+            OperatingState = operatingState;
+            CpuType = cpuType;
+            IpAddresses = ipAddresses;
+        }
+
+        /// <summary>The instance name.</summary>
+        public string Name { get; }
+
+        /// <summary>
+        /// Off, Stop, Run and so on. A controller with no program cannot reach Run: download first.
+        /// </summary>
+        public string OperatingState { get; }
+
+        /// <summary>The CPU being emulated.</summary>
+        public string CpuType { get; }
+
+        /// <summary>
+        /// Addresses the controller answers on. A new instance reports 0.0.0.0 until an address is
+        /// set, and TIA Portal cannot download to it in that state.
+        /// </summary>
+        public IReadOnlyList<string> IpAddresses { get; }
+    }
+
+    /// <summary>The virtual controllers registered with the simulation runtime.</summary>
+    public sealed class ResponseSimulationInstances : ResponseMessage
+    {
+        /// <summary>Creates the response.</summary>
+        /// <param name="items">One entry per registered instance.</param>
+        /// <param name="networkMode">How the runtime is reachable.</param>
+        public ResponseSimulationInstances(IReadOnlyList<ResponseSimulationInstance> items, string networkMode)
+        {
+            Items = items;
+            NetworkMode = networkMode;
+        }
+
+        /// <summary>One entry per registered instance.</summary>
+        public IReadOnlyList<ResponseSimulationInstance> Items { get; }
+
+        /// <summary>
+        /// Softbus, TCPIPSingleAdapter, TCPIPMultipleAdapter, or Unavailable. Reported because a
+        /// download that cannot connect says nothing about why, and this is the first thing to check.
+        /// </summary>
+        public string NetworkMode { get; }
+    }
+
     /// <summary>Result of writing SCL into a PLC program.</summary>
     public sealed class ResponseWriteScl : ResponseMessage
     {

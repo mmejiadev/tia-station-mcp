@@ -95,6 +95,21 @@ namespace TiaMcpServer.Siemens
 
         #region helper for unit tests
 
+        /// <summary>
+        /// How many TIA Portal processes are already running.
+        /// </summary>
+        /// <remarks>
+        /// Worth asking before doing anything long. <see cref="ConnectPortal"/> attaches to a
+        /// running portal rather than starting its own, so an automated run launched while someone
+        /// has TIA Portal open shares that session — including its open project and any dialog
+        /// waiting for a human. A download started that way blocked for thirteen hours here.
+        /// </remarks>
+        /// <returns>The number of running TIA Portal processes.</returns>
+        public static int GetRunningPortalCount()
+        {
+            return TiaPortal.GetProcesses().Count;
+        }
+
         public static bool IsLocalSessionFile(string sessionPath)
         {
             // Check if the path ends with '.als\d+' using regex
@@ -569,6 +584,113 @@ namespace TiaMcpServer.Siemens
                 pex.Data["backupDirectory"] = backupDirectory;
 
                 _logger?.LogError(pex, "WriteScl failed for {SoftwarePath}", softwarePath);
+                throw pex;
+            }
+        }
+
+        /// <summary>
+        /// Downloads a PLC program to a PLCSIM Advanced virtual controller.
+        /// </summary>
+        /// <param name="softwarePath">
+        /// Full path to the CPU, for example <c>PLC_0</c>. The download service belongs to the
+        /// device item rather than to the software.
+        /// </param>
+        /// <returns>What the download reported, in the same shape as a compile.</returns>
+        /// <remarks>
+        /// There is no counterpart for physical hardware, and that is deliberate: see
+        /// <see cref="SimulationDownloader"/>.
+        /// </remarks>
+        /// <exception cref="PortalException">
+        /// No project is open, the path does not resolve, or the PLCSIM virtual adapter is absent.
+        /// </exception>
+        public CompilationReport DownloadToSimulation(string softwarePath)
+        {
+            _logger?.LogInformation("Downloading {SoftwarePath} to simulation...", softwarePath);
+
+            try
+            {
+                if (string.IsNullOrWhiteSpace(softwarePath))
+                {
+                    throw new PortalException(PortalErrorCode.InvalidParams, "softwarePath is required");
+                }
+
+                if (IsProjectNull())
+                {
+                    throw new PortalException(PortalErrorCode.InvalidState, "Open a project before downloading");
+                }
+
+                var deviceItem = GetDeviceItem(softwarePath)
+                    ?? throw new PortalException(PortalErrorCode.NotFound, $"Device item not found: {softwarePath}");
+
+                return new SimulationDownloader(deviceItem, _logger).Download();
+            }
+            catch (Exception ex)
+            {
+                var pex = ex as PortalException ?? new PortalException(PortalErrorCode.SimulationFailed, $"Download failed: {ex.Message}", null, ex);
+
+                pex.Data["softwarePath"] = softwarePath;
+
+                _logger?.LogError(pex, "DownloadToSimulation failed for {SoftwarePath}", softwarePath);
+                throw pex;
+            }
+        }
+
+        /// <summary>
+        /// Reports which PC interface a download would go through, without downloading anything.
+        /// </summary>
+        /// <param name="softwarePath">Full path to the CPU, for example <c>PLC_0</c>.</param>
+        /// <returns>The interface name. It is always a PLCSIM one, or the call throws.</returns>
+        /// <exception cref="PortalException">
+        /// No project is open, the path does not resolve, or the only interfaces on offer are real
+        /// network adapters.
+        /// </exception>
+        public string GetSimulationTargetName(string softwarePath)
+        {
+            try
+            {
+                if (IsProjectNull())
+                {
+                    throw new PortalException(PortalErrorCode.InvalidState, "Open a project first");
+                }
+
+                var deviceItem = GetDeviceItem(softwarePath)
+                    ?? throw new PortalException(PortalErrorCode.NotFound, $"Device item not found: {softwarePath}");
+
+                return new SimulationDownloader(deviceItem, _logger).ResolveTargetName();
+            }
+            catch (Exception ex)
+            {
+                var pex = ex as PortalException ?? new PortalException(PortalErrorCode.SimulationFailed, $"Could not resolve a download target: {ex.Message}", null, ex);
+
+                pex.Data["softwarePath"] = softwarePath;
+
+                throw pex;
+            }
+        }
+
+        /// <summary>
+        /// Reads the project's network layout: every device interface, its address and its subnet.
+        /// </summary>
+        /// <returns>One entry per interface, whether or not it is attached to a subnet.</returns>
+        /// <exception cref="PortalException">No project is open.</exception>
+        public IReadOnlyList<NetworkNodeInfo> GetNetworkTopology()
+        {
+            _logger?.LogInformation("Reading network topology...");
+
+            try
+            {
+                if (IsProjectNull())
+                {
+                    throw new PortalException(PortalErrorCode.InvalidState, "Open a project before reading the network topology");
+                }
+
+                return new NetworkTopologyReader(_logger).Read(GetDevices());
+            }
+            catch (Exception ex)
+            {
+                var pex = ex as PortalException ?? new PortalException(PortalErrorCode.ExportFailed, $"Reading the network topology failed: {ex.Message}", null, ex);
+
+                _logger?.LogError(pex, "GetNetworkTopology failed");
                 throw pex;
             }
         }

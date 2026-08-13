@@ -49,4 +49,32 @@
          machine and breaks the no-hardcoded-paths rule. -->
     <Reference Include="System.Management" />
   </ItemGroup>
+
+  <!--
+    PLCSIM Advanced runtime API.
+
+    Unlike Openness there is no NuGet resolver for it, so the path has to be found. It is not
+    hardcoded: set the PlcSimApiPath property or the PLCSIM_API_PATH environment variable to
+    point somewhere else. The literal below is only the probe used when neither is set, and it
+    is guarded by Exists() so a machine without PLCSIM Advanced still builds — the simulation
+    tools then report that the runtime is unavailable instead of failing to compile.
+  -->
+  <PropertyGroup>
+    <PlcSimApiPath Condition="'$(PlcSimApiPath)' == ''">$(PLCSIM_API_PATH)</PlcSimApiPath>
+    <PlcSimApiPath Condition="'$(PlcSimApiPath)' == ''">$(ProgramW6432)\Siemens\Automation\PLCSIM_V20\resources\bin\wwwroot\assets\lib\runtime\Siemens.Simatic.Simulation.Runtime.Api.x64.dll</PlcSimApiPath>
+    <HasPlcSimApi Condition="Exists('$(PlcSimApiPath)')">true</HasPlcSimApi>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(HasPlcSimApi)' == 'true'">
+    <Reference Include="Siemens.Simatic.Simulation.Runtime.Api.x64">
+      <HintPath>$(PlcSimApiPath)</HintPath>
+      <!-- Copied next to the output: the API lives in an install directory that is not on any
+           probing path, so without this it compiles and then fails to load at run time. -->
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+  <PropertyGroup Condition="'$(HasPlcSimApi)' == 'true'">
+    <DefineConstants>$(DefineConstants);PLCSIM_AVAILABLE</DefineConstants>
+  </PropertyGroup>
 </Project>

@@ -46,6 +46,18 @@ namespace TiaMcpServer.Test
         {
             Openness.Initialize();
 
+            // Fail immediately rather than attach to someone else's session. ConnectPortal joins a
+            // running TIA Portal instead of starting one, so a suite launched while TIA is open by
+            // hand shares that project and any dialog waiting for a human. One run blocked for
+            // thirteen hours that way, and a hang gives no output to diagnose.
+            var running = Portal.GetRunningPortalCount();
+            if (running > 0)
+            {
+                Assert.Inconclusive(
+                    $"{running} TIA Portal process(es) already running. Close TIA Portal before running the suite: " +
+                    "the tests would attach to that session instead of starting their own.");
+            }
+
             WorkingRoot = Path.Combine(Path.GetTempPath(), "TiaMcpServer.Test", Guid.NewGuid().ToString("N"));
 
             _sharedPortal = new Portal();
