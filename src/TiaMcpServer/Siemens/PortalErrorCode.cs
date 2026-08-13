@@ -9,7 +9,8 @@ namespace TiaMcpServer.Siemens
         ConnectFailed,
         RetrieveFailed,
         CompileFailed,
-        WriteFailed
+        WriteFailed,
+        SimulationFailed
     }
 }
 
