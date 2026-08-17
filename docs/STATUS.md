@@ -52,8 +52,13 @@ State during the session of 2026-08-12 (afternoon):
     Reading and writing PLC tags was the intended next step and turned out **not** to be
     independent: PLCSIM tag access is by name and requires `UpdateTagList()`, which reads the tag
     list from a downloaded program. Measured before starting, not after.
-15. ➡️ **Next action:** hardware configuration in the snapshot, so the network is versioned with
-    the code. Today a snapshot describes the program but not the network it runs on.
+15. ✅ **The network is versioned with the code.** `ExportSourceSnapshot` writes
+    `network/topology.txt`, sorted and byte-identical between runs of an unchanged project.
+16. ✅ **Phase 8: PROFINET, PROFIBUS and OPC UA done.** IO and DP master systems can be created
+    and devices attached; OPC UA server interfaces can be listed and exported. **45 tools.**
+17. ➡️ **Next action, agreed with the user on 2026-08-13:** commit what is pending, then the
+    `FB_Station` pattern — the actual content of her coursework, now standing on solid ground.
+    MQTT is the remaining piece of phase 8 and is generated code, not configuration.
 14. ⏳ **Note:** the upstream clone still holds the same three fixes on
     `fix/portal-lifecycle-and-errors`, uncommitted, worth offering as a PR. There is now a fourth
     fix — the project not being closed on disconnect — that upstream also needs.
@@ -884,21 +889,46 @@ This is the strongest ground and the most useful.
 A `GetNetworkTopology` tool matters beyond configuration: an agent asked to write code for a
 distributed cell cannot address IO it cannot see.
 
-### PROFIBUS
+### PROFIBUS — verified, not assumed
 
-The same object model as PROFINET — subnets, masters, slaves, addresses — so it comes largely
-for free once the topology work exists. The difference is practical: PROFIBUS devices usually
-arrive as **GSD files**, and installing a GSD is an Openness operation on its own. Worth checking
-early whether the installed V20 exposes it, because if it does not, the fallback is importing a
-prepared hardware configuration.
+"It comes for free" was the guess; this is the check. **Openness models no separate DP master
+system** — there is no `DpMasterSystem` type, only mode enums — so a PROFIBUS master system is
+created through the very same `IoController.CreateIoSystem` call as PROFINET.
 
-### OPC UA
+The fixture turned out to carry four `CP 5622` PROFIBUS cards, unconnected, at station address 2,
+which made it testable here rather than in theory. `Test13IoSystem` 7/7 includes creating a DP
+master system on one of them and confirming the card ends up on a subnet.
 
-TIA V20 configures an OPC UA server on the CPU itself, so this is configuration rather than code:
-enable the server, publish selected tags, set the security policy. Openness reaches these through
-device attributes. **The interesting half is verification**: with PLCSIM Advanced running, a test
-can connect an OPC UA client to the simulated CPU and assert that a published tag really is
-readable. That closes the loop for communications the way phase 4 closes it for logic.
+Two things the same dump exposed, both worth having:
+
+- The topology reported a bare `type=16` — a net type value the published enum has no name for.
+  `ToString()` renders that as a number, which reads like data rather than like a gap; it now
+  renders as `Unknown(16)`.
+- Several interfaces carry an IP and belong to **no subnet at all** (`PROFINET onboard_1` at
+  192.168.0.2, among others). That is precisely the silent misconfiguration the topology tool was
+  built to surface, showing up unprompted in a real project.
+
+Still open here: PROFIBUS devices usually arrive as **GSD files**, and whether V20 exposes GSD
+installation through Openness has not been checked.
+
+### OPC UA — reading and exporting done
+
+`GetOpcUaInterfaces` and `ExportOpcUaInterface`, over
+`PlcSoftware.GetService<OpcUaProvider>()` → `CommunicationGroup.ServerInterfaceGroup.
+ServerInterfaces`, where each interface has `Export` and `Import`. `Test14OpcUa` 4/4.
+
+**The obvious candidate is a dead end and cost a detour.** `HW.Utilities.OpcUaExportProvider`
+exists, is named exactly right, and has a method taking a `DeviceItem` and a file — and is
+unreachable: no public constructor, and nothing in the API returns one. The reachable path is a
+different type in a different namespace. Written down here so nobody follows the name again.
+
+A server interface is the contract between the PLC and every client that talks to it. It is
+configuration rather than code, which is exactly why it belongs in version control: changing it
+breaks every client without touching a line of SCL.
+
+Still to do here: enabling the server and publishing tags is configuration this server does not
+write yet, and the verification half — connecting an OPC UA client to a simulated CPU and
+asserting a published tag is readable — needs the download, so it is behind that open issue.
 
 ### MQTT
 
@@ -929,14 +959,59 @@ Chosen as the next step after measuring that **PLCSIM tag access is by name and 
 `UpdateTagList()`, which reads the tag list from a downloaded program** — so reading and writing
 tags is blocked by the same open issue, and is not the independent path it looked like.
 
+### The network is in the snapshot
+
+`ExportSourceSnapshot` now also writes `network/topology.txt`, so a snapshot describes the network
+as well as the program. The same blocks addressing a device at a different address are a different
+system, and nothing in the previous export would have shown it.
+
+**Openness V20 exposes no hardware export** — no AML, no `Device.Export`, only
+`ExportProjectTexts` — so the file is reconstructed from what can be read. It does not capture
+module part numbers or rack layout; it captures what changes between revisions: which device sits
+on which subnet, at which address.
+
+Rows are sorted, and a test exports twice and compares. Line order that followed whatever order
+TIA happened to enumerate devices in would produce phantom diffs, and phantom diffs train
+everyone to ignore real ones.
+
+Also found while looking: **`Siemens.Engineering.HW.Utilities.OpcUaExportProvider` exists**, which
+is the entry point for the OPC UA work later in this phase.
+
 ### Order for the rest
 
 1. ~~`GetNetworkTopology`~~ — done.
+2. ~~Hardware configuration in the snapshot~~ — done, within the limits of the API.
+3. ~~PROFINET IO system creation and device assignment~~ — done. `Test13IoSystem` 6/6.
+
+   `NetworkConfigurator` creates an IO system on a CPU and attaches devices to it, over
+   `IoController.CreateIoSystem`, `IoConnector.ConnectToIoSystem` and `Node.ConnectToSubnet`.
+   The objects live in different places — a controller exposes an `IoController` on its
+   interface, an IO device exposes an `IoConnector` on its own — and neither is reachable from
+   the device itself, because a CPU's PROFINET interface is a *child* device item. Same nesting
+   the topology reader walks.
+
+   Two decisions worth keeping:
+
+   - **An interface already on a subnet keeps it.** Rewiring a working network because a name
+     did not match would be a destructive surprise.
+   - **The backup is mandatory**, as with `WriteScl`. Rewiring a network without recording what
+     it was is not undoable by reading the result.
+
+   A test asserts that attaching the CPU to its own IO system is refused. That failure was found
+   by writing the test wrong — a CPU is the controller, not one of its devices — and the code was
+   right, so the test now documents the rule instead of the mistake.
+
+   PROFIBUS uses the same three concepts, so this should carry over with little more than a
+   different subnet type.
 2. Hardware configuration in the snapshot, so the network is versioned with the code.
-3. PROFINET IO system creation and device assignment.
-4. PROFIBUS, once GSD installation support is confirmed.
-5. OPC UA: enable, publish, and verify against a simulated CPU.
-6. MQTT as a generated, tested pattern in `spec/`.
+3. ~~PROFINET IO system creation and device assignment~~ — done.
+4. ~~PROFIBUS~~ — done and verified: the same `IoController.CreateIoSystem` call, because
+   Openness models no separate DP master system. GSD installation support is still unchecked.
+5. OPC UA: listing and exporting server interfaces is **done**. Still to do: enabling the
+   server and publishing tags, and verifying against a simulated CPU — the latter needs the
+   download, so it sits behind that open issue.
+6. MQTT as a generated, tested pattern in `spec/`. Not started, and it is code rather than
+   configuration: an S7-1500 has no MQTT server, so the PLC is a client written in SCL.
 
 ## Available assets
 

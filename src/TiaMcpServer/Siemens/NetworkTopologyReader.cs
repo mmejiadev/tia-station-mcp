@@ -84,10 +84,23 @@ namespace TiaMcpServer.Siemens
                 nodes.Add(new NetworkNodeInfo(
                     path,
                     node.Name,
-                    node.NodeType.ToString(),
+                    DescribeNetworkType(node.NodeType),
                     ReadAddress(node),
                     node.ConnectedSubnet?.Name ?? string.Empty));
             }
+        }
+
+        /// <remarks>
+        /// TIA returns net type values the published enum has no name for — a real project shows
+        /// a bare "16" — and <c>ToString()</c> renders those as a number, which reads like data
+        /// rather than like a gap. Saying "Unknown(16)" makes it obvious that the value is real
+        /// but unnamed.
+        /// </remarks>
+        private static string DescribeNetworkType(NetType netType)
+        {
+            return Enum.IsDefined(typeof(NetType), netType)
+                ? netType.ToString()
+                : $"Unknown({(int)netType})";
         }
 
         private static string ReadAddress(Node node)
