@@ -522,7 +522,9 @@ namespace TiaMcpServer.Siemens
                 var software = GetPlcSoftware(softwarePath)
                     ?? throw new PortalException(PortalErrorCode.NotFound, $"PLC software not found: {softwarePath}");
 
-                return new SourceSnapshotExporter(software, _logger).ExportSnapshot(targetDirectory, cancellationToken);
+                var program = new SourceSnapshotExporter(software, _logger).ExportSnapshot(targetDirectory, cancellationToken);
+
+                return WithNetworkTopology(program, targetDirectory);
             }
             catch (Exception ex)
             {
@@ -693,6 +695,177 @@ namespace TiaMcpServer.Siemens
                 _logger?.LogError(pex, "GetNetworkTopology failed");
                 throw pex;
             }
+        }
+
+        /// <summary>
+        /// Adds the network layout to a program snapshot.
+        /// </summary>
+        /// <remarks>
+        /// A snapshot that records the program but not the network it runs on describes half a
+        /// project: the same blocks addressing a device at a different address are a different
+        /// system, and nothing in the export would show it.
+        /// </remarks>
+        private SnapshotResult WithNetworkTopology(SnapshotResult program, string targetDirectory)
+        {
+            var exported = new List<string>(program.Exported)
+            {
+                NetworkTopologyWriter.Write(targetDirectory, new NetworkTopologyReader(_logger).Read(GetDevices()))
+            };
+
+            return new SnapshotResult(exported, program.Inconsistent, program.Unsupported, program.Failed);
+        }
+
+        /// <summary>
+        /// Creates a PROFINET IO system on a CPU, so IO devices can be attached to it.
+        /// </summary>
+        /// <param name="controllerPath">Full path to the CPU, for example <c>PLC_0</c>.</param>
+        /// <param name="ioSystemName">Name for the IO system.</param>
+        /// <param name="backupDirectory">
+        /// Where the network layout is recorded before the change. Required: this rewires the
+        /// project, and the repository rule is that every write is preceded by an export.
+        /// </param>
+        /// <returns>The subnet the IO system was created on.</returns>
+        /// <exception cref="PortalException">
+        /// The arguments are invalid, no project is open, the path does not resolve, or the device
+        /// cannot act as an IO controller.
+        /// </exception>
+        public string CreateIoSystem(string controllerPath, string ioSystemName, string backupDirectory)
+        {
+            _logger?.LogInformation("Creating IO system {IoSystem} on {Controller}...", ioSystemName, controllerPath);
+
+            try
+            {
+                var controller = RequireDeviceItemForWrite(controllerPath, backupDirectory);
+
+                return new NetworkConfigurator(_logger).CreateIoSystem(controller, ioSystemName);
+            }
+            catch (Exception ex)
+            {
+                throw DecorateNetworkFailure(ex, controllerPath, backupDirectory, "CreateIoSystem");
+            }
+        }
+
+        /// <summary>Attaches a device to an existing PROFINET IO system.</summary>
+        /// <param name="devicePath">Full path to the IO device.</param>
+        /// <param name="ioSystemName">The IO system to attach it to.</param>
+        /// <param name="backupDirectory">Where the network layout is recorded before the change.</param>
+        /// <exception cref="PortalException">
+        /// The arguments are invalid, no project is open, the path does not resolve, the device has
+        /// no IO connector, or the IO system is unknown.
+        /// </exception>
+        public void AssignDeviceToIoSystem(string devicePath, string ioSystemName, string backupDirectory)
+        {
+            _logger?.LogInformation("Attaching {Device} to IO system {IoSystem}...", devicePath, ioSystemName);
+
+            try
+            {
+                var device = RequireDeviceItemForWrite(devicePath, backupDirectory);
+
+                new NetworkConfigurator(_logger).AssignToIoSystem(device, ioSystemName);
+            }
+            catch (Exception ex)
+            {
+                throw DecorateNetworkFailure(ex, devicePath, backupDirectory, "AssignDeviceToIoSystem");
+            }
+        }
+
+        private DeviceItem RequireDeviceItemForWrite(string devicePath, string backupDirectory)
+        {
+            if (string.IsNullOrWhiteSpace(backupDirectory))
+            {
+                throw new PortalException(PortalErrorCode.InvalidParams, "backupDirectory is required: this rewires the project");
+            }
+
+            if (IsProjectNull())
+            {
+                throw new PortalException(PortalErrorCode.InvalidState, "Open a project before changing the network");
+            }
+
+            var deviceItem = GetDeviceItem(devicePath)
+                ?? throw new PortalException(PortalErrorCode.NotFound, $"Device item not found: {devicePath}");
+
+            NetworkTopologyWriter.Write(backupDirectory, new NetworkTopologyReader(_logger).Read(GetDevices()));
+
+            return deviceItem;
+        }
+
+        private PortalException DecorateNetworkFailure(Exception ex, string devicePath, string backupDirectory, string operation)
+        {
+            var pex = ex as PortalException ?? new PortalException(PortalErrorCode.WriteFailed, $"{operation} failed: {ex.Message}", null, ex);
+
+            pex.Data["devicePath"] = devicePath;
+            pex.Data["backupDirectory"] = backupDirectory;
+
+            _logger?.LogError(pex, "{Operation} failed for {DevicePath}", operation, devicePath);
+
+            return pex;
+        }
+
+        /// <summary>Lists the OPC UA server interfaces a CPU publishes.</summary>
+        /// <param name="softwarePath">Full path to the PLC software, for example <c>PLC_0</c>.</param>
+        /// <returns>One entry per interface, enabled or not. Empty when the CPU publishes none.</returns>
+        /// <exception cref="PortalException">No project is open, or the path does not resolve.</exception>
+        public IReadOnlyList<OpcUaInterfaceInfo> GetOpcUaInterfaces(string softwarePath)
+        {
+            try
+            {
+                return new OpcUaInterfaceExporter(RequireSoftware(softwarePath), _logger).List();
+            }
+            catch (Exception ex)
+            {
+                throw DecorateOpcUaFailure(ex, softwarePath, "GetOpcUaInterfaces");
+            }
+        }
+
+        /// <summary>
+        /// Exports one OPC UA server interface to a file.
+        /// </summary>
+        /// <param name="softwarePath">Full path to the PLC software.</param>
+        /// <param name="interfaceName">The interface to export.</param>
+        /// <param name="exportPath">File to write.</param>
+        /// <returns>The path written.</returns>
+        /// <remarks>
+        /// The interface is the contract between the PLC and everything that talks to it over
+        /// OPC UA. It is configuration rather than code, which is why it belongs in version
+        /// control: changing it breaks every client without touching a line of SCL.
+        /// </remarks>
+        /// <exception cref="PortalException">
+        /// No project is open, the path does not resolve, or the CPU publishes no such interface.
+        /// </exception>
+        public string ExportOpcUaInterface(string softwarePath, string interfaceName, string exportPath)
+        {
+            _logger?.LogInformation("Exporting OPC UA interface {Interface} of {SoftwarePath}...", interfaceName, softwarePath);
+
+            try
+            {
+                return new OpcUaInterfaceExporter(RequireSoftware(softwarePath), _logger).Export(interfaceName, exportPath);
+            }
+            catch (Exception ex)
+            {
+                throw DecorateOpcUaFailure(ex, softwarePath, "ExportOpcUaInterface");
+            }
+        }
+
+        private PlcSoftware RequireSoftware(string softwarePath)
+        {
+            if (IsProjectNull())
+            {
+                throw new PortalException(PortalErrorCode.InvalidState, "Open a project first");
+            }
+
+            return GetPlcSoftware(softwarePath)
+                ?? throw new PortalException(PortalErrorCode.NotFound, $"PLC software not found: {softwarePath}");
+        }
+
+        private PortalException DecorateOpcUaFailure(Exception ex, string softwarePath, string operation)
+        {
+            var pex = ex as PortalException ?? new PortalException(PortalErrorCode.ExportFailed, $"{operation} failed: {ex.Message}", null, ex);
+
+            pex.Data["softwarePath"] = softwarePath;
+
+            _logger?.LogError(pex, "{Operation} failed for {SoftwarePath}", operation, softwarePath);
+
+            return pex;
         }
 
         private void CloseOpenProject()

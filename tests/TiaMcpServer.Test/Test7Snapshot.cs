@@ -60,6 +60,41 @@ namespace TiaMcpServer.Test
         }
 
         [TestMethod]
+        public void ExportSourceSnapshot_RetrievedProject_RecordsTheNetwork()
+        {
+            AssemblyHooks.SharedPortal.RetrieveProject(Settings.Project1ArchivePath, Path.Combine(_testDirectory, "project"));
+            var snapshotDirectory = Path.Combine(_testDirectory, "snapshot");
+
+            var result = AssemblyHooks.SharedPortal.ExportSourceSnapshot(Settings.Project1PlcSoftwarePath0, snapshotDirectory);
+
+            // The same blocks addressing a device at a different address are a different system.
+            // A snapshot that cannot show that is not describing the project.
+            CollectionAssert.Contains(result.Exported.ToList(), "network/topology.txt");
+            var topology = File.ReadAllText(Path.Combine(snapshotDirectory, "network", "topology.txt"));
+            StringAssert.Contains(topology, "192.168.0.1", "The topology does not record the PLC address");
+        }
+
+        [TestMethod]
+        public void ExportSourceSnapshot_RunTwice_ProducesAnIdenticalTopologyFile()
+        {
+            AssemblyHooks.SharedPortal.RetrieveProject(Settings.Project1ArchivePath, Path.Combine(_testDirectory, "project"));
+
+            var first = ExportTopologyTo(Path.Combine(_testDirectory, "snapshot1"));
+            var second = ExportTopologyTo(Path.Combine(_testDirectory, "snapshot2"));
+
+            // Line order that follows whatever order TIA happened to enumerate devices in would
+            // produce phantom diffs, and phantom diffs train everyone to ignore real ones.
+            Assert.AreEqual(first, second, "Two snapshots of an unchanged project differ");
+        }
+
+        private static string ExportTopologyTo(string snapshotDirectory)
+        {
+            AssemblyHooks.SharedPortal.ExportSourceSnapshot(Settings.Project1PlcSoftwarePath0, snapshotDirectory);
+
+            return File.ReadAllText(Path.Combine(snapshotDirectory, "network", "topology.txt"));
+        }
+
+        [TestMethod]
         public void ExportSourceSnapshot_UnknownSoftwarePath_ThrowsNotFound()
         {
             AssemblyHooks.SharedPortal.RetrieveProject(Settings.Project1ArchivePath, Path.Combine(_testDirectory, "project"));
