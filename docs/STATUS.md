@@ -63,7 +63,217 @@ State during the session of 2026-08-12 (afternoon):
     `fix/portal-lifecycle-and-errors`, uncommitted, worth offering as a PR. There is now a fourth
     fix — the project not being closed on disconnect — that upstream also needs.
 
+19. ✅ **2026-08-17 — PHASE 0 IS CLOSED. The loop reaches PLCSIM Advanced and RUN.**
+    `Test11Download` 5/5, confirmed twice. Six separate faults in series, each hiding the next;
+    see "RESOLVED" below. `DownloadToSimulation` is no longer an open issue.
+    Next: metrics can now measure what fraction of specifications pass on a simulated CPU,
+    because programs finally run on one.
+18. 🔑 **2026-08-17 — the root cause of the whole simulation blockage was found.**
+    **A PLCSIM Advanced controller stays registered only while a handle to it is open.**
+    `SimulationRuntime` opened and closed an `IInstance` per operation, so every controller it
+    created unregistered itself within fifteen seconds, with nothing touching it. See
+    "The instance was never there" below. Fixed and covered by a test that would have failed
+    yesterday. `Test11Download` 4/5 — the download itself is still open, but for the first time
+    the controller is alive, reachable and discovered when it runs.
+
 Required reading at startup: this file, `../CLAUDE.md` and `REFERENCE-REPOS.md`.
+The plan for what comes next is in `ROADMAP.md`.
+
+## The instance was never there (2026-08-17)
+
+Everything `Test11Download` had reported since August — `Connect to module PLC_0 failed`,
+`IsConfigured=False`, empty device scans, pings that answered on one run and timed out on the
+next — was one fact wearing different disguises: **the virtual controller no longer existed.**
+
+Measured directly, with nothing touching the controller between checks:
+
+```
+straight after create:      present, state=Stop, ips=[0.0.0.0]
+after 15000 ms idle:        GONE
+```
+
+`SimulationRuntime` wrapped every operation in `using (var instance = Open(name))`. Releasing
+the last handle unregisters the controller. **The handle is the lifetime.**
+
+This also settles the question that cost six twenty-minute cycles in August: *why does it work
+in the GUI?* Because the PLCSIM Advanced GUI keeps its own handle open. The manual download
+was not doing anything different — it was talking to a controller that still existed.
+
+`CA2000` had correctly flagged `IInstance` as disposable, and the conclusion drawn from it —
+dispose immediately — was the opposite of what this API requires. The analyzer was right about
+the fact and the reasoning from it was wrong.
+
+### The same defect, worse, in the MCP layer
+
+`McpServer` built `new SimulationRuntime(Logger)` inside each of five tool methods. With the
+correct ownership model that is a production bug the test suite could never have caught: an
+agent calling `CreateSimulationInstance` and then `DownloadToSimulation` would have lost the
+controller between the two calls. `SimulationRuntime` is now a DI singleton, reached through
+`McpServer.Simulation`.
+
+Making `SimulationRuntime` implement `IDisposable` is what surfaced this: `CA2000` immediately
+named all five sites. `TreatWarningsAsErrors` paid for itself in one build.
+
+### What is verified now, and what is not
+
+| Fact | Value |
+|---|---|
+| Controller survives while held | ✅ four checkpoints over 30 s |
+| `Configuration.IsConfigured` | ✅ `True`, since `ApplyConfiguration` is called |
+| `ping 192.168.0.1` | ✅ answered on attempt 1 |
+| `tcp 192.168.0.1:102` (ISO-TCP) | ✅ connected |
+| Device discovery | ✅ `'Accessible device' at 192.168.0.1 (MAC 02-C0-A8-00-64-00, S7-1500 (PLCSIM))` |
+| `DownloadProvider.Download` | ❌ still `Connect to module PLC_0 failed.` |
+
+### Ruled out, so nobody re-derives them
+
+- **Network mode.** Already `TCPIPSingleAdapter`.
+- **Adapter address.** `192.168.0.100/24`, manual, persistent.
+- **Waiting longer.** 8 pings over 16 s changed nothing.
+- **Test parallelism.** Fails identically in a single-test run.
+- **Windows Firewall.** The PLCSIM adapter sits on a `Public` profile with no PLCSIM or TIA
+  rules, which looked damning and is documented by Siemens as a cause. It is not this one:
+  `tcp 102: connected` once a controller was actually alive. **The earlier `timed out` had been
+  measured against a controller that no longer existed.** No firewall holes were opened on the
+  strength of a false lead, which is the only reason that matters.
+
+### Do not pass a discovered device to `Download`
+
+`ConfigurationAccessibleDevice` is the third implementer of `IConfiguration`, it is what the
+download dialog lists, and passing it to `Download` **kills the process**. Not an exception,
+not a failed result: the test host dies after roughly 28 seconds and the run reports
+`AggregateException` with no message, including for tests that never started. Reverted, and the
+reason is commented at the call site so the next person does not re-derive it.
+
+Method note, because it cost three runs: the lease and the download target were changed in the
+same batch, so when it broke there was no telling which. The lease had been correct all along.
+This is the rule from August — change one variable at a time — broken again on the same day it
+was quoted. Having it written down does not prevent it; measuring does.
+
+### RESOLVED — the download works, and it was six faults, not one
+
+`Test11Download` **5/5, twice in a row**, 1 m 42 s and 1 m 44 s. The program compiles, downloads
+to a PLCSIM Advanced virtual controller, and the controller reaches RUN. **Phase 0 is closed and
+the loop is closed.**
+
+Whole suite: **103 cases, 99 passing, 4 skipped, 0 failing**, 5 m 4 s, 0 warnings. The suite went
+from 83 cases with the download failing to 103 with it passing. The fourth skip is new and
+deliberate — see "Still open".
+
+It was never one cause. It was six, in series, each hiding the next — which is exactly why August
+was so demoralising: every correct fix still failed, because another fault waited underneath.
+Testing a hypothesis and seeing it fail did not mean the hypothesis was wrong.
+
+| # | Fault | Fix |
+|---|---|---|
+| 1 | A controller stays registered only while a handle to it is open; `SimulationRuntime` opened and closed one per call, so controllers vanished within 15 s | Hold the handle for the controller's lifetime |
+| 2 | `ApplyConfiguration` was never called, so `IsConfigured` stayed false | Apply the connection before downloading |
+| 3 | Connection and target address are separate arguments | Use the five-argument `Download` overload |
+| 4 | `UserManagementDownload` had no answer in the table, and Openness discards the message of anything a delegate throws | Answer it; record the prompt type before throwing |
+| 5 | `IsSimulationDuringBlockCompilationEnabled` was false, so blocks compiled unsimulatable | `EnableSimulationSupport()` before compiling |
+| 6 | The instance was `CPU1500_Unspecified`; text libraries are tied to device identity and failed with `InvalidAID` | Create the instance as the project's CPU (`CPU1511`) |
+
+Fault 6 is the one that hid longest, because **the hardware configuration downloads successfully
+against an unspecified controller**. Seeing `[Success] Hardware configuration` made the target
+look correct while the software half failed for a reason that had nothing to do with the network.
+
+### What actually unblocked it: fixing the diagnostics first
+
+None of the six were found by reasoning. Each appeared once the failure could be read:
+
+- `PortalException` was `[Serializable]` with **no deserialization constructor**, so every
+  exception crossing an app domain — MSTest, the Openness callback layer — was replaced by a
+  `SerializationException` about a missing constructor. The message naming the unanswered prompt
+  was being destroyed in transit.
+- Unanswered prompts are now recorded before being thrown, because Openness keeps only the type
+  of a delegate exception and drops its message.
+- Assertions printed `Errors`, the filtered view — error severity **and** non-empty description.
+  Right for feeding a fix loop, useless as the only output: twice a failing download printed a
+  blank list and said nothing. There is now a `Describe(report)` helper that prints everything.
+
+That last one was written, identified, and then **repeated half an hour later** in a new
+assertion, by copying the existing pattern. Diagnostic traps propagate by imitation, which is why
+the fix was a named helper rather than an edited line.
+
+### Ruled out by measurement, so nobody re-derives them
+
+Network mode, adapter address, waiting longer, test parallelism, Windows Firewall
+(`tcp 102: connected` once a controller was actually alive), the PLCSIM licence
+(`LicenseStatus=OK`), `EnableLegacyCommunication`, and the fixture's own protection settings —
+a project created from scratch failed identically until the six faults above were fixed.
+
+Two dead ends worth naming:
+
+- **Passing a `ConfigurationAccessibleDevice` to `Download` kills the process.** Not an
+  exception, not an error result: the host dies after ~28 s and reports nothing.
+- **`AlarmTextLibrariesDownload` must be `ConsistentDownload`.** `NoAction` looks like the safe
+  skip and makes the hardware configuration itself fail to load (`0013 -32 0 0`), because the text
+  libraries are part of it.
+
+### New capabilities that came out of it
+
+`Portal.CreateProject`, `Portal.AddDevice`, `Portal.CompileHardware`,
+`Portal.EnableSimulationSupport`, `Portal.IsSimulationSupportEnabled`,
+`Portal.DescribeSimulationConnection`, `SimulationRuntime.PowerCycleInstance`,
+`SimulationRuntime.CreateInstance(name, cpuType)`, and `LicenseStatus` on
+`SimulationInstanceInfo`.
+
+`CompileSoftware` compiling only the program was a real defect: any change invalidating the
+hardware configuration left a stale one that the download rejected with an error blaming the
+target rather than the project.
+
+### Still open
+
+- **A project created from scratch cannot compile its hardware**: V20 demands a password for
+  confidential PLC configuration data, and Openness exposes nothing for it — no type or member
+  matching `Confidential`. `Test15MinimalFixture` therefore builds and addresses a CPU but cannot
+  download to it. The fixture stays `TestProject1` for now.
+- `DownloadPasswordConfiguration` is still unimplemented, which Workshop Mode will need.
+
+### Superseded: the fixture protection theory
+
+`TestProject1`'s CPU — a **CPU 1511-1 PN** — has its access level set to
+**"No access (complete protection)"**: *"TIA Portal users and HMI applications will not have
+access to any functions."* A download against that fails at connection time, and TIA reports it
+as `Connect to module failed`, which is the same message it uses for "I cannot find you". The
+API cannot tell the two apart.
+
+This is a setting of the inherited fixture, not of this machine: nothing to do with the licence
+(`LicenseStatus=OK`, measured) or the network (all measured good).
+
+**Attempted and inconclusive.** Setting `Access control configuration` to `Disable access
+control`, recompiling and re-archiving did **not** change the outcome. But the `Access level`
+table still showed `No access` selected and greyed throughout, so it is unknown whether the
+protection was actually cleared. The hypothesis is untested, not disproven.
+
+To test it properly the level itself has to change: `Enable access control` →
+`Use access control via access levels` → `Full access (no protection)`. That checkbox is the one
+that makes the level table editable, and it is greyed out while access control is disabled.
+
+### Two candidate next steps
+
+1. **Finish the access-level change** as above, recompile, re-archive.
+2. **Build a minimal fixture instead.** A fresh project with one CPU 1511-1 PN, one OB and the
+   PROFINET interface at 192.168.0.1 sidesteps every inherited setting at once, and gives a test
+   bench whose configuration is understood rather than archaeology. Probably the better use of
+   an hour.
+
+Also disproven along the way: the CPU-type theory. Siemens documents creating the instance as an
+*unspecified* CPU 1500 as the normal workflow — the download is what specifies the hardware — so
+`cpu=CPU1500_Unspecified` is correct and not the difference it looked like.
+
+Openness V20 exposes **no protection settings at all**: `SupportSimulation`, `ProtectionLevel`
+and three other candidate names all return `EngineeringNotSupportedException` on the CPU device
+item, and `PlcSoftware` exposes only `Name`. `ProtectionLevel` was probed as a control precisely
+because it certainly exists in the GUI. So this cannot be fixed in code — it is a project
+setting, and it belongs in the install documentation.
+
+### Archiving writes somewhere else
+
+TIA Portal's `Archive...` saves to `Documents\Automation\` by default, not next to the project.
+The first attempt at this test ran against the August fixture because the asset had not actually
+been replaced — caught only by checking `LastWriteTime` before running. Same rule as ever: verify
+the effect where the failure happens, not where the change was made.
 
 ## Goal
 

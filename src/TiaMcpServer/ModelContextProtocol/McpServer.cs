@@ -23,6 +23,7 @@ namespace TiaMcpServer.ModelContextProtocol
     {
         private static IServiceProvider? _services;
         private static Portal? _portal;
+        private static Siemens.SimulationRuntime? _simulation;
 
         public static ILogger? Logger { get; set; }
 
@@ -46,6 +47,29 @@ namespace TiaMcpServer.ModelContextProtocol
             set
             {
                 _portal = value ?? throw new ArgumentNullException(nameof(value), "Portal cannot be null");
+            }
+        }
+
+        /// <summary>
+        /// The one simulation runtime the server shares.
+        /// </summary>
+        /// <remarks>
+        /// Shared rather than built per call. A PLCSIM Advanced controller stays registered only
+        /// while a handle to it is open, so a runtime created inside a tool method would release
+        /// its handles when the method returned and the controller from CreateSimulationInstance
+        /// would be gone before DownloadToSimulation ran. Measured on 2026-08-17: an unheld
+        /// controller unregisters itself within fifteen seconds.
+        /// </remarks>
+        public static Siemens.SimulationRuntime Simulation
+        {
+            get
+            {
+                if (_services != null)
+                {
+                    return _services.GetRequiredService<Siemens.SimulationRuntime>();
+                }
+
+                return _simulation ??= new Siemens.SimulationRuntime(Logger);
             }
         }
 
@@ -425,7 +449,7 @@ namespace TiaMcpServer.ModelContextProtocol
         {
             try
             {
-                var instances = new TiaMcpServer.Siemens.SimulationRuntime(Logger).ListInstances();
+                var instances = Simulation.ListInstances();
 
                 return new ResponseSimulationInstances(instances.Select(ToResponse).ToList(), TiaMcpServer.Siemens.SimulationRuntime.NetworkMode)
                 {
@@ -451,7 +475,7 @@ namespace TiaMcpServer.ModelContextProtocol
         {
             try
             {
-                var runtime = new TiaMcpServer.Siemens.SimulationRuntime(Logger);
+                var runtime = Simulation;
 
                 runtime.CreateInstance(instanceName);
 
@@ -469,7 +493,7 @@ namespace TiaMcpServer.ModelContextProtocol
         {
             try
             {
-                var started = new TiaMcpServer.Siemens.SimulationRuntime(Logger).StartInstance(instanceName);
+                var started = Simulation.StartInstance(instanceName);
 
                 return Describe(started, $"Instance '{instanceName}' is {started.OperatingState}");
             }
@@ -485,7 +509,7 @@ namespace TiaMcpServer.ModelContextProtocol
         {
             try
             {
-                var stopped = new TiaMcpServer.Siemens.SimulationRuntime(Logger).StopInstance(instanceName);
+                var stopped = Simulation.StopInstance(instanceName);
 
                 return Describe(stopped, $"Instance '{instanceName}' is {stopped.OperatingState}");
             }
@@ -501,7 +525,7 @@ namespace TiaMcpServer.ModelContextProtocol
         {
             try
             {
-                new TiaMcpServer.Siemens.SimulationRuntime(Logger).DeleteInstance(instanceName);
+                Simulation.DeleteInstance(instanceName);
 
                 return new ResponseMessage
                 {

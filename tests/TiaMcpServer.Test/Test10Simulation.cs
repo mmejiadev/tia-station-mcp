@@ -26,7 +26,7 @@ namespace TiaMcpServer.Test
         [TestMethod]
         public void ListInstances_RuntimeAvailable_ReturnsAList()
         {
-            var runtime = new SimulationRuntime();
+            using var runtime = new SimulationRuntime();
 
             var instances = runtime.ListInstances();
 
@@ -36,7 +36,7 @@ namespace TiaMcpServer.Test
         [TestMethod]
         public void CreateInstance_EmptyName_ThrowsInvalidParams()
         {
-            var runtime = new SimulationRuntime();
+            using var runtime = new SimulationRuntime();
 
             var exception = Assert.ThrowsException<PortalException>(() => runtime.CreateInstance("   "));
 
@@ -46,7 +46,7 @@ namespace TiaMcpServer.Test
         [TestMethod]
         public void StartInstance_UnknownName_ThrowsNotFound()
         {
-            var runtime = new SimulationRuntime();
+            using var runtime = new SimulationRuntime();
 
             var exception = Assert.ThrowsException<PortalException>(() => runtime.StartInstance("NoSuchSimulationInstance"));
 
@@ -63,7 +63,7 @@ namespace TiaMcpServer.Test
             // RUN is deliberately not exercised here. A freshly created instance is powered on but
             // empty, and Run() on an empty controller fails with the runtime's -52 "IsEmpty".
             // Reaching RUN requires a downloaded program, so it belongs with the download tests.
-            var runtime = new SimulationRuntime();
+            using var runtime = new SimulationRuntime();
             var instanceName = "TiaMcpServerTest_" + Guid.NewGuid().ToString("N").Substring(0, 8);
 
             try
@@ -91,7 +91,7 @@ namespace TiaMcpServer.Test
             // Documents the rule above as a test: an empty virtual PLC cannot be put into RUN, and
             // the failure must arrive as a PortalException rather than as the PLCSIM API's own
             // exception type leaking through the layer.
-            var runtime = new SimulationRuntime();
+            using var runtime = new SimulationRuntime();
             var instanceName = "TiaMcpServerTest_" + Guid.NewGuid().ToString("N").Substring(0, 8);
 
             try

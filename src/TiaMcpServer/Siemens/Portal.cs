@@ -462,6 +462,107 @@ namespace TiaMcpServer.Siemens
             }
         }
 
+        /// <summary>Creates an empty project and opens it.</summary>
+        /// <param name="targetDirectory">Directory the project is created in. Must not already hold one.</param>
+        /// <param name="projectName">Name of the project.</param>
+        /// <returns>Full path of the created project.</returns>
+        /// <remarks>
+        /// Building a fixture from scratch is the alternative to inheriting one: a project created
+        /// here has no protection level, no user management and no settings nobody remembers
+        /// making. That matters for the test bench, where an unexplained inherited setting is
+        /// indistinguishable from a defect in this server.
+        /// </remarks>
+        /// <exception cref="PortalException">Not connected, or the directory already holds a project.</exception>
+        public string CreateProject(string targetDirectory, string projectName)
+        {
+            _logger?.LogInformation("Creating project {ProjectName} in {TargetDirectory}...", projectName, targetDirectory);
+
+            try
+            {
+                ValidateCreateRequest(targetDirectory, projectName);
+                CloseOpenProject();
+
+                _project = _portal!.Projects.Create(new DirectoryInfo(targetDirectory), projectName);
+
+                if (_project == null)
+                {
+                    throw new PortalException(PortalErrorCode.RetrieveFailed, $"TIA Portal returned no project for '{projectName}'");
+                }
+
+                return _project.Path.FullName;
+            }
+            catch (Exception ex)
+            {
+                var pex = ex as PortalException ?? new PortalException(PortalErrorCode.RetrieveFailed, $"Create failed: {ex.Message}", null, ex);
+
+                pex.Data["targetDirectory"] = targetDirectory;
+                pex.Data["projectName"] = projectName;
+
+                _logger?.LogError(pex, "CreateProject failed for {ProjectName} in {TargetDirectory}", projectName, targetDirectory);
+                throw pex;
+            }
+        }
+
+        /// <summary>Adds a device to the open project.</summary>
+        /// <param name="typeIdentifier">
+        /// What to create, as Openness names it, for example
+        /// <c>OrderNumber:6ES7 511-1AK02-0AB0/V3.1</c>.
+        /// </param>
+        /// <param name="deviceName">Name for the device, for example <c>PLC_1</c>.</param>
+        /// <returns>The name the device ended up with.</returns>
+        /// <exception cref="PortalException">No project is open, or the identifier is not known to TIA.</exception>
+        public string AddDevice(string typeIdentifier, string deviceName)
+        {
+            _logger?.LogInformation("Adding device {DeviceName} ({TypeIdentifier})...", deviceName, typeIdentifier);
+
+            try
+            {
+                if (string.IsNullOrWhiteSpace(typeIdentifier) || string.IsNullOrWhiteSpace(deviceName))
+                {
+                    throw new PortalException(PortalErrorCode.InvalidParams, "typeIdentifier and deviceName are required");
+                }
+
+                if (IsProjectNull())
+                {
+                    throw new PortalException(PortalErrorCode.InvalidState, "Open or create a project first");
+                }
+
+                // Three arguments, not two: the device gets a name and so does the item inside it.
+                // Create() without an item makes an empty station with no CPU in it.
+                var device = _project!.Devices.CreateWithItem(typeIdentifier, deviceName, deviceName);
+
+                return device.Name;
+            }
+            catch (Exception ex)
+            {
+                var pex = ex as PortalException ?? new PortalException(PortalErrorCode.InvalidParams, $"Adding the device failed: {ex.Message}", null, ex);
+
+                pex.Data["typeIdentifier"] = typeIdentifier;
+                pex.Data["deviceName"] = deviceName;
+
+                _logger?.LogError(pex, "AddDevice failed for {DeviceName} ({TypeIdentifier})", deviceName, typeIdentifier);
+                throw pex;
+            }
+        }
+
+        private void ValidateCreateRequest(string targetDirectory, string projectName)
+        {
+            if (string.IsNullOrWhiteSpace(targetDirectory))
+            {
+                throw new PortalException(PortalErrorCode.InvalidParams, "targetDirectory is required");
+            }
+
+            if (string.IsNullOrWhiteSpace(projectName))
+            {
+                throw new PortalException(PortalErrorCode.InvalidParams, "projectName is required");
+            }
+
+            if (IsPortalNull())
+            {
+                throw new PortalException(PortalErrorCode.InvalidState, "Connect to TIA Portal first");
+            }
+        }
+
         private void ValidateRetrieveRequest(string archivePath, string targetDirectory)
         {
             if (string.IsNullOrWhiteSpace(archivePath))
@@ -668,6 +769,165 @@ namespace TiaMcpServer.Siemens
 
                 throw pex;
             }
+        }
+
+        /// <summary>
+        /// Describes what a download would connect through and what answers there, without
+        /// downloading.
+        /// </summary>
+        /// <param name="softwarePath">Full path to the CPU, for example <c>PLC_0</c>.</param>
+        /// <returns>A multi-line report of the interface, the applied connection and the devices found.</returns>
+        /// <remarks>
+        /// The counterpart to <see cref="DownloadToSimulation"/> for when it fails: TIA Portal
+        /// reports "Connect to module failed" and nothing else, so the state behind that message
+        /// has to be readable on its own.
+        /// </remarks>
+        /// <exception cref="PortalException">
+        /// No project is open, the path does not resolve, or the connection cannot be applied.
+        /// </exception>
+        public string DescribeSimulationConnection(string softwarePath)
+        {
+            try
+            {
+                if (IsProjectNull())
+                {
+                    throw new PortalException(PortalErrorCode.InvalidState, "Open a project first");
+                }
+
+                var deviceItem = GetDeviceItem(softwarePath)
+                    ?? throw new PortalException(PortalErrorCode.NotFound, $"Device item not found: {softwarePath}");
+
+                return new SimulationDownloader(deviceItem, _logger).DescribeConnection()
+                    + Environment.NewLine
+                    + "software: " + DescribeSoftwareSimulationSupport(softwarePath);
+            }
+            catch (Exception ex)
+            {
+                var pex = ex as PortalException ?? new PortalException(PortalErrorCode.SimulationFailed, $"Could not describe the download connection: {ex.Message}", null, ex);
+
+                pex.Data["softwarePath"] = softwarePath;
+
+                _logger?.LogError(pex, "DescribeSimulationConnection failed for {SoftwarePath}", softwarePath);
+                throw pex;
+            }
+        }
+
+        /// <summary>
+        /// Compiles a device's hardware configuration.
+        /// </summary>
+        /// <param name="deviceItemPath">Full path to the CPU, for example <c>PLC_0</c>.</param>
+        /// <returns>What the compile reported, in the same shape as a software compile.</returns>
+        /// <remarks>
+        /// <see cref="CompileSoftware"/> compiles the program and nothing else, so a change that
+        /// invalidates the hardware configuration leaves a stale one behind. Downloading that
+        /// produces "Loading of hardware configuration failed (0013 -32 0 0)", which names neither
+        /// the cause nor the fix.
+        ///
+        /// <see cref="EnableSimulationSupport"/> is exactly such a change, which is why a download
+        /// that had been writing the hardware configuration successfully started failing on it the
+        /// moment simulation support was turned on.
+        /// </remarks>
+        /// <exception cref="PortalException">No project is open, or the path does not resolve.</exception>
+        public CompilationReport CompileHardware(string deviceItemPath)
+        {
+            _logger?.LogInformation("Compiling hardware for {DeviceItemPath}...", deviceItemPath);
+
+            try
+            {
+                if (IsProjectNull())
+                {
+                    throw new PortalException(PortalErrorCode.InvalidState, "Open a project before compiling");
+                }
+
+                var deviceItem = GetDeviceItem(deviceItemPath)
+                    ?? throw new PortalException(PortalErrorCode.NotFound, $"Device item not found: {deviceItemPath}");
+
+                var compilable = deviceItem.GetService<ICompilable>()
+                    ?? throw new PortalException(PortalErrorCode.InvalidState, $"'{deviceItemPath}' cannot be compiled");
+
+                return CompilerResultReader.Read(compilable.Compile());
+            }
+            catch (Exception ex)
+            {
+                var pex = ex as PortalException ?? new PortalException(PortalErrorCode.CompileFailed, $"Hardware compile failed: {ex.Message}", null, ex);
+
+                pex.Data["deviceItemPath"] = deviceItemPath;
+
+                _logger?.LogError(pex, "CompileHardware failed for {DeviceItemPath}", deviceItemPath);
+                throw pex;
+            }
+        }
+
+        /// <summary>
+        /// Whether blocks are compiled with simulation support.
+        /// </summary>
+        /// <returns>True when the open project compiles blocks that PLCSIM can run.</returns>
+        /// <exception cref="PortalException">No project is open.</exception>
+        public bool IsSimulationSupportEnabled()
+        {
+            if (IsProjectNull())
+            {
+                throw new PortalException(PortalErrorCode.InvalidState, "Open a project first");
+            }
+
+            return (bool)_project!.GetAttribute(SimulationSupportAttribute);
+        }
+
+        /// <summary>
+        /// Compiles blocks with simulation support, so PLCSIM can run them.
+        /// </summary>
+        /// <returns>True when the setting had to be changed, false when it was already on.</returns>
+        /// <remarks>
+        /// Without this a download reaches the controller, writes the hardware configuration
+        /// successfully, and then refuses every block with *"'Main [OB1]' cannot be simulated"*.
+        /// It cost this project five days, because the failure before the diagnostics were fixed
+        /// looked like a connection problem rather than a compilation setting.
+        ///
+        /// It lives on the **project**, not on the CPU or the PLC software — TIA's own message
+        /// says "in the project properties", and probing the other two objects finds nothing,
+        /// which is exactly how the first search for it was abandoned.
+        ///
+        /// **Blocks compiled before this was on stay unsimulatable**: the flag governs
+        /// compilation, so the program has to be compiled again afterwards.
+        /// </remarks>
+        /// <exception cref="PortalException">No project is open.</exception>
+        public bool EnableSimulationSupport()
+        {
+            if (IsSimulationSupportEnabled())
+            {
+                return false;
+            }
+
+            _project!.SetAttribute(SimulationSupportAttribute, true);
+
+            _logger?.LogInformation("Simulation during block compilation enabled; the program must be recompiled");
+
+            return true;
+        }
+
+        // Named by TIA in the download failure it produces when the option is off.
+        private const string SimulationSupportAttribute = "IsSimulationDuringBlockCompilationEnabled";
+
+        /// <summary>
+        /// Whether the PLC program permits simulation, which downloading to PLCSIM requires.
+        /// </summary>
+        /// <remarks>
+        /// Siemens documents "support simulation during block compilation" as a prerequisite for
+        /// downloading to a virtual controller, and it is not on the CPU device item — that one
+        /// exposes no attribute matching "Simul" at all. Reporting what the object does expose is
+        /// deliberate: a probe that cannot tell "asked and got nothing" from "asked the wrong
+        /// object" has already cost this project days.
+        /// </remarks>
+        private string DescribeSoftwareSimulationSupport(string softwarePath)
+        {
+            var software = GetPlcSoftware(softwarePath);
+
+            if (software == null)
+            {
+                return $"no PLC software at '{softwarePath}'";
+            }
+
+            return $"software '{software.Name}', simulation during block compilation: {IsSimulationSupportEnabled()}";
         }
 
         /// <summary>

@@ -175,6 +175,99 @@ if (!block.IsConsistent)
 - No commented-out code. That is what Git is for.
 - No `TODO` without a date and an owner. If you are not going to do it, do not write it.
 
+## Files and folders
+
+- **One public class per file, and the file is named after the class.** `ModeGate.cs` holds
+  `ModeGate` and nothing else. The file listing should tell you what the project contains
+  without opening anything.
+- **Folders group by responsibility, not by technical kind.** `Governance/` holding
+  `ModeGate`, `WritePolicy` and `AuditTrail` together is right; `Interfaces/`, `Enums/` and
+  `Classes/` scattering one feature across three folders is wrong.
+- Interfaces are prefixed `I`: `IAuditTrail`, `IWritePolicy`.
+
+---
+
+# The governance layer — fail closed by construction
+
+Everything above is style. This section is correctness, and it applies to
+`src/TiaMcpServer/Governance/` above all, because a careless default there is not ugly code,
+it is a safety hole.
+
+## Anything not foreseen refuses
+
+**No silent `default`.** A switch over `OperationMode`, over a policy decision, or over
+anything that gates a write must be exhaustive and must fail loudly on an unrecognised
+value. A new enum member must break the build or throw, never slip through as "allowed".
+
+```csharp
+// bad — a third mode added later silently behaves like Study
+switch (mode)
+{
+    case OperationMode.Study: return Confirmation.Automatic;
+    case OperationMode.Workshop: return Confirmation.Manual;
+}
+return Confirmation.Automatic;
+
+// good
+return mode switch
+{
+    OperationMode.Study => Confirmation.Automatic,
+    OperationMode.Workshop => Confirmation.Manual,
+    _ => throw new PortalException(PortalErrorCode.InvalidState, $"Unrecognised operation mode: {mode}")
+};
+```
+
+The same rule covers a policy lookup that finds no rule, a plan whose mode does not match
+the session, and an audit write that fails in Workshop Mode: **the absence of a decision is
+a refusal, never a permission.**
+
+## `Result` for expected failures, exceptions for the unexpected
+
+A plan rejected by the whitelist is not an exception — it is the system working. It returns
+a result carrying the reason, so the caller can report it. Exceptions stay for what nobody
+planned for: TIA Portal dying mid-operation, the database being unreachable.
+
+This matters beyond taste: an expected refusal that arrives as an exception gets caught by
+the single decoration point in the portal layer and reported as an operation failure, which
+tells the caller to retry something it must not retry.
+
+## One execution path
+
+There is no branch that writes without producing and recording a plan first — not even in
+Study Mode, where the plan is auto-confirmed. A "skip the checks" path would exist in the
+Workshop build too, and an untested branch is the one that eventually runs with a machine
+connected.
+
+## Typed identifiers
+
+`PlanId` is its own type, not a bare `Guid` or `string`. Passing the wrong identifier into a
+confirmation is exactly the class of bug that must be impossible, and the compiler makes it
+impossible for free.
+
+## Facts that already happened are immutable
+
+`AuditEntry`, and a `ChangePlan` once executed, describe the past. No public setters, fields
+`readonly`, all state through the constructor.
+
+## Never swallow an audit failure
+
+`catch (Exception)` that hides a failed audit write is forbidden outright. In Workshop Mode
+a failed audit write **refuses the action**; in Study Mode it proceeds and reports. Either
+way it is visible.
+
+## One explicit test per safety rule
+
+Every rule in this section has a test that names it and would fail if the rule were removed:
+the whitelist refusing an unlisted target, the exhaustive switch throwing on an unknown
+value, the audit failing closed in Workshop Mode, Workshop Mode being unreachable in the
+default build. Incidental coverage from a test about something else does not count — a rule
+nobody asserts is a rule that quietly stops holding.
+
+**MSTest, as everywhere else in this repository.** The suite already has 83 cases in
+`tests/TiaMcpServer.Test/` and one test framework is enough. Governance tests follow the
+existing `Test<Area>.cs` convention and, unlike the Openness tests, must run without TIA
+Portal installed: that layer has no reason to touch it.
+
 ---
 
 # Domain rules — Openness
