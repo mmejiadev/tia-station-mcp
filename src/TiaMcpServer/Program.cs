@@ -85,6 +85,11 @@ namespace TiaMcpServer
                 // Register the Portal service for dependency injection
                 builder.Services.AddSingleton<Portal>();
 
+                // Singleton on purpose: a PLCSIM Advanced controller stays registered only while a
+                // handle to it is open, so a per-call runtime would unregister every controller it
+                // created as soon as the tool returned.
+                builder.Services.AddSingleton<SimulationRuntime>();
+
                 var host = builder.Build();
 
                 // Set the service provider for the MCP server, to retrieve Portal with injected logger

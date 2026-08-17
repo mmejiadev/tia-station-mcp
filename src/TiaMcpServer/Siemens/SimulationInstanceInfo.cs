@@ -16,16 +16,19 @@ namespace TiaMcpServer.Siemens
         /// <param name="operatingState">Whether the virtual PLC is off, stopped, running…</param>
         /// <param name="cpuType">The CPU the instance emulates.</param>
         /// <param name="ipAddresses">The addresses the controller answers on.</param>
+        /// <param name="licenseStatus">Whether the controller holds a PLCSIM Advanced licence.</param>
         public SimulationInstanceInfo(
             string name,
             string operatingState,
             string cpuType,
-            IReadOnlyList<string> ipAddresses)
+            IReadOnlyList<string> ipAddresses,
+            string licenseStatus)
         {
             Name = name;
             OperatingState = operatingState;
             CpuType = cpuType;
             IpAddresses = ipAddresses;
+            LicenseStatus = licenseStatus;
         }
 
         /// <summary>The instance name, unique within the runtime.</summary>
@@ -46,5 +49,16 @@ namespace TiaMcpServer.Siemens
         /// that decides whether a download over the virtual Ethernet adapter can connect.
         /// </summary>
         public IReadOnlyList<string> IpAddresses { get; }
+
+        /// <summary>
+        /// Whether the controller holds a PLCSIM Advanced licence.
+        /// </summary>
+        /// <remarks>
+        /// The runtime reports <c>LicenseNotFound</c> and <c>NoLicenseAvailable</c> as error codes
+        /// of their own, and an unlicensed controller can be created and powered on while still
+        /// refusing to do useful work. Surfacing it here means "why will it not download" can be
+        /// answered without guessing at the licence.
+        /// </remarks>
+        public string LicenseStatus { get; }
     }
 }

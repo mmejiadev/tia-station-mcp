@@ -172,6 +172,45 @@ The mandatory `backupDirectory` parameter on `WriteScl` and `CreateIoSystem` is 
 a configured backup registry: one root, timestamped, listable. A backup the caller can
 forget to ask for is not a backup.
 
+## Prior art
+
+Checked on 2026-08-17, because a README that implicitly claims to be first collapses the
+moment anyone searches.
+
+**T-IA Connect** is a commercial MCP bridge for TIA Portal V17–V21 claiming 316 endpoints
+across 22 categories, SCL/LAD/FBD/GRAPH generation, download with manual confirmation, and
+PLCSIM Advanced. The open-source field is thinner: `heilingbrunner/tiaportal-mcp` — the base
+this repository forked — is read and export only with no SCL generation and no PLCSIM;
+`gangsterke/Tia-Portal-MCP-server` is twelve read-only tools; `cadugrillo/s7-mcp-bridge`
+talks to a PLC directly with no engineering capability and no safeguards.
+
+Two things follow, and neither is discouraging.
+
+**Tool count is the wrong axis.** 45 against 316 is a comparison that measures nothing about
+whether generated PLC code is correct.
+
+**Their "Validation & Metrics" is server observability** — diagnostics, API-call auditing,
+health checks — not reliability of the generated code. Nobody in this field publishes how
+many iterations an LLM needs to reach a clean compile, or what fraction of specifications
+pass their tests. Phase 3 is therefore not a smaller version of what exists; it asks a
+different question, and it is the one that has to be answered with data rather than claims.
+
+Note on sourcing: the comparison table above is published by T-IA Connect, one of the
+products being compared. Their own figures are marketing until independently verified.
+
+### Borrowed deliberately
+
+Three concepts worth taking, agreed on 2026-08-17:
+
+- **Asynchronous jobs.** A compile or a download takes minutes, and an agent blocked on one
+  is useless. A download once hung this project for thirteen hours. Long operations should
+  return a job handle that can be polled and cancelled. Folded into phase 1, since that is
+  where the write path is redesigned anyway.
+- **Watch and force tables.** How anyone actually debugs a running PLC, and the natural
+  companion to reading and writing tags on a simulated controller.
+- **Tag table import from CSV and Excel.** Real projects define their tags in spreadsheets.
+  SCL that references tags is useless if the tags cannot be declared.
+
 ## Phases
 
 ### Phase 0 — Unblock the download to PLCSIM · 18–24 Aug

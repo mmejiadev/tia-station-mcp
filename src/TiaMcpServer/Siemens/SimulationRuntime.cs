@@ -20,8 +20,23 @@ namespace TiaMcpServer.Siemens
     ///
     /// Instance handles never leave this class. They hold a live connection to a virtual PLC, so a
     /// caller keeping one alive would keep the controller alive with it.
+    ///
+    /// **The handle is the controller's lifetime.** Measured on 2026-08-17: a virtual controller
+    /// created through the API and then left with no open handle unregisters itself within fifteen
+    /// seconds, with nothing touching it. Every failure this project chased from August onwards —
+    /// downloads reporting "Connect to module failed", pings that answered on one run and timed
+    /// out on the next, device scans finding nothing — was that controller no longer existing.
+    /// It also explains why downloading by hand worked: the PLCSIM Advanced GUI keeps its own
+    /// handle open, so an instance created there survives.
+    ///
+    /// So handles for controllers this object created are **held** for as long as they exist, and
+    /// released in <see cref="Dispose"/> or <see cref="DeleteInstance"/>. CA2000 correctly spotted
+    /// that <c>IInstance</c> is disposable; the conclusion drawn from it — dispose immediately —
+    /// was the opposite of what this API requires. Controllers created elsewhere are somebody
+    /// else's to keep alive, so those are opened transiently, the same ownership distinction
+    /// <see cref="Portal"/> makes about the TIA Portal process.
     /// </remarks>
-    public sealed class SimulationRuntime
+    public sealed class SimulationRuntime : IDisposable
     {
         private const string UnavailableMessage =
             "The PLCSIM Advanced runtime is not available. Install PLCSIM Advanced, or set PlcSimApiPath if it is installed somewhere unusual.";
@@ -36,11 +51,36 @@ namespace TiaMcpServer.Siemens
 
         private readonly ILogger? _logger;
 
+#if PLCSIM_AVAILABLE
+        // Keyed by instance name. Holding the handle is what keeps the virtual controller
+        // registered; see the class remarks.
+        private readonly Dictionary<string, IInstance> _heldInstances = new Dictionary<string, IInstance>(StringComparer.Ordinal);
+#endif
+
         /// <summary>Creates a simulation runtime facade.</summary>
         /// <param name="logger">Optional logger.</param>
         public SimulationRuntime(ILogger? logger = null)
         {
             _logger = logger;
+        }
+
+        /// <summary>Releases every controller handle this object holds.</summary>
+        /// <remarks>
+        /// The controllers unregister themselves once their handle is gone, so disposing this is
+        /// equivalent to shutting the virtual controllers down. That is the intended behaviour for
+        /// a server shutting down, and the reason this object must be shared rather than created
+        /// per operation.
+        /// </remarks>
+        public void Dispose()
+        {
+#if PLCSIM_AVAILABLE
+            foreach (var instance in _heldInstances.Values)
+            {
+                instance.Dispose();
+            }
+
+            _heldInstances.Clear();
+#endif
         }
 
         /// <summary>Whether the PLCSIM Advanced runtime is installed and reachable.</summary>
@@ -186,14 +226,20 @@ namespace TiaMcpServer.Siemens
         /// Registers a virtual controller and powers it on, so it is ready to be downloaded to.
         /// </summary>
         /// <param name="instanceName">Name for the instance, unique within the runtime.</param>
+        /// <param name="cpuTypeName">
+        /// CPU to emulate, as the runtime names it, for example <c>CPU1511</c>. Null creates the
+        /// unspecified controller Siemens documents as the normal choice.
+        /// </param>
         /// <returns>The instance as it stands after powering on.</returns>
-        /// <exception cref="PortalException">The runtime is unavailable or the name is taken.</exception>
-        public SimulationInstanceInfo CreateInstance(string instanceName)
+        /// <exception cref="PortalException">The runtime is unavailable, the name is taken, or the CPU type is unknown.</exception>
+        public SimulationInstanceInfo CreateInstance(string instanceName, string? cpuTypeName = null)
         {
             RequireRuntime();
             RequireName(instanceName);
 
 #if PLCSIM_AVAILABLE
+            var cpuType = ParseCpuType(cpuTypeName);
+
             return Execute("CreateInstance", instanceName, () =>
             {
                 if (SimulationRuntimeManager.RegisteredInstanceInfo.Any(info => info.Name == instanceName))
@@ -201,25 +247,34 @@ namespace TiaMcpServer.Siemens
                     throw new PortalException(PortalErrorCode.InvalidState, $"A simulation instance named '{instanceName}' already exists");
                 }
 
-                // Every IInstance holds a live connection to the virtual controller, so each one
-                // is released as soon as its work is done — the same rule as TIA Portal objects.
-                using (var instance = SimulationRuntimeManager.RegisterInstance(instanceName))
-                {
-                    try
-                    {
-                        // Registering only reserves the name. Until it is powered on the instance
-                        // cannot accept a download, which is the whole reason to create one.
-                        instance.PowerOn(TransitionTimeoutMilliseconds);
+                // Deliberately not disposed here: this handle is the controller's lifetime, and
+                // releasing it unregisters the controller within seconds. See the class remarks.
+                //
+                // Created as a named CPU type rather than the unspecified one Siemens documents as
+                // the normal choice. Unspecified is fine for the hardware configuration, which
+                // downloads successfully either way, but the text libraries are tied to the device
+                // identity and fail with InvalidAID when the controller does not know what it is.
+                var instance = cpuType == null
+                    ? SimulationRuntimeManager.RegisterInstance(instanceName)
+                    : SimulationRuntimeManager.RegisterInstance(cpuType.Value, instanceName);
 
-                        _logger?.LogInformation("Simulation instance {Name} created and powered on", instanceName);
-                    }
-                    catch (Exception)
-                    {
-                        // Do not leave a half-created controller behind for the next run.
-                        instance.UnregisterInstance();
-                        throw;
-                    }
+                try
+                {
+                    // Registering only reserves the name. Until it is powered on the instance
+                    // cannot accept a download, which is the whole reason to create one.
+                    instance.PowerOn(TransitionTimeoutMilliseconds);
                 }
+                catch (Exception)
+                {
+                    // Do not leave a half-created controller behind for the next run.
+                    instance.UnregisterInstance();
+                    instance.Dispose();
+                    throw;
+                }
+
+                _heldInstances[instanceName] = instance;
+
+                _logger?.LogInformation("Simulation instance {Name} created, powered on and held", instanceName);
 
                 return Describe(instanceName);
             });
@@ -288,6 +343,30 @@ namespace TiaMcpServer.Siemens
             return WithInstance(instanceName, instance => instance.Stop(TransitionTimeoutMilliseconds));
         }
 
+        /// <summary>Powers a virtual controller off and on again.</summary>
+        /// <param name="instanceName">The instance name.</param>
+        /// <returns>The instance as it stands afterwards.</returns>
+        /// <remarks>
+        /// <see cref="SetInstanceAddress"/> is accepted by a controller that is already powered
+        /// on, and the instance then reports the new address — but reporting it and having the
+        /// virtual interface bound to it on the adapter are not the same thing. This exists so
+        /// that difference can be measured rather than assumed.
+        /// </remarks>
+        /// <exception cref="PortalException">The runtime is unavailable or the instance is unknown.</exception>
+        public SimulationInstanceInfo PowerCycleInstance(string instanceName)
+        {
+            return WithInstance(instanceName, instance =>
+            {
+                // Powering off an instance that is already off throws InvalidOperatingState.
+                if (instance.OperatingState != EOperatingState.Off)
+                {
+                    instance.PowerOff(TransitionTimeoutMilliseconds);
+                }
+
+                instance.PowerOn(TransitionTimeoutMilliseconds);
+            });
+        }
+
         /// <summary>Powers off a virtual controller and removes it from the runtime.</summary>
         /// <param name="instanceName">The instance name.</param>
         /// <exception cref="PortalException">The runtime is unavailable or the instance is unknown.</exception>
@@ -299,7 +378,7 @@ namespace TiaMcpServer.Siemens
 #if PLCSIM_AVAILABLE
             Execute("DeleteInstance", instanceName, () =>
             {
-                using (var instance = Open(instanceName))
+                UseInstance(instanceName, instance =>
                 {
                     // Powering off an instance that is already off throws InvalidOperatingState,
                     // so a cleanup path that always calls PowerOff turns "nothing to do" into a
@@ -310,7 +389,9 @@ namespace TiaMcpServer.Siemens
                     }
 
                     instance.UnregisterInstance();
-                }
+                });
+
+                ReleaseHeldInstance(instanceName);
 
                 _logger?.LogInformation("Simulation instance {Name} removed", instanceName);
 
@@ -327,13 +408,62 @@ namespace TiaMcpServer.Siemens
 
             return Execute("Instance state change", instanceName, () =>
             {
-                using (var instance = Open(instanceName))
-                {
-                    action(instance);
-                }
+                UseInstance(instanceName, action);
 
                 return Describe(instanceName);
             });
+        }
+
+        /// <summary>
+        /// Runs an action against a controller, without ever disposing a handle we are holding.
+        /// </summary>
+        /// <remarks>
+        /// Disposing a held handle would unregister the controller mid-operation. A controller
+        /// somebody else created is theirs to keep alive, so that handle is transient and is
+        /// released here.
+        /// </remarks>
+        private void UseInstance(string instanceName, Action<IInstance> action)
+        {
+            if (_heldInstances.TryGetValue(instanceName, out var held))
+            {
+                action(held);
+
+                return;
+            }
+
+            using var transient = Open(instanceName);
+
+            action(transient);
+        }
+
+        /// <summary>Drops the handle for a controller that no longer exists.</summary>
+        private void ReleaseHeldInstance(string instanceName)
+        {
+            if (!_heldInstances.TryGetValue(instanceName, out var held))
+            {
+                return;
+            }
+
+            held.Dispose();
+            _heldInstances.Remove(instanceName);
+        }
+
+        /// <summary>Turns a CPU type name into the runtime's enum, or null when none was asked for.</summary>
+        private static ECPUType? ParseCpuType(string? cpuTypeName)
+        {
+            if (string.IsNullOrWhiteSpace(cpuTypeName))
+            {
+                return null;
+            }
+
+            if (!Enum.TryParse<ECPUType>(cpuTypeName, ignoreCase: true, out var parsed))
+            {
+                throw new PortalException(
+                    PortalErrorCode.InvalidParams,
+                    $"'{cpuTypeName}' is not a CPU type this runtime knows. Try one of: {string.Join(", ", Enum.GetNames(typeof(ECPUType)))}");
+            }
+
+            return parsed;
         }
 
         private static IInstance Open(string instanceName)
@@ -346,16 +476,26 @@ namespace TiaMcpServer.Siemens
             return SimulationRuntimeManager.CreateInterface(instanceName);
         }
 
-        private static SimulationInstanceInfo Describe(string instanceName)
+        private SimulationInstanceInfo Describe(string instanceName)
         {
-            using (var instance = SimulationRuntimeManager.CreateInterface(instanceName))
+            if (_heldInstances.TryGetValue(instanceName, out var held))
             {
-                return new SimulationInstanceInfo(
-                    instance.Name,
-                    instance.OperatingState.ToString(),
-                    instance.CPUType.ToString(),
-                    instance.ControllerIPSuite4.Select(suite => suite.IPAddress.ToString()).ToList());
+                return Snapshot(held);
             }
+
+            using var instance = SimulationRuntimeManager.CreateInterface(instanceName);
+
+            return Snapshot(instance);
+        }
+
+        private static SimulationInstanceInfo Snapshot(IInstance instance)
+        {
+            return new SimulationInstanceInfo(
+                instance.Name,
+                instance.OperatingState.ToString(),
+                instance.CPUType.ToString(),
+                instance.ControllerIPSuite4.Select(suite => suite.IPAddress.ToString()).ToList(),
+                instance.LicenseStatus.ToString());
         }
 #else
         private SimulationInstanceInfo WithInstance(string instanceName, Action<object> action)

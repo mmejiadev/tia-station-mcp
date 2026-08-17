@@ -28,6 +28,9 @@ Siemens.Engineering*.dll
 tmp/
 scratch/
 
+# Personal Claude Code settings (holds the private ntfy topic)
+.claude/settings.local.json
+
 # OS
 Thumbs.db
 Desktop.ini
