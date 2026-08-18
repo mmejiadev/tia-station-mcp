@@ -1,0 +1,21 @@
+﻿// The write policy the test suite runs under.
+//
+// A real file rather than a policy built in code, because the loading path is where a policy will
+// actually be got wrong: a section name capitalised differently, a pattern that matches the group
+// but not the software itself. Tests that construct their own policy object never exercise it.
+//
+// It names exactly the fixture in assets/TestProject1.zap20 and the instances the simulation tests
+// create. Anything else is refused, which is what the suite asserts in Test16GuardedWrites.
+{
+  "study": {
+    "allow": [
+      "PLC_0",
+      "PLC_0/*",
+      "Group1/PLC_1",
+      "Group1/PLC_1/*",
+      "simulation/*",
+      "project"
+    ],
+    "deny": []
+  }
+}

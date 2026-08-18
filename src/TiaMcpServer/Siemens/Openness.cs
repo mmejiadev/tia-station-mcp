@@ -17,6 +17,13 @@ namespace TiaMcpServer.Siemens
 
             TiaMajorVersion = tiaMajorVersion ?? 20; // Default to TIA Portal V20 if not specified
 
+            // The same version, recorded in both places that hold it. The version-gated tools read
+            // Engineering.TiaMajorVersion, which only Program used to set, so any host that
+            // initialised Openness without going through Program left it at 0 — and every V20-only
+            // tool refused to run on a V20 machine. The test suite is exactly such a host, which is
+            // where this surfaced.
+            Engineering.TiaMajorVersion = TiaMajorVersion;
+
             // Initialize the Openness API with the specified TIA Portal major version
             Api.Global.Openness().Initialize(tiaMajorVersion: tiaMajorVersion);
         }

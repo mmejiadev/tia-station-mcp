@@ -238,6 +238,11 @@ Study Mode, where the plan is auto-confirmed. A "skip the checks" path would exi
 Workshop build too, and an untested branch is the one that eventually runs with a machine
 connected.
 
+In practice: **a new MCP tool that changes anything calls `GuardedTool.Run`**, names its target
+through `ChangeTarget`, and gets a test in `Test16GuardedWrites` asserting it refuses when the
+policy says nothing about it. A write tool that forgets the guard passes every other test in the
+suite, which is exactly why that class exists.
+
 ## Typed identifiers
 
 `PlanId` is its own type, not a bare `Guid` or `string`. Passing the wrong identifier into a
@@ -263,10 +268,16 @@ value, the audit failing closed in Workshop Mode, Workshop Mode being unreachabl
 default build. Incidental coverage from a test about something else does not count — a rule
 nobody asserts is a rule that quietly stops holding.
 
-**MSTest, as everywhere else in this repository.** The suite already has 83 cases in
-`tests/TiaMcpServer.Test/` and one test framework is enough. Governance tests follow the
-existing `Test<Area>.cs` convention and, unlike the Openness tests, must run without TIA
-Portal installed: that layer has no reason to touch it.
+**MSTest, as everywhere else in this repository**, but in their **own project**:
+`tests/TiaMcpServer.Governance.Test/`, named after what they test (`ModeGate.cs` →
+`ModeGateTests.cs`) rather than the `Test<Area>.cs` numbering the Openness suite uses.
+
+The separation is the requirement, not a preference. `TiaMcpServer.Test` starts a TIA Portal in
+`[AssemblyInitialize]`, so every test in that assembly pays for one whether it needs it or not —
+and cannot run at all on a machine without TIA Portal. **Governance tests must run without TIA
+Portal**, because a safety rule that can only be checked on a licensed machine is a safety rule
+that stops being checked. Nothing in that project may take a dependency that needs TIA at run
+time.
 
 ---
 
@@ -289,6 +300,10 @@ These are not style, they are correctness. Breaking them causes real failures.
 
 # Operational safety
 
+- **Workshop Mode may only be used with a teacher or workshop supervisor physically present,
+  with access to the emergency stop.** No software enforces this and none can. It is the one
+  rule here that depends entirely on a person choosing to keep it, which is exactly why it is
+  written down first.
 - **Never** download to a physical PLC without explicit, unambiguous confirmation in that
   same conversation turn. A previous authorization does not carry over to the next time.
 - By default, every deployment targets **PLCSIM Advanced**.

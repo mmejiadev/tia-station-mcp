@@ -7,6 +7,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TiaMcpServer.Test", "tests\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TiaMcpServer", "src\TiaMcpServer\TiaMcpServer.csproj", "{9979E0D0-923F-F721-2D6E-3663C0D68B0F}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{679994CE-8C78-4764-86E7-A5BEE0113F43}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TiaMcpServer.Governance.Test", "tests\TiaMcpServer.Governance.Test\TiaMcpServer.Governance.Test.csproj", "{8F9B740D-82A6-45E6-A671-B6C8A21BF1DD}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,11 +25,18 @@ Global
 		{9979E0D0-923F-F721-2D6E-3663C0D68B0F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{9979E0D0-923F-F721-2D6E-3663C0D68B0F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{9979E0D0-923F-F721-2D6E-3663C0D68B0F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8F9B740D-82A6-45E6-A671-B6C8A21BF1DD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8F9B740D-82A6-45E6-A671-B6C8A21BF1DD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8F9B740D-82A6-45E6-A671-B6C8A21BF1DD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8F9B740D-82A6-45E6-A671-B6C8A21BF1DD}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {126264AE-6DBE-4666-9702-855C73562D58}
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{8F9B740D-82A6-45E6-A671-B6C8A21BF1DD} = {679994CE-8C78-4764-86E7-A5BEE0113F43}
 	EndGlobalSection
 EndGlobal

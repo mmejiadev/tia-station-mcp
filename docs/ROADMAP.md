@@ -45,8 +45,8 @@ A badly commanded industrial machine can injure a person or destroy expensive eq
 
 **Workshop Mode is not implemented in this roadmap, deliberately.** It is designed,
 documented, gated, and left unwritten. The reasons are in "The gate" below, but the short
-version is that a portfolio deadline and new code that commands physical machinery must
-never be in the same sprint.
+version is that a portfolio to finish and new code that commands physical machinery must never
+be the same piece of work.
 
 **Workshop Mode may only be used with a teacher or workshop supervisor physically present
 and with access to the emergency stop.** No software enforces this. It is a requirement of
@@ -213,7 +213,7 @@ Three concepts worth taking, agreed on 2026-08-17:
 
 ## Phases
 
-### Phase 0 — Unblock the download to PLCSIM · 18–24 Aug
+### Phase 0 — Unblock the download to PLCSIM
 
 Nothing downstream works without it: no tests, no reliability metrics, no end-to-end
 recording.
@@ -235,14 +235,14 @@ download moves to the roadmap. The six twenty-minute cycles of August are not re
 
 Touches `SimulationDownloader.cs` and `Test11Download.cs`.
 
-### Phase 1 — Governance and modes · 25 Aug – 14 Sep
+### Phase 1 — Governance and modes
 
 The layer described above, plus the documentation of the security model in the README and
 `CLAUDE.md`, including the supervision requirement.
 
 **What this phase does not do: write a single line that downloads to hardware.**
 
-### Phase 2 — FB_Station and multi-station · 15–23 Sep
+### Phase 2 — FB_Station and multi-station
 
 In `spec/`, as data rather than as server code:
 
@@ -263,7 +263,7 @@ are worth more than four in a diagram.**
 In `src/`: `SclTemplateExpander.cs`, which instantiates a template from a JSON
 specification. No knowledge of any particular cell inside the server.
 
-### Phase 3 — Metrics and harness · 24 Sep – 5 Oct
+### Phase 3 — Metrics and harness
 
 `harness/`, Node and TypeScript, outside the solution:
 
@@ -283,7 +283,7 @@ Outputs: mean iterations to a clean compilation per specification, percentage pa
 PLCSIM, and time per phase. Reported with the sample size attached — `n=10, 3 repetitions`,
 never a bare percentage.
 
-### Phase 4 — Dashboard · 6–22 Oct
+### Phase 4 — Dashboard
 
 `dashboard/`, React, TypeScript and Vite, against the harness API.
 
@@ -291,31 +291,30 @@ Four views: the plant copilot (chat plus live loop phase), metrics and charts, t
 filterable audit log, and the state of the workshop gate with its five criteria shown green
 or red. Plus the permanent mode banner described above.
 
-### Phase 5 — The pitch · 23–26 Oct
+### Phase 5 — The pitch
 
 README rewritten with the business pitch first, an end-to-end recording of the loop, the
 real numbers from phase 3, the security model, and Workshop Mode documented as roadmap with
 its entry conditions. Anything the repository does not actually do comes out of the README.
 
-### Phase 6 — Workshop Mode · next academic year, supervised
+### Phase 6 — Workshop Mode, supervised and last
 
-Not in this calendar. Deliberately.
+Last, and only under supervision. Deliberately.
 
-## Calendar
+## Order, not dates
 
-| Weeks | Phase |
-|---|---|
-| 18–24 Aug | 0 · PLCSIM download |
-| 25 Aug – 14 Sep | 1 · governance and modes |
-| 15–23 Sep | 2 · FB_Station and multi-station |
-| 24 Sep – 5 Oct | 3 · metrics and harness |
-| 6–22 Oct | 4 · dashboard |
-| 23–26 Oct | 5 · pitch |
+The phases run in the order they are numbered. **There is no calendar**, and its removal on
+2026-08-18 was deliberate: the one that used to be here made a phase look finished when its week
+ran out rather than when its deliverables were done. Phase 1 was read as finished with three of
+its deliverables missing, which is exactly the failure a calendar invites. **A phase ends when
+what it promised exists and is tested**, and nothing else ends it.
 
-Two warnings attached to it. Phase 1 grew from two weeks to three when the modes were added.
-And classes start around 25 September, so throughput drops during phases 3 and 4.
+Sequence is still real, and it is the only scheduling claim made here: nothing downstream can be
+measured before the download works (phase 0), nothing may write to a project before the guard
+exists (phase 1), and Workshop Mode comes last because new code commanding physical machinery
+must not be the newest code in the repository.
 
-### What gets cut, in this order
+### What gets cut if something has to be, in this order
 
 1. The live chat in the dashboard. The data views remain, which are the ones that cannot be
    faked.
@@ -334,6 +333,6 @@ Agreed on 2026-08-17.
 | Harness and backend in Node and TypeScript | Avoids solving HTTP hosting on .NET Framework 4.8, and the front end never shares a process with the machinery. |
 | One execution path; dry run is not disableable | A "skip the checks" branch would exist in the Workshop binary too, and untested branches are what eventually run. |
 | Dashboard read-only in Workshop Mode; confirmation at the physical console | A browser tab can be open on another machine. Confirmation belongs where the emergency stop is. |
-| Workshop Mode not implemented before October | Deadline pressure and new code commanding physical machinery must not coincide. |
+| Workshop Mode is written last, after every other phase | Pressure to finish and new code commanding physical machinery must not coincide. Originally phrased as "not before October"; the date went with the calendar on 2026-08-18, the order did not. |
 | Phase 0 timeboxed to two sessions with an automatic fallback | Authorised in advance so the decision is not taken while inside the problem. |
 | `harness/` and `dashboard/` in this repository | The MCP tool surface and the SQLite schema are shared contracts that must change in one commit. |
