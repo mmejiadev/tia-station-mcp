@@ -1,0 +1,18 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The suite must run in the same COM apartment the server runs in, or it is testing something else.
+
+  Measured on 2026-08-18. Openness objects created in an STA apartment are thread-affine: a compile
+  called from any other thread throws "Cross-thread operation is not valid in Openness within STA".
+  Created in MTA they are not, because every MTA thread shares one apartment.
+
+  Program.Main has no [STAThread], so the server runs MTA. MSTest on .NET Framework defaults to STA,
+  so without this the suite ran STA and could neither reproduce a real apartment bug nor tolerate
+  code that hands work to a worker thread - which ImportBlocksFromDocuments has always done and
+  runAsJob now does.
+-->
+<RunSettings>
+  <RunConfiguration>
+    <ExecutionThreadApartmentState>MTA</ExecutionThreadApartmentState>
+  </RunConfiguration>
+</RunSettings>

@@ -24,6 +24,17 @@ namespace TiaMcpServer.Test
         public static string Project1ArchivePath =>
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "assets", "TestProject1.zap20");
 
+        /// <summary>
+        /// The write policy the suite runs under, resolved the same way as the archive.
+        /// </summary>
+        /// <remarks>
+        /// Writes go through the governance layer, which denies everything unless a policy names
+        /// the target. Without this file every MCP write tool in the suite would be refused —
+        /// correctly, and with a message saying so.
+        /// </remarks>
+        public static string Project1PolicyPath =>
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "assets", "policy.json");
+
         // PLC software paths inside TestProject1. Only the first is exercised by the tests that
         // touch blocks and tag tables; the deeper ones cover path resolution through nested groups.
         public const string Project1PlcSoftwarePath0 = "PLC_0";

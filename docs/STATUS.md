@@ -1,9 +1,68 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-08-12**
+> Last updated: **2026-08-18**
 
 ## ▶ RESUME HERE
+
+**2026-08-18 — phase 1 is done. Every deliverable it promised exists, and the calendar is gone.**
+
+The day began with the governance layer written but never run against TIA Portal, and ended with
+phase 1 actually finished rather than out of time. Three deliverables the roadmap had named were
+missing and nobody had noticed, because the calendar said the phase was over. **That calendar has
+been deleted** — see "Order, not dates" in `ROADMAP.md`. A phase now ends when what it promised
+exists and is tested.
+
+- **TIA suite: 127 cases, 123 passing, 4 skipped, 0 failing, 4 m 57 s.** No orphan
+  `Siemens.Automation.Portal` process afterwards. The four skips are the three multiuser session
+  tests (their asset cannot exist here) and `DownloadToSimulation_MinimalProject_ReachesRun`
+  (`[Ignore]`, V20 confidential-data password — see "Phase 4" below).
+- **Governance suite: 63 cases, 63 passing, 765 ms, no TIA Portal**, up from 27.
+- **Both projects build with 0 warnings**, `TreatWarningsAsErrors` on.
+- **51 tools**, up from 45: `ListBackups`, `GetJobStatus`, `ListJobs`, `CancelJob` are new, and
+  `CompileSoftware` joined the guarded ones.
+
+### What was added today, in the order it was done
+
+1. **The guard was run against TIA Portal for the first time** and found two defects reading it
+   had not, one of them in production code. Both below.
+2. **`CompileSoftware` is guarded**, on the user's decision. Sixteen guarded tools, not fifteen.
+3. **The calendar was deleted from the roadmap**, on the user's instruction.
+4. **The backup registry**, replacing the `backupDirectory` parameter on three tools.
+5. **Asynchronous jobs**, for `CompileSoftware` and `DownloadToSimulation`.
+6. **`McpServerWrites.cs`**, holding every tool that changes anything and nothing else.
+7. **A review of all of the above found five things**, all fixed the same day: a job that could
+   report success for work the guard stopped, a coverage hole where nothing exercised the allowed
+   path through the MCP layer, a test-suite isolation leak, the suite running in the wrong COM
+   apartment, and Openness calls genuinely overlapping with nothing to stop them. Below.
+8. **`OpennessGate`**, which closes the last of those: one Openness call at a time, enforced by the
+   property every tool goes through rather than by convention.
+9. **A deliverable-by-deliverable check against the roadmap**, which found one thing missing. Below.
+
+### The two defects the first real run found
+
+Both were in `Test16GuardedWrites`, the class that had never executed, and one of them was in
+production code rather than in the test:
+
+1. **`Engineering.TiaMajorVersion` was only ever set by `Program.Main`.** Any host that initialised
+   Openness another way left it at 0, so the four V20-only document tools refused to run on a V20
+   machine — `ImportFromDocuments` threw "requires TIA Portal V20 or newer" before the guard was
+   ever consulted. Two statics held one fact and only one of them was written.
+   `Openness.Initialize` now sets both. The test suite is a host of exactly that kind, which is how
+   this surfaced; a second MCP host would have hit it in production.
+2. **`RequestContext<T>` cannot be constructed without a live server**, so the test could not build
+   one for the async import tool. `ImportBlocksFromDocuments` now reads `context?.Params`: no
+   context is the same condition as a caller that did not ask for progress, and the tool reports
+   none and does the work.
+
+**Next action:** commit on a branch and open a pull request — never push to `main`. The diff is
+large; "Phase 1 — governance" below is written to be read alongside it.
+
+Then, before phase 2 and agreed with the user on 2026-08-18: **the single Openness thread.** See
+"The hazard the apartment fix does not remove". The user chose it over leaving the concurrency
+question open, wanting stability before more features are built on top. One decision is still hers
+and is recorded here so it is not lost: whether `runAsJob` stays exposed in the meantime, or waits
+until that thread exists.
 
 State during the session of 2026-08-12 (afternoon):
 
@@ -78,6 +137,321 @@ State during the session of 2026-08-12 (afternoon):
 
 Required reading at startup: this file, `../CLAUDE.md` and `REFERENCE-REPOS.md`.
 The plan for what comes next is in `ROADMAP.md`.
+
+## Phase 1 — governance (2026-08-17)
+
+The layer itself was written earlier the same day: mode gate, confirmation phrase, single-action
+plans, deny-by-default whitelist, append-only audit trail, and `GuardedWrite` as the one path
+through all of it. What was missing is what made it real — **the write tools did not use it.**
+
+### The sixteen tools that now ask permission
+
+| Family | Tools |
+|---|---|
+| Program | `WriteScl`, `ImportBlock`, `ImportType`, `ImportFromDocuments`, `ImportBlocksFromDocuments` |
+| Compilation | `CompileSoftware` |
+| Network | `CreateIoSystem`, `AssignDeviceToIoSystem` |
+| Simulation | `CreateSimulationInstance`, `StartSimulationInstance`, `StopSimulationInstance`, `DeleteSimulationInstance` |
+| Deployment | `DownloadToSimulation` |
+| Project | `SaveProject`, `SaveAsProject`, `CloseProject` |
+
+**`CompileSoftware` was left out at first and then put in, on the user's decision of 2026-08-18.**
+The argument for leaving it out was that a compile is the verification half of the
+generate-compile-fix loop, so gating it gates the diagnosis rather than the change. The argument
+that won: a compile is what marks blocks consistent, and consistent blocks are what a controller
+will accept. With real machines expected from October, a session whose policy says nothing about a
+program must not be able to make that program's code downloadable. It costs nothing in Study Mode,
+where a whitelisted target confirms itself, and no existing test changed behaviour — every compile
+in the suite calls `Portal.CompileSoftware` directly rather than the MCP tool.
+
+Exports, snapshots and `RetrieveProject` are not guarded: they write to disk, never to the project
+or to a controller.
+
+### The backup registry
+
+The roadmap asked for this in one sentence: *a backup the caller can forget to ask for is not a
+backup.* The parameter it replaced was mandatory, so nothing could be skipped — but the caller
+chose the location, which meant nobody could enumerate what had been saved and an agent could put
+it in a temp directory Windows would reap.
+
+`WriteScl`, `CreateIoSystem` and `AssignDeviceToIoSystem` no longer take a `backupDirectory`. They
+ask `IBackupRegistry` for one and are told: `.tia-mcp/backups/20260818-120000-WriteScl-PLC_0/`,
+configurable with `--backups`. `ListBackups` is the new read tool that makes "listable" mean
+something to the caller.
+
+Two decisions worth knowing when reading it:
+
+- **A manifest is written at allocation, before the export runs**, and records only what is true
+  then — which tool, which target, when. It never claims the change succeeded; the audit trail is
+  what says that. So a directory holding a manifest and no files is a write that was refused or
+  that failed before exporting, and `ListBackups` reports it as `fileCount` 0 rather than hiding it.
+- **The location is decided before the policy is consulted**, because the audit line has to name
+  it. A refused change therefore leaves an empty backup directory. That is litter, not a lie, and
+  it is visible as exactly what it is.
+
+### Asynchronous jobs
+
+Folded into phase 1 by the roadmap, for a measured reason: a download once blocked this project for
+thirteen hours with no way to ask what it was doing.
+
+`CompileSoftware` and `DownloadToSimulation` take `runAsJob`. With it they return a job id at once,
+in their own response type with an empty payload and `outcome` `Running` in the metadata — the same
+shape a change awaiting confirmation already used, and for the same reason: there is no result yet.
+`GetJobStatus`, `ListJobs` and `CancelJob` are the three new read tools.
+
+**The job runs the whole tool, guard included.** It does not reach past the guard and start the
+Openness call: the audit records a change as applied when the work returns, so a job that let the
+guard finish early would write a line claiming a compile had happened before it had.
+
+**Cancellation only works before the work starts, and that is Openness rather than a shortcut.** A
+compile and a download are blocking calls that accept no cancellation token and cannot be
+interrupted. So a queued job cancels and never runs; a running one is reported as not cancellable.
+Agreed with the user on 2026-08-18 in preference to a "stop waiting, let it run" cancellation,
+which would have left work running inside TIA Portal that nobody could see the result of.
+
+The `Queued -> Running` transition happens under the same lock `Cancel` takes, which is what makes
+cancelling before the start reliable rather than a race. `IJobDispatcher` exists so the tests can
+hold the work and assert that exactly: **no test in `JobStoreTests` sleeps**, because a test that
+waits long enough to usually pass is one that eventually fails for no reason and gets deleted.
+
+### McpServerWrites.cs
+
+`McpServer.cs` went from 2908 lines to 2077, and the seventeen tools that change anything — the
+sixteen guarded ones plus `ApplyChange` — now live in `McpServerWrites.cs`, 864 lines. A partial
+class, not a separate type: the MCP SDK discovers tools by attribute on one `[McpServerToolType]`,
+and these methods share the private service accessors with the read tools.
+
+Still over the 300-line limit, both of them, and that is the roadmap's own scope: it asks that the
+write tools move out, not that all 45 read tools be restructured. What the split buys is checkable
+by eye — **`GuardedTool.Run` appears seventeen times in `McpServerWrites.cs` and zero times in
+`McpServer.cs`**, so a write tool that forgot the guard, or that was written in the wrong file, now
+shows up in a `grep` rather than in a machine.
+
+### What reviewing the day's own work found
+
+Asked whether all of this was correct, four answers were worth having rather than reassurance.
+The third was found by the tests written for the second, within minutes of writing them.
+
+**A job could report success for work that never happened.** `runAsJob` wrapped the whole tool,
+guard included, and watched only for exceptions. But a refusal and a change awaiting confirmation
+are *ordinary responses* — that is a deliberate rule of this layer — so the job saw no exception and
+went to `Succeeded` while nothing had been compiled or downloaded. `StartAsJob` now passes the
+response through `RequireApplied`, which throws when the guard's `outcome` key is present, and the
+job lands on `Failed` carrying the reason. The metadata key is a constant on `GuardedTool` now,
+because a literal in two files is what let the two drift apart in the first place.
+
+In the default build only the refusal half of that was reachable, since Workshop Mode is compiled
+out. That is the argument for fixing it now rather than later, not against.
+
+**Nothing exercised the allowed path through the MCP layer.** Every write-tool test lived in
+`Test16GuardedWrites`, under a policy that denies everything, and every other test in the suite
+calls `Portal` directly. So the code between a tool and the portal — the backup registry it asks
+for a location, the job store it hands long work to — had been written and never run.
+`Test17WritesApplied` closes that: a write really leaves its previous state where `ListBackups`
+finds it, a compile job really carries a result back to `GetJobStatus`, and cancelling a finished
+job does not rewrite it.
+
+**The test suite was not isolating that policy, and had not been all along.** The three new tests
+failed on their first run with *no policy is configured for Study mode* — the deny-everything
+container `Test16GuardedWrites` installs was still in place. MSTest runs `[ClassCleanup]` at the
+end of the **assembly** by default, not the end of the class, so the restore never happened in
+time. `[ClassCleanup(ClassCleanupBehavior.EndOfClass)]` fixes it.
+
+That leak had been there since `Test16` was written, and nothing failed: every other test in the
+suite calls `Portal` directly and never touches the container. It became visible the moment a test
+went through the MCP layer on the allowed path — which is the hole those tests were written to
+close, closing itself on the first run.
+
+**And the suite was running in a different COM apartment than the server.** With isolation fixed,
+the two `runAsJob` tests still failed, with *Cross-thread operation is not valid in Openness within
+STA*. Measured directly rather than reasoned about, on 2026-08-18:
+
+| Calling thread | Openness directly | From `Task.Run` |
+|---|---|---|
+| **STA** | works | **throws** |
+| **MTA** | works | works |
+
+Openness objects created in an STA apartment are thread-affine. Created in MTA they are not,
+because every MTA thread shares one apartment. `Program.Main` has no `[STAThread]`, so **the server
+runs MTA**; MSTest on .NET Framework defaults to **STA**, so the suite did not.
+
+So the failure was the test environment, not the feature — and that is the worse finding of the two.
+A suite in the wrong apartment can neither reproduce a real threading bug nor tolerate code that
+hands work to a worker thread, which `ImportBlocksFromDocuments` has done since it was written.
+`tests/TiaMcpServer.Test/tia.runsettings` pins the suite to MTA and the csproj points at it, so
+`dotnet test` picks it up with no extra argument. The suite also got faster: 6 m 33 s against 8 m 16 s.
+
+Four times in one day, code that nobody had executed turned out to be hiding a defect: the guard's
+first real run, then the allowed path, then the suite's own isolation, then the apartment it ran in.
+The lesson is not about the individual bugs.
+
+### One Openness call at a time (`OpennessGate`)
+
+Jobs introduced something that could not happen before: **two Openness calls overlapping.** The
+transport is stdio, one request at a time, so nothing used to run concurrently.
+
+Whether that was dangerous was measured rather than assumed, and the first two attempts were
+confounded before the third answered it:
+
+- A compile plus a read, concurrently: both succeeded. Says little on its own.
+- Two compiles, timed: the pair took 279 ms against 7650 ms for one. Worthless — after the first
+  compile the software is consistent and the second has nothing to do.
+- **Two snapshot exports, which do the same work every time: both ran from 1 ms to ~1620 ms.**
+  Had COM been marshalling them into one apartment, the second would have started when the first
+  finished. It did not. **They really do run in parallel, and nothing serialises them.**
+
+The suite had been doing this all along without anyone noticing: it runs 16-way parallel at method
+level, so concurrent Openness calls happened in every run.
+
+`OpennessGate` is a re-entrant process-wide lock, taken by every tool that reaches TIA Portal:
+`using var openness = OpennessGate.Enter();` as the first statement, 35 tools, and
+`OpennessGate.Run(...)` around the six Openness calls the asynchronous export tools hand to worker
+threads.
+
+Four decisions in it are worth knowing:
+
+- **Re-entrant, or the first job deadlocks.** `runAsJob` hands `CompileSoftware` to a worker, which
+  calls `CompileSoftware`, which takes the gate again on the same thread.
+- **`GetJobStatus`, `ListJobs`, `CancelJob` and `ListBackups` must never take it.** If polling had
+  to queue behind the compile it is polling, asynchronous jobs would be pointless.
+- **In `CompileSoftware` and `DownloadToSimulation` the gate goes *after* the `runAsJob` hand-off.**
+  Starting a job is supposed to return at once; taking the gate first would make it wait for the
+  job already running.
+- **It must not be held across an `await` that changes thread.** `Monitor` is owned by a thread, so
+  the continuation would not own it. That is why the asynchronous tools gate each call rather than
+  their whole body.
+
+What it guarantees is **one Openness call at a time, not one logical operation.** A bulk export makes
+many calls and a compile can land between two of them. Holding the gate across a whole batch would
+block every other request for minutes, which is a worse trade for a read.
+
+#### Why the property throws
+
+The gate would be a convention, and conventions rot: a tool that forgot it would work perfectly
+until the day a job happened to be running, and the failure would be a damaged project rather than
+an exception. So **`McpServer.Portal` refuses to hand out the portal unless the gate is held.** Every
+tool reaches TIA Portal through that property, which makes it the only place the omission can be
+caught at all — and it is caught on the first call, in the suite.
+
+That needs a `CA1065` suppression, since a getter must not throw. It is suppressed at that one
+property with the reason written beside it. The alternative was making it a method, which would have
+put `RequirePortal()` in front of fifty-four call sites to satisfy a rule about accidental throws.
+
+#### MTA is now declared rather than inherited
+
+`Main` is marked `[MTAThread]` and calls `RequireMultiThreadedApartment`, which refuses to start
+otherwise. A console entry point is MTA by default, so this was true by accident, and the accident
+was load-bearing: in an STA apartment every background Openness call throws. Saying it out loud
+means nobody removes it by adding an attribute for an unrelated reason, and a future HTTP transport
+fails at startup with a reason instead of failing inside a job.
+
+
+### Checking the deliverables one by one
+
+Every file the roadmap's phase 1 table names exists, and `ApplyChange`, `GetOperationMode` and
+`McpServerWrites.cs` with it. Two of the checks are worth recording because the answer was not the
+one expected:
+
+- **"Wildcards rejected in the Workshop section" is implemented and tested**, but in `ModeRules`
+  rather than `WritePolicyFile` where it was looked for first. `WorkshopRules_WithAWildcard_AreRefusedWhenLoaded` asserts it.
+- **The supervision requirement was missing from `README.md` and `CLAUDE.md`.** Phase 1 asks for the
+  security model documented in both "including the supervision requirement", and it was only in
+  `ROADMAP.md`. Now in all three. It is the one rule here that no software can enforce — a
+  whitelist, an audit trail and a confirmation phrase are all bypassed by a person in a hurry who is
+  alone in a room with a machine — so of everything in this phase it is the one that most needed to
+  be where people actually read it.
+
+**The one deliverable that differs from the roadmap text** is the audit trail: JSONL behind
+`IAuditTrail`, not SQLite. Deliberate and recorded above; phase 3 swaps it when the dashboard needs
+real queries.
+
+### Known and accepted, not fixed
+
+Named here so nobody has to rediscover them:
+
+- **`McpServer` is a static service locator, and this work added to it** — `Backups`, `JobStore`,
+  and two more singletons in `Fallback`. `CLAUDE.md` bans mutable static state, and this is the
+  reason `Test16GuardedWrites` has to swap a global container and be `[DoNotParallelize]`.
+- **`Portal.cs` is 3558 lines** against a 300-line limit. That, not `McpServer.cs`, is the file
+  that will hurt. `Responses.cs` is at 468.
+- **A backup directory is allocated before the policy is consulted**, because the audit line has
+  to name it, so a caller with no policy can create empty directories in a loop. Visible litter
+  rather than a lie, and fine for a study session; not a permanent answer.
+- **The gate serialises the test suite**, which runs 16-way parallel at method level. Run times
+  since then have ranged 5 to 8 minutes against 6 m 33 s before, so the cost is inside the noise —
+  and it means the suite had been making concurrent Openness calls in every run until today.
+
+None of these were folded into this diff on purpose: they are a refactoring phase 1 did not ask
+for, and adding it here would make the diff unreviewable exactly when the point is to review it.
+
+### The shape a refusal takes
+
+`GuardedTool.Run` is the seam. It takes the request, the work as a lambda, and a factory for an
+empty response. The work runs only if the guard allows it; otherwise the caller gets the same
+response type with `success` false, the reason in `Message`, and `outcome` in the metadata.
+
+A refusal is a **response, not an exception**, and that is not taste: thrown, it would reach the
+caller through the portal layer's decoration point as an operation failure — something to retry —
+instead of a decision to respect.
+
+A change awaiting confirmation loses its typed payload, and that is inherent: the work runs later
+from `ApplyChange`, which reports it as text. It costs nothing in Study Mode, where whitelisted
+changes confirm themselves.
+
+### Targets, and why they are built in one place
+
+A policy file is edited by a person, so the names in it have to be predictable. `ChangeTarget`
+builds all of them:
+
+- `PLC_0/Blocks/FB_Station` — a place in the project tree
+- `simulation/Station_1` — a virtual controller, prefixed because it is not in the project and a
+  rule about a PLC named `Station_1` must not govern an instance that shares the name
+- `project` — save, save-as and close, which act on the project rather than on anything in it
+
+### Three defects found on the way
+
+1. **`AuditEntry.BackupPath` was always empty.** `ChangeRequest` had nowhere to put it, so the
+   field that answers "where did the previous state go" never answered. `ChangeRequest.WithBackup`
+   returns a copy carrying it — a copy rather than a setter, because a request that can be edited
+   after a decision was taken about it describes something other than what was decided.
+2. **The policy file could not carry comments.** Strict JSON is the wrong dialect for a file whose
+   whole purpose is a decision someone took: the reason a target is listed belongs next to the
+   target, and a policy that refused to load over a comment would be edited by deleting the reason.
+   `JsonCommentHandling.Skip` now.
+3. **`CloseProject` read `Portal.IsLocalSession` after closing**, to decide what to call the thing
+   it had just closed. Pre-existing, and only visible once the method was pulled apart.
+
+### The test that closes the gap this session opened
+
+`Test16GuardedWrites` runs every guarded tool under a **policy file that does not exist** and
+asserts each is refused. It needs no TIA Portal work, because a refused change never reaches the
+Openness API — which is the property being asserted.
+
+It exists because of a specific hole: **a write tool that forgot to ask the guard would pass every
+other test in the suite**, since the rest run under a policy that allows what they do. It is also
+the one test in the suite marked `[DoNotParallelize]`: it swaps the container every MCP tool
+resolves from, and overlapping with another class would refuse that class's writes for reasons it
+could never explain.
+
+The suite now wires itself the way `Program` does — a real container with the governance layer in
+it, reading a real `assets/policy.json` — rather than setting `McpServer.Portal` and hoping. A
+suite that bypassed the governance layer would be testing a server nobody runs.
+
+### Still open in phase 1
+
+The three deliverables the roadmap named and the guard work had not touched are now done: the
+backup registry, asynchronous jobs, and the write tools split out of `McpServer.cs`. Each has its
+own section below. What remains:
+
+- `DownloadPasswordConfiguration`, which Workshop Mode will need.
+- The audit trail is JSONL behind `IAuditTrail`. Phase 3 swaps it for SQLite when the Workshop gate
+  needs real queries. Deliberate: the roadmap's table says SQLite, and this is the one place the
+  implementation knowingly differs from it.
+- Nothing enforces that a *future* write tool is added to `Test16GuardedWrites`. The rule is
+  written in `CLAUDE.md`; it is not checkable by the compiler.
+
+Workshop Mode itself is **not** open work: by the decision of 2026-08-17 it is written last, after
+every other phase, so the default build making it unreachable is the finished state, not a gap.
 
 ## The instance was never there (2026-08-17)
 

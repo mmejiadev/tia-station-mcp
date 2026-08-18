@@ -1,0 +1,50 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <BaseOutputPath>.\bin</BaseOutputPath>
+  </PropertyGroup>
+
+  <!--
+    A test project of its own, and the separation is the point.
+
+    TiaMcpServer.Test starts a TIA Portal in [AssemblyInitialize], because almost everything it
+    covers needs one. That cost lands on every test in that assembly whether it needs a portal or
+    not, so the governance tests took twelve seconds and could not run at all on a machine without
+    TIA Portal installed.
+
+    CLAUDE.md requires the opposite of the governance layer: those tests must run without TIA
+    Portal, because a safety rule that can only be checked on a licensed machine is a safety rule
+    that stops being checked. That is only true if they live outside that assembly — hence this
+    project.
+
+    Nothing here may take a dependency that needs TIA Portal at run time. The reference below is
+    to our own assembly, and the governance types touch no Openness type, so Siemens.Engineering
+    is never loaded.
+
+    No inherited debt: this project is new, and a real finding here gets fixed rather than
+    suppressed. CA1307 was the first, and it was fixed by using the StringComparison overload.
+
+    The two entries below are not debt. They are repository-wide style decisions already taken and
+    justified in src/TiaMcpServer/TiaMcpServer.csproj, and repeating the decision is better than
+    having the same code style pass in one project and fail in another.
+  -->
+  <PropertyGroup>
+    <NoWarn>$(NoWarn);IDE0008</NoWarn>  <!-- var: CLAUDE.md asks for judgement the analyzer cannot make -->
+    <NoWarn>$(NoWarn);CA1861</NoWarn>   <!-- constant arrays as arguments: a hot-path concern, in test setup -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="MSTest" Version="3.9.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\TiaMcpServer\TiaMcpServer.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
+  </ItemGroup>
+</Project>

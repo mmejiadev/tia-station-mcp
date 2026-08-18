@@ -1,5 +1,7 @@
-﻿using System;
+﻿using Microsoft.Extensions.DependencyInjection;
+using System;
 using System.IO;
+using TiaMcpServer.ModelContextProtocol;
 using TiaMcpServer.Siemens;
 
 namespace TiaMcpServer.Test
@@ -24,6 +26,7 @@ namespace TiaMcpServer.Test
     public static class AssemblyHooks
     {
         private static Portal? _sharedPortal;
+        private static ServiceProvider? _services;
 
         /// <summary>The portal shared by every test in the assembly.</summary>
         public static Portal SharedPortal =>
@@ -67,14 +70,57 @@ namespace TiaMcpServer.Test
             // path; tests that mutate it (SaveAs, import) work inside the temp copy, so nothing
             // they do can affect the archive in the repository.
             ProjectPath = _sharedPortal.RetrieveProject(Settings.Project1ArchivePath, Path.Combine(WorkingRoot, "project"));
+
+            _services = BuildServices(Settings.Project1PolicyPath);
+
+            McpServer.SetServiceProvider(_services);
+        }
+
+        /// <summary>
+        /// Builds the container the MCP tools resolve everything from, governance included.
+        /// </summary>
+        /// <param name="policyPath">The write policy this run is governed by.</param>
+        /// <returns>The provider.</returns>
+        /// <remarks>
+        /// The suite wires itself the way <c>Program</c> does rather than setting
+        /// <c>McpServer.Portal</c> and hoping the rest resolves: the write tools now go through the
+        /// governance layer, and a suite that bypassed it would be testing a server nobody runs.
+        ///
+        /// The audit trail is written under the working root, so a run leaves its record where the
+        /// rest of its leftovers go and the repository's own trail is never touched.
+        /// </remarks>
+        public static ServiceProvider BuildServices(string policyPath)
+        {
+            var services = new ServiceCollection();
+
+            // The shared portal, not a new one: every test attaches to the single TIA Portal this
+            // class owns, and a second Portal would start a second process.
+            services.AddSingleton(_ => SharedPortal);
+            services.AddSingleton<SimulationRuntime>();
+
+            Program.RegisterGovernance(services, new CliOptions
+            {
+                PolicyPath = policyPath,
+                AuditPath = Path.Combine(WorkingRoot, "audit.jsonl"),
+                BackupRoot = Path.Combine(WorkingRoot, "backups")
+            });
+
+            return services.BuildServiceProvider();
         }
 
         /// <summary>Releases the shared TIA Portal and deletes the working directory.</summary>
         [AssemblyCleanup]
         public static void AssemblyCleanup()
         {
+            // The container owns the simulation runtime, whose open handles are what keep a virtual
+            // controller registered, so it goes first. It also disposes the shared portal.
+            _services?.Dispose();
+            _services = null;
+
             // Disposing closes the open project first, which is what releases the file handles
             // TIA Portal keeps inside the project directory. Deleting before this always fails.
+            // Idempotent, so doing it again after the container is harmless and says out loud that
+            // this class owns the portal whether or not a container was ever built.
             _sharedPortal?.Dispose();
             _sharedPortal = null;
 

@@ -19,36 +19,54 @@ using TiaMcpServer.Siemens;
 namespace TiaMcpServer.ModelContextProtocol
 {
     [McpServerToolType]
-    public static class McpServer
+    public static partial class McpServer
     {
+        private const int SummaryLength = 120;
+
         private static IServiceProvider? _services;
         private static Portal? _portal;
         private static Siemens.SimulationRuntime? _simulation;
 
         public static ILogger? Logger { get; set; }
 
+        // CA1065 says a property getter must not throw, and it is right about accidental throws.
+        // Here the throw is the feature: this is the single point every tool passes through to reach
+        // TIA Portal, so it is the only place a missing Openness gate can be caught at all. The
+        // alternative considered was making it a method, which would have put RequirePortal() in front
+        // of fifty-four call sites to satisfy a rule about a different problem. Suppressed here and
+        // nowhere else.
+#pragma warning disable CA1065
         public static Portal Portal
         {
             get
             {
-                if (_services !=null)
+                // Enforcement, not decoration. Every tool reaches TIA Portal through this property,
+                // which makes it the one place that can catch a tool that forgot the gate. Without
+                // the check such a tool would work perfectly until the day a job happened to be
+                // running at the same time, and the failure would be a corrupted project rather
+                // than an exception. With it the omission fails on the first call, in the suite.
+                if (!Siemens.OpennessGate.IsHeldByCurrentThread)
+                {
+                    throw new PortalException(
+                        PortalErrorCode.InvalidState,
+                        "TIA Portal was reached without holding the Openness gate. The calling tool is "
+                        + "missing 'using var openness = OpennessGate.Enter();' as its first statement. "
+                        + "See OpennessGate for why one call at a time is not optional.");
+                }
+
+                if (_services != null)
                 {
                     return _services.GetRequiredService<Portal>();
                 }
-                else
-                {
-                    if (_portal == null)
-                    {
-                        _portal = new Portal();
-                    }
-                    return _portal;
-                }
+
+                return _portal ??= new Portal();
             }
             set
             {
                 _portal = value ?? throw new ArgumentNullException(nameof(value), "Portal cannot be null");
             }
         }
+#pragma warning restore CA1065
 
         /// <summary>
         /// The one simulation runtime the server shares.
@@ -73,9 +91,106 @@ namespace TiaMcpServer.ModelContextProtocol
             }
         }
 
+        /// <summary>
+        /// The governance layer this session writes through.
+        /// </summary>
+        /// <remarks>
+        /// Shared, because plans awaiting confirmation live in it: a per-call guard would lose the
+        /// plan between proposing a change and confirming it.
+        /// </remarks>
+        public static Governance.GuardedWrite GuardedWrites =>
+            _services != null
+                ? _services.GetRequiredService<Governance.GuardedWrite>()
+                : Fallback.Guard;
+
+        /// <summary>The mode this session is in.</summary>
+        public static Governance.IModeGate ModeGate =>
+            _services != null
+                ? _services.GetRequiredService<Governance.IModeGate>()
+                : Fallback.Gate;
+
+        /// <summary>Where long operations run, so the caller is not blocked on them.</summary>
+        /// <remarks>
+        /// Shared, because a job outlives the call that started it: a per-call store would lose the
+        /// job between starting it and asking how it went.
+        /// </remarks>
+        public static Jobs.IJobStore JobStore =>
+            _services != null
+                ? _services.GetRequiredService<Jobs.IJobStore>()
+                : Fallback.JobStore;
+
+        /// <summary>Where the previous state of anything this session overwrites is kept.</summary>
+        /// <remarks>
+        /// Deliberately not a parameter on the write tools any more. A caller that chooses where the
+        /// backup goes is a caller who can put it somewhere nobody will look, and an agent that can
+        /// choose can choose a temp directory. The tools ask this for a location and are told one.
+        /// </remarks>
+        public static Governance.IBackupRegistry Backups =>
+            _services != null
+                ? _services.GetRequiredService<Governance.IBackupRegistry>()
+                : Fallback.Backups;
+
+        /// <summary>
+        /// The governance layer a host that registered none still writes through.
+        /// </summary>
+        /// <remarks>
+        /// There is no unguarded path, so there cannot be a "no governance registered" one either.
+        /// Refusing with an exception would have reached the caller as an operation failure —
+        /// something to retry — when the truth is that this session may not write. So the fallback
+        /// is a real gate in Study Mode reading the default policy, which is absent on a machine
+        /// that never configured one and therefore denies everything, loudly and with a reason.
+        /// </remarks>
+        private static class Fallback
+        {
+            internal static readonly Governance.IModeGate Gate = Governance.ModeGate.ForStudy();
+
+            internal static readonly Governance.GuardedWrite Guard = new Governance.GuardedWrite(
+                Gate,
+                Governance.WritePolicy.Load(CliOptions.DefaultPolicyPath),
+                new Governance.JsonlAuditTrail(CliOptions.DefaultAuditPath),
+                new Governance.ChangePlanStore(new Governance.SystemClock()));
+
+            internal static readonly Governance.IBackupRegistry Backups = new Governance.BackupRegistry(
+                CliOptions.DefaultBackupRoot,
+                new Governance.SystemClock());
+
+            internal static readonly Jobs.IJobStore JobStore = new Jobs.JobStore(
+                new Governance.SystemClock(),
+                new Jobs.ThreadPoolJobDispatcher());
+        }
+
         public static void SetServiceProvider(IServiceProvider services)
         {
             _services = services;
+        }
+
+        [McpServerTool(Name = "GetOperationMode"), Description("Report whether this session targets PLCSIM Advanced (Study) or physical hardware (Workshop), and whether changes confirm themselves or need a person. Ask this before proposing any write: the answer decides what happens next.")]
+        public static ResponseMessage GetOperationMode()
+        {
+            try
+            {
+                var gate = ModeGate;
+
+                return new ResponseMessage
+                {
+                    Message =
+                        $"Mode: {gate.Mode}. Confirmation: {gate.RequiredConfirmation}. " +
+                        (gate.RequiredConfirmation == Governance.Confirmation.Manual
+                            ? "Every change waits for a person to confirm it, one at a time."
+                            : "Whitelisted changes confirm themselves and are still audited."),
+                    Meta = new JsonObject
+                    {
+                        ["timestamp"] = DateTime.Now,
+                        ["success"] = true,
+                        ["mode"] = gate.Mode.ToString(),
+                        ["confirmation"] = gate.RequiredConfirmation.ToString()
+                    }
+                };
+            }
+            catch (TiaMcpServer.Siemens.PortalException pex)
+            {
+                throw ToMcpException(pex, "Failed to read the operation mode");
+            }
         }
 
         #region portal
@@ -83,6 +198,9 @@ namespace TiaMcpServer.ModelContextProtocol
         [McpServerTool(Name = "Connect"), Description("Connect to TIA-Portal")]
         public static ResponseConnect Connect()
         {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
             Logger?.LogInformation("Connecting to TIA Portal...");
 
             try
@@ -113,6 +231,9 @@ namespace TiaMcpServer.ModelContextProtocol
         [McpServerTool(Name = "Disconnect"), Description("Disconnect from TIA-Portal")]
         public static ResponseDisconnect Disconnect()
         {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
             try
             {
                 if (Portal.DisconnectPortal())
@@ -145,6 +266,9 @@ namespace TiaMcpServer.ModelContextProtocol
         [McpServerTool(Name = "GetState"), Description("Get the state of the TIA-Portal MCP server")]
         public static ResponseState GetState()
         {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
             try
             {
                 var state = Portal.GetState();
@@ -169,7 +293,6 @@ namespace TiaMcpServer.ModelContextProtocol
                     throw new McpException("Failed to retrieve TIA-Portal MCP server state", McpErrorCode.InternalError);
                 }
                 
-
             }
             catch (Exception ex) when (ex is not McpException)
             {
@@ -184,6 +307,9 @@ namespace TiaMcpServer.ModelContextProtocol
         [McpServerTool(Name = "GetProject"), Description("Get open local project/session")]
         public static ResponseGetProjects GetProjects()
         {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
             try
             {
                 var list = Portal.GetProjects();
@@ -226,6 +352,9 @@ namespace TiaMcpServer.ModelContextProtocol
         public static ResponseOpenProject OpenProject(
             [Description("path: defines the path where to the project/session")] string path)
         {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
             try
             {
                 Portal.CloseProject();
@@ -279,6 +408,9 @@ namespace TiaMcpServer.ModelContextProtocol
             [Description("archivePath: full path of the .zapXX archive to retrieve")] string archivePath,
             [Description("targetDirectory: directory to extract into; the call is refused if the project folder already exists")] string targetDirectory)
         {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
             try
             {
                 var projectPath = Portal.RetrieveProject(archivePath, targetDirectory);
@@ -306,6 +438,9 @@ namespace TiaMcpServer.ModelContextProtocol
         [McpServerTool(Name = "GetNetworkTopology"), Description("List every device interface in the project with its address and subnet. Read this before writing code that addresses remote IO, or before configuring a PROFINET or PROFIBUS network: an interface with no subnet is wired to nothing.")]
         public static ResponseNetworkTopology GetNetworkTopology()
         {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
             try
             {
                 var nodes = Portal.GetNetworkTopology();
@@ -338,6 +473,9 @@ namespace TiaMcpServer.ModelContextProtocol
         public static ResponseNetworkTopology GetOpcUaInterfaces(
             [Description("softwarePath: full path to the plc software, e.g. 'PLC_0'")] string softwarePath)
         {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
             try
             {
                 var interfaces = Portal.GetOpcUaInterfaces(softwarePath);
@@ -370,6 +508,9 @@ namespace TiaMcpServer.ModelContextProtocol
             [Description("interfaceName: the server interface to export; call GetOpcUaInterfaces to see the names")] string interfaceName,
             [Description("exportPath: file to write")] string exportPath)
         {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
             try
             {
                 var written = Portal.ExportOpcUaInterface(softwarePath, interfaceName, exportPath);
@@ -387,58 +528,6 @@ namespace TiaMcpServer.ModelContextProtocol
             catch (TiaMcpServer.Siemens.PortalException pex)
             {
                 throw ToMcpException(pex, $"Failed to export the OPC UA interface '{interfaceName}'");
-            }
-        }
-
-        [McpServerTool(Name = "CreateIoSystem"), Description("Create a PROFINET IO system on a CPU so IO devices can be attached to it. The current network layout is recorded to backupDirectory first, because this rewires the project.")]
-        public static ResponseMessage CreateIoSystem(
-            [Description("controllerPath: full path to the CPU that will act as IO controller, e.g. 'PLC_0'")] string controllerPath,
-            [Description("ioSystemName: a name for the IO system, e.g. 'Cell_IO'")] string ioSystemName,
-            [Description("backupDirectory: where the network layout is written before the change; required")] string backupDirectory)
-        {
-            try
-            {
-                var subnet = Portal.CreateIoSystem(controllerPath, ioSystemName, backupDirectory);
-
-                return new ResponseMessage
-                {
-                    Message = $"IO system '{ioSystemName}' created on '{controllerPath}', subnet '{subnet}'",
-                    Meta = new JsonObject
-                    {
-                        ["timestamp"] = DateTime.Now,
-                        ["success"] = true
-                    }
-                };
-            }
-            catch (TiaMcpServer.Siemens.PortalException pex)
-            {
-                throw ToMcpException(pex, $"Failed to create IO system '{ioSystemName}'");
-            }
-        }
-
-        [McpServerTool(Name = "AssignDeviceToIoSystem"), Description("Attach an IO device to an existing PROFINET IO system. The CPU that owns the IO system cannot be attached to it: a controller is not one of its own devices.")]
-        public static ResponseMessage AssignDeviceToIoSystem(
-            [Description("devicePath: full path to the IO device to attach")] string devicePath,
-            [Description("ioSystemName: the IO system to attach it to")] string ioSystemName,
-            [Description("backupDirectory: where the network layout is written before the change; required")] string backupDirectory)
-        {
-            try
-            {
-                Portal.AssignDeviceToIoSystem(devicePath, ioSystemName, backupDirectory);
-
-                return new ResponseMessage
-                {
-                    Message = $"'{devicePath}' attached to IO system '{ioSystemName}'",
-                    Meta = new JsonObject
-                    {
-                        ["timestamp"] = DateTime.Now,
-                        ["success"] = true
-                    }
-                };
-            }
-            catch (TiaMcpServer.Siemens.PortalException pex)
-            {
-                throw ToMcpException(pex, $"Failed to attach '{devicePath}' to IO system '{ioSystemName}'");
             }
         }
 
@@ -467,86 +556,13 @@ namespace TiaMcpServer.ModelContextProtocol
             }
         }
 
-        [McpServerTool(Name = "CreateSimulationInstance"), Description("Create a PLCSIM Advanced virtual controller and give it an address. The address must match the CPU's address in the project, otherwise TIA Portal cannot download to it.")]
-        public static ResponseSimulationInstance CreateSimulationInstance(
-            [Description("instanceName: a name for the virtual controller, unique within the runtime")] string instanceName,
-            [Description("ipAddress: the address to assign, matching the CPU in the project, e.g. '192.168.0.1'")] string ipAddress,
-            [Description("subnetMask: usually '255.255.255.0'")] string subnetMask = "255.255.255.0")
-        {
-            try
-            {
-                var runtime = Simulation;
-
-                runtime.CreateInstance(instanceName);
-
-                return Describe(runtime.SetInstanceAddress(instanceName, ipAddress, subnetMask), $"Instance '{instanceName}' created at {ipAddress}");
-            }
-            catch (TiaMcpServer.Siemens.PortalException pex)
-            {
-                throw ToMcpException(pex, $"Failed to create simulation instance '{instanceName}'");
-            }
-        }
-
-        [McpServerTool(Name = "StartSimulationInstance"), Description("Put a virtual controller into RUN. It must have a program: a controller that has never been downloaded to cannot start.")]
-        public static ResponseSimulationInstance StartSimulationInstance(
-            [Description("instanceName: the virtual controller to start")] string instanceName)
-        {
-            try
-            {
-                var started = Simulation.StartInstance(instanceName);
-
-                return Describe(started, $"Instance '{instanceName}' is {started.OperatingState}");
-            }
-            catch (TiaMcpServer.Siemens.PortalException pex)
-            {
-                throw ToMcpException(pex, $"Failed to start simulation instance '{instanceName}'");
-            }
-        }
-
-        [McpServerTool(Name = "StopSimulationInstance"), Description("Put a virtual controller into STOP.")]
-        public static ResponseSimulationInstance StopSimulationInstance(
-            [Description("instanceName: the virtual controller to stop")] string instanceName)
-        {
-            try
-            {
-                var stopped = Simulation.StopInstance(instanceName);
-
-                return Describe(stopped, $"Instance '{instanceName}' is {stopped.OperatingState}");
-            }
-            catch (TiaMcpServer.Siemens.PortalException pex)
-            {
-                throw ToMcpException(pex, $"Failed to stop simulation instance '{instanceName}'");
-            }
-        }
-
-        [McpServerTool(Name = "DeleteSimulationInstance"), Description("Power off a virtual controller and remove it from the runtime.")]
-        public static ResponseMessage DeleteSimulationInstance(
-            [Description("instanceName: the virtual controller to remove")] string instanceName)
-        {
-            try
-            {
-                Simulation.DeleteInstance(instanceName);
-
-                return new ResponseMessage
-                {
-                    Message = $"Instance '{instanceName}' removed",
-                    Meta = new JsonObject
-                    {
-                        ["timestamp"] = DateTime.Now,
-                        ["success"] = true
-                    }
-                };
-            }
-            catch (TiaMcpServer.Siemens.PortalException pex)
-            {
-                throw ToMcpException(pex, $"Failed to remove simulation instance '{instanceName}'");
-            }
-        }
-
         [McpServerTool(Name = "GetSimulationTargetName"), Description("Report which PC interface a download would go through, without downloading. It is always a PLCSIM interface: this server refuses to download through a real network adapter.")]
         public static ResponseMessage GetSimulationTargetName(
             [Description("softwarePath: full path to the CPU in the project, e.g. 'PLC_0'")] string softwarePath)
         {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
             try
             {
                 var target = Portal.GetSimulationTargetName(softwarePath);
@@ -564,35 +580,6 @@ namespace TiaMcpServer.ModelContextProtocol
             catch (TiaMcpServer.Siemens.PortalException pex)
             {
                 throw ToMcpException(pex, $"Failed to resolve a download target for '{softwarePath}'");
-            }
-        }
-
-        [McpServerTool(Name = "DownloadToSimulation"), Description("Download hardware and software to a PLCSIM Advanced virtual controller. There is no equivalent for physical hardware, by design. Compile first, and make sure an instance exists at the CPU's address.")]
-        public static ResponseCompileSoftware DownloadToSimulation(
-            [Description("softwarePath: full path to the CPU in the project, e.g. 'PLC_0'")] string softwarePath)
-        {
-            try
-            {
-                var report = Portal.DownloadToSimulation(softwarePath);
-
-                return new ResponseCompileSoftware(
-                    report.ErrorCount,
-                    report.WarningCount,
-                    report.Errors.Select(error => error.ToString()).ToList())
-                {
-                    Message = report.IsSuccessful
-                        ? $"'{softwarePath}' downloaded to simulation"
-                        : $"Download of '{softwarePath}' reported {report.ErrorCount} error(s); see Messages",
-                    Meta = new JsonObject
-                    {
-                        ["timestamp"] = DateTime.Now,
-                        ["success"] = report.IsSuccessful
-                    }
-                };
-            }
-            catch (TiaMcpServer.Siemens.PortalException pex)
-            {
-                throw ToMcpException(pex, $"Failed to download '{softwarePath}' to simulation");
             }
         }
 
@@ -617,34 +604,133 @@ namespace TiaMcpServer.ModelContextProtocol
 
         #endregion
 
-        [McpServerTool(Name = "WriteScl"), Description("Write SCL source into a PLC program, generating the blocks it declares. The existing blocks are exported to backupDirectory first, because generation overwrites blocks of the same name. Compile afterwards to find out whether the code is valid.")]
-        public static ResponseWriteScl WriteScl(
-            [Description("softwarePath: full path in the project structure to the plc software, e.g. 'Group1/PLC_1'")] string softwarePath,
-            [Description("sclCode: the SCL source text; it may declare more than one block")] string sclCode,
-            [Description("backupDirectory: where the current blocks are exported before anything is written; required")] string backupDirectory)
+        [McpServerTool(Name = "GetJobStatus"), Description("Ask how a long operation started with runAsJob is going. State is Queued, Running, Succeeded, Failed or Cancelled; detail carries the result once it has finished.")]
+        public static ResponseJob GetJobStatus(
+            [Description("jobId: the id the tool that started the job returned")] string jobId)
         {
             try
             {
-                var generated = Portal.WriteScl(softwarePath, sclCode, backupDirectory);
+                return Describe(JobStore.Status(Jobs.JobId.Parse(jobId)), "Job");
+            }
+            catch (TiaMcpServer.Siemens.PortalException pex)
+            {
+                throw ToMcpException(pex, $"Failed to report on job '{jobId}'");
+            }
+        }
 
-                return new ResponseWriteScl(generated)
+        [McpServerTool(Name = "CancelJob"), Description("Cancel a long operation that has not started yet. A job already inside Openness cannot be interrupted — a compile and a download accept no cancellation — and this reports that rather than pretending to stop it.")]
+        public static ResponseJob CancelJob(
+            [Description("jobId: the id the tool that started the job returned")] string jobId)
+        {
+            try
+            {
+                var job = JobStore.Cancel(Jobs.JobId.Parse(jobId));
+
+                return Describe(
+                    job,
+                    job.State == Jobs.JobState.Cancelled
+                        ? "Cancelled"
+                        : "Not cancelled; it is past the point where that is possible. Job");
+            }
+            catch (TiaMcpServer.Siemens.PortalException pex)
+            {
+                throw ToMcpException(pex, $"Failed to cancel job '{jobId}'");
+            }
+        }
+
+        [McpServerTool(Name = "ListJobs"), Description("List every long operation this session has run, newest first, with what became of it.")]
+        public static ResponseJobs ListJobs()
+        {
+            try
+            {
+                var items = JobStore.List().Select(ToResponse).ToList();
+
+                return new ResponseJobs(items)
                 {
-                    Message = $"Generated {generated.Count} block(s): {string.Join(", ", generated)}. Compile the software to check them.",
+                    Message = items.Count == 0
+                        ? "No long operations have been started in this session."
+                        : $"{items.Count} job(s), newest first.",
                     Meta = new JsonObject
                     {
                         ["timestamp"] = DateTime.Now,
-                        ["success"] = true
+                        ["success"] = true,
+                        ["count"] = items.Count
                     }
                 };
             }
             catch (TiaMcpServer.Siemens.PortalException pex)
             {
-                throw ToMcpException(pex, $"Failed writing SCL into '{softwarePath}'");
+                throw ToMcpException(pex, "Failed to list the jobs");
             }
-            catch (Exception ex) when (ex is not McpException)
+        }
+
+        private static ResponseJob ToResponse(Jobs.JobRecord job)
+        {
+            return new ResponseJob(
+                job.Id.Value,
+                job.Tool,
+                job.Target,
+                job.State.ToString(),
+                job.Detail,
+                job.IsCancellable);
+        }
+
+        private static ResponseJob Describe(Jobs.JobRecord job, string prefix)
+        {
+            var response = ToResponse(job);
+
+            response.Message = $"{prefix} '{job.Id}' ({job.Tool} on '{job.Target}'): {job.State}." +
+                (job.Detail.Length == 0 ? string.Empty : $" {job.Detail}");
+            response.Meta = new JsonObject
             {
-                throw new McpException($"Unexpected error writing SCL into '{softwarePath}': {ex.Message}", ex, McpErrorCode.InternalError);
+                ["timestamp"] = DateTime.Now,
+                ["success"] = job.State != Jobs.JobState.Failed,
+                ["jobId"] = job.Id.Value,
+                ["state"] = job.State.ToString(),
+                ["isFinished"] = job.IsFinished,
+                ["isCancellable"] = job.IsCancellable
+            };
+
+            return response;
+        }
+
+        [McpServerTool(Name = "ListBackups"), Description("List every copy of previous state the server saved before overwriting something. A write tool takes one automatically; this is how the copy is found again. An entry with fileCount 0 is a change that was refused or failed before exporting, so there is nothing in it.")]
+        public static ResponseBackups ListBackups()
+        {
+            try
+            {
+                var backups = Backups.List();
+                var items = backups.Select(ToResponse).ToList();
+                var empty = backups.Count(backup => backup.IsEmpty);
+
+                return new ResponseBackups(items)
+                {
+                    Message = items.Count == 0
+                        ? "No backups have been taken yet."
+                        : $"{items.Count} backup(s), newest first; {empty} hold nothing.",
+                    Meta = new JsonObject
+                    {
+                        ["timestamp"] = DateTime.Now,
+                        ["success"] = true,
+                        ["count"] = items.Count,
+                        ["emptyCount"] = empty
+                    }
+                };
             }
+            catch (TiaMcpServer.Siemens.PortalException pex)
+            {
+                throw ToMcpException(pex, "Failed to list the backups");
+            }
+        }
+
+        private static ResponseBackup ToResponse(Governance.BackupRecord backup)
+        {
+            return new ResponseBackup(
+                backup.Path,
+                backup.Tool,
+                backup.Target,
+                backup.TakenAt.ToString("o", System.Globalization.CultureInfo.InvariantCulture),
+                backup.FileCount);
         }
 
         [McpServerTool(Name = "ExportSourceSnapshot"), Description("Export a PLC program to plain text (SCL/DB/AWL sources, UDTs and tag tables) laid out for version control. Blocks written in LAD, FBD or GRAPH have no text form and are reported as unsupported instead of being exported.")]
@@ -652,6 +738,9 @@ namespace TiaMcpServer.ModelContextProtocol
             [Description("softwarePath: full path in the project structure to the plc software, e.g. 'Group1/PLC_1'")] string softwarePath,
             [Description("targetDirectory: root directory of the snapshot; blocks, types and tags are written into subfolders")] string targetDirectory)
         {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
             try
             {
                 var snapshot = Portal.ExportSourceSnapshot(softwarePath, targetDirectory);
@@ -701,6 +790,41 @@ namespace TiaMcpServer.ModelContextProtocol
             return message;
         }
 
+        private static List<ResponseBlockInfo> DescribeBlocks(IEnumerable<PlcBlock>? blocks)
+        {
+            var described = new List<ResponseBlockInfo>();
+
+            if (blocks == null)
+            {
+                return described;
+            }
+
+            foreach (var block in blocks)
+            {
+                if (block == null)
+                {
+                    continue;
+                }
+
+                described.Add(new ResponseBlockInfo
+                {
+                    Name = block.Name,
+                    TypeName = block.GetType().Name,
+                    Namespace = block.Namespace,
+                    ProgrammingLanguage = Enum.GetName(typeof(ProgrammingLanguage), block.ProgrammingLanguage),
+                    MemoryLayout = Enum.GetName(typeof(MemoryLayout), block.MemoryLayout),
+                    IsConsistent = block.IsConsistent,
+                    HeaderName = block.HeaderName,
+                    ModifiedDate = block.ModifiedDate,
+                    IsKnowHowProtected = block.IsKnowHowProtected,
+                    Attributes = Helper.GetAttributeList(block),
+                    Description = block.ToString()
+                });
+            }
+
+            return described;
+        }
+
         private static McpException ToMcpException(TiaMcpServer.Siemens.PortalException portalException, string fallbackMessage)
         {
             Logger?.LogError(portalException, "{Message}", fallbackMessage);
@@ -717,146 +841,22 @@ namespace TiaMcpServer.ModelContextProtocol
             }
         }
 
-        [McpServerTool(Name = "SaveProject"), Description("Save the current TIA-Portal local project/session")]
-        public static ResponseSaveProject SaveProject()
+        private static ResponseSaveAsProject SaveProjectAs(string newProjectPath)
         {
-            try
+            if (!Portal.SaveAsProject(newProjectPath))
             {
-                if (Portal.IsLocalSession)
-                {
-                    if (Portal.SaveSession())
-                    {
-                        return new ResponseSaveProject
-                        {
-                            Message = "Local session saved",
-                            Meta = new JsonObject
-                            {
-                                ["timestamp"] = DateTime.Now,
-                                ["success"] = true
-                            }
-                        };
-                    }
-                    else
-                    {
-                        throw new McpException("Failed to save local session", McpErrorCode.InternalError);
-                    }
-                }
-                else
-                {
-                    if (Portal.SaveProject())
-                    {
-                        return new ResponseSaveProject
-                        {
-                            Message = "Local project saved",
-                            Meta = new JsonObject
-                            {
-                                ["timestamp"] = DateTime.Now,
-                                ["success"] = true
-                            }
-                        };
-                    }
-                    else
-                    {
-                        throw new McpException("Failed to save project", McpErrorCode.InternalError);
-                    }
-                }
+                throw new McpException($"Failed saving local project as '{newProjectPath}'", McpErrorCode.InternalError);
             }
-            catch (Exception ex) when (ex is not McpException)
-            {
-                throw new McpException($"Unexpected error saving local project/session: {ex.Message}", ex, McpErrorCode.InternalError);
-            }
-        }
 
-        [McpServerTool(Name = "SaveAsProject"), Description("Save current TIA-Portal project/session with a new name")]
-        public static ResponseSaveAsProject SaveAsProject(
-            [Description("newProjectPath: defines the new path where to save the project")] string newProjectPath)
-        {
-            try
+            return new ResponseSaveAsProject
             {
-                if (Portal.IsLocalSession)
+                Message = $"Local project saved as '{newProjectPath}'",
+                Meta = new JsonObject
                 {
-                    throw new McpException($"Cannot save local session as '{newProjectPath}'", McpErrorCode.InvalidParams);
+                    ["timestamp"] = DateTime.Now,
+                    ["success"] = true
                 }
-                else
-                {
-                    if (Portal.SaveAsProject(newProjectPath))
-                    {
-                        return new ResponseSaveAsProject
-                        {
-                            Message = $"Local project saved as '{newProjectPath}'",
-                            Meta = new JsonObject
-                            {
-                                ["timestamp"] = DateTime.Now,
-                                ["success"] = true
-                            }
-                        };
-                    }
-                    else
-                    {
-                        throw new McpException($"Failed saving local project as '{newProjectPath}'", McpErrorCode.InternalError);
-                    }
-                }
-
-            }
-            catch (Exception ex) when (ex is not McpException)
-            {
-                throw new McpException($"Unexpected error saving local project/session as '{newProjectPath}': {ex.Message}", ex, McpErrorCode.InternalError);
-            }
-        }
-
-        [McpServerTool(Name = "CloseProject"), Description("Close the current TIA-Portal project/session")]
-        public static ResponseCloseProject CloseProject()
-        {
-            try
-            {
-                bool success;
-
-                if (Portal.IsLocalSession)
-                {
-                    success = Portal.CloseSession();
-                    if (success)
-                    {
-                        return new ResponseCloseProject
-                        {
-                            Message = "Local session closed",
-                            Meta = new JsonObject
-                            {
-                                ["timestamp"] = DateTime.Now,
-                                ["success"] = true
-                            }
-                        };
-                    }
-                    else
-                    {
-                        throw new McpException("Failed closing local session", McpErrorCode.InternalError);
-                    }
-                }
-                else
-                {
-                    success = Portal.CloseProject();
-                    if (success)
-                    {
-                        return new ResponseCloseProject
-                        {
-                            Message = "Local project closed",
-                            Meta = new JsonObject
-                            {
-                                ["timestamp"] = DateTime.Now,
-                                ["success"] = true
-                            }
-                        };
-                    }
-                    else
-                    {
-                        throw new McpException("Failed closing project", McpErrorCode.InternalError);
-                    }
-                }
-
-            }
-            catch (Exception ex) when (ex is not McpException)
-            {
-                throw new McpException($"Unexpected error closing local project/session: {ex.Message}", ex, McpErrorCode.InternalError);
-            }
+            };
         }
 
         #endregion
@@ -866,6 +866,9 @@ namespace TiaMcpServer.ModelContextProtocol
         [McpServerTool(Name = "GetProjectTree"), Description("Get project structure as a tree view on current local project/session")]
         public static ResponseProjectTree GetProjectTree()
         {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
             try
             {
                 var tree = Portal.GetProjectTree();
@@ -898,6 +901,9 @@ namespace TiaMcpServer.ModelContextProtocol
         public static ResponseDeviceInfo GetDeviceInfo(
             [Description("devicePath: defines the path in the project structure to the device")] string devicePath)
         {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
             try
             {
                 var device = Portal.GetDevice(devicePath);
@@ -934,6 +940,9 @@ namespace TiaMcpServer.ModelContextProtocol
         public static ResponseDeviceItemInfo GetDeviceItemInfo(
             [Description("deviceItemPath: defines the path in the project structure to the device item")] string deviceItemPath)
         {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
             try
             {
                 var deviceItem = Portal.GetDeviceItem(deviceItemPath);
@@ -969,6 +978,9 @@ namespace TiaMcpServer.ModelContextProtocol
         [McpServerTool(Name = "GetDevices"), Description("Get a list of all devices in the project/session")]
         public static ResponseDevices GetDevices()
         {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
             try
             {
                 var list = Portal.GetDevices();
@@ -1020,6 +1032,9 @@ namespace TiaMcpServer.ModelContextProtocol
         public static ResponseSoftwareInfo GetSoftwareInfo(
             [Description("softwarePath: defines the path in the project structure to the plc software")] string softwarePath)
         {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
             try
             {
                 var software = Portal.GetPlcSoftware(softwarePath);
@@ -1052,48 +1067,13 @@ namespace TiaMcpServer.ModelContextProtocol
             }
         }
 
-        [McpServerTool(Name = "CompileSoftware"), Description("Compile the plc software")]
-        public static ResponseCompileSoftware CompileSoftware(
-            [Description("softwarePath: defines the path in the project structure to the plc software")] string softwarePath,
-            [Description("password: the password to access adminsitration, default: no password")] string password = "")
-        {
-            try
-            {
-                var report = Portal.CompileSoftware(softwarePath, password);
-
-                // A compile that finds errors is a successful call: the errors are the answer.
-                // Throwing here would discard them, which is what the previous version did — it
-                // interpolated the CompilerResult object, so a failed build reported nothing but
-                // a type name and the caller had no idea what to fix.
-                return new ResponseCompileSoftware(
-                    report.ErrorCount,
-                    report.WarningCount,
-                    report.Errors.Select(error => error.ToString()).ToList())
-                {
-                    Message = report.IsSuccessful
-                        ? $"Software '{softwarePath}' compiled: {report.WarningCount} warning(s)"
-                        : $"Software '{softwarePath}' has {report.ErrorCount} error(s) and {report.WarningCount} warning(s); see Messages",
-                    Meta = new JsonObject
-                    {
-                        ["timestamp"] = DateTime.Now,
-                        ["success"] = report.IsSuccessful
-                    }
-                };
-            }
-            catch (TiaMcpServer.Siemens.PortalException pex)
-            {
-                throw ToMcpException(pex, $"Failed compiling software '{softwarePath}'");
-            }
-            catch (Exception ex) when (ex is not McpException)
-            {
-                throw new McpException($"Unexpected error compiling software '{softwarePath}': {ex.Message}", ex, McpErrorCode.InternalError);
-            }
-        }
-
         [McpServerTool(Name = "GetSoftwareTree"), Description("Get the structure/tree of a given PLC software showing blocks, types, and external sources")]
         public static ResponseSoftwareTree GetSoftwareTree(
             [Description("softwarePath: defines the path in the project structure to the plc software")] string softwarePath)
         {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
             try
             {
                 var tree = Portal.GetSoftwareTree(softwarePath);
@@ -1131,6 +1111,9 @@ namespace TiaMcpServer.ModelContextProtocol
             [Description("softwarePath: defines the path in the project structure to the plc software")] string softwarePath,
             [Description("blockPath: defines the path in the project structure to the block")] string blockPath)
         {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
             try
             {
                 var block = Portal.GetBlock(softwarePath, blockPath);
@@ -1175,6 +1158,9 @@ namespace TiaMcpServer.ModelContextProtocol
             [Description("softwarePath: defines the path in the project structure to the plc software")] string softwarePath,
             [Description("regexName: defines the name or regular expression to find the block. Use empty string (default) to find all")] string regexName = "")
         {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
             try
             {
                 var list = Portal.GetBlocks(softwarePath, regexName);
@@ -1231,6 +1217,9 @@ namespace TiaMcpServer.ModelContextProtocol
         public static ResponseBlocksWithHierarchy GetBlocksWithHierarchy(
         [Description("softwarePath: defines the path in the project structure to the plc software")] string softwarePath)
         {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
             try
             {
                 var rootGroup = Portal.GetBlockRootGroup(softwarePath);
@@ -1261,8 +1250,6 @@ namespace TiaMcpServer.ModelContextProtocol
             }
         }
 
-
-
         [McpServerTool(Name = "ExportBlock"), Description("Export a block from plc software to file")]
         public static ResponseExportBlock ExportBlock(
             [Description("softwarePath: defines the path in the project structure to the plc software")] string softwarePath,
@@ -1270,6 +1257,9 @@ namespace TiaMcpServer.ModelContextProtocol
             [Description("exportPath: defines the path where to export the block")] string exportPath,
             [Description("preservePath: preserves the path/structure of the plc software")] bool preservePath = false)
         {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
             try
             {
                 var block = Portal.ExportBlock(softwarePath, blockPath, exportPath, preservePath);
@@ -1359,37 +1349,6 @@ namespace TiaMcpServer.ModelContextProtocol
             }
         }
 
-        [McpServerTool(Name = "ImportBlock"), Description("Import a block file to plc software")]
-        public static ResponseImportBlock ImportBlock(
-            [Description("softwarePath: defines the path in the project structure to the plc software")] string softwarePath,
-            [Description("groupPath: defines the path in the project structure to the group, where to import the block")] string groupPath,
-            [Description("importPath: defines the path of the xml file from where to import the block")] string importPath)
-        {
-            try
-            {
-                if (Portal.ImportBlock(softwarePath, groupPath, importPath))
-                {
-                    return new ResponseImportBlock
-                    {
-                        Message = $"Block imported from '{importPath}' to '{groupPath}'",
-                        Meta = new JsonObject
-                        {
-                            ["timestamp"] = DateTime.Now,
-                            ["success"] = true
-                        }
-                    };
-                }
-                else
-                {
-                    throw new McpException($"Failed importing block from '{importPath}' to '{groupPath}'", McpErrorCode.InternalError);
-                }
-            }
-            catch (Exception ex) when (ex is not McpException)
-            {
-                throw new McpException($"Unexpected error importing block from '{importPath}' to '{groupPath}': {ex.Message}", ex, McpErrorCode.InternalError);
-            }
-        }
-
         [McpServerTool(Name = "ExportBlocks"), Description("Export all blocks from the plc software to path")]
         public static async Task<ResponseExportBlocks> ExportBlocks(
             IMcpServer server,
@@ -1407,7 +1366,7 @@ namespace TiaMcpServer.ModelContextProtocol
                 // First, get the list of blocks to determine total count
                 Logger?.LogInformation($"Starting export of blocks from '{softwarePath}' to '{exportPath}'");
                 
-                var allBlocks = await Task.Run(() => Portal.GetBlocks(softwarePath, regexName));
+                var allBlocks = await Task.Run(() => TiaMcpServer.Siemens.OpennessGate.Run(() => Portal.GetBlocks(softwarePath, regexName)));
                 var totalBlocks = allBlocks?.Count ?? 0;
 
                 if (totalBlocks == 0)
@@ -1451,7 +1410,7 @@ namespace TiaMcpServer.ModelContextProtocol
                 }
 
                 // Export blocks asynchronously
-                var exportedBlocks = await Task.Run(() => Portal.ExportBlocks(softwarePath, exportPath, regexName, preservePath));
+                var exportedBlocks = await Task.Run(() => TiaMcpServer.Siemens.OpennessGate.Run(() => Portal.ExportBlocks(softwarePath, exportPath, regexName, preservePath)));
 
                 // Build list of inconsistent (skipped) blocks for reporting
                 var inconsistentInfos = new List<ResponseBlockInfo>();
@@ -1594,6 +1553,9 @@ namespace TiaMcpServer.ModelContextProtocol
             [Description("softwarePath: defines the path in the project structure to the plc software")] string softwarePath,
             [Description("typePath: defines the path in the project structure to the type")] string typePath)
         {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
             try
             {
                 var type = Portal.GetType(softwarePath, typePath);
@@ -1635,6 +1597,9 @@ namespace TiaMcpServer.ModelContextProtocol
             [Description("softwarePath: defines the path in the project structure to the plc software")] string softwarePath,
             [Description("regexName: defines the name or regular expression to find the block. Use empty string (default) to find all")] string regexName = "")
         {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
             try
             {
                 var list = Portal.GetTypes(softwarePath, regexName);
@@ -1691,6 +1656,9 @@ namespace TiaMcpServer.ModelContextProtocol
             [Description("typePath: defines the path in the project structure to the type")] string typePath,
             [Description("preservePath: preserves the path/structure of the plc software")] bool preservePath = false)
         {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
             try
             {
                 var type = Portal.ExportType(softwarePath, typePath, exportPath, preservePath);
@@ -1738,37 +1706,6 @@ namespace TiaMcpServer.ModelContextProtocol
             }
         }
 
-        [McpServerTool(Name = "ImportType"), Description("Import a type from file into the plc software")]
-        public static ResponseImportType ImportType(
-            [Description("softwarePath: defines the path in the project structure to the plc software")] string softwarePath,
-            [Description("groupPath: defines the path in the project structure to the group, where to import the type")] string groupPath,
-            [Description("importPath: defines the path of the xml file from where to import the type")] string importPath)
-        {
-            try
-            {
-                if (Portal.ImportType(softwarePath, groupPath, importPath))
-                {
-                    return new ResponseImportType
-                    {
-                        Message = $"Type imported from '{importPath}' to '{groupPath}'",
-                        Meta = new JsonObject
-                        {
-                            ["timestamp"] = DateTime.Now,
-                            ["success"] = true
-                        }
-                    };
-                }
-                else
-                {
-                    throw new McpException($"Failed importing type from '{importPath}' to '{groupPath}'", McpErrorCode.InternalError);
-                }
-            }
-            catch (Exception ex) when (ex is not McpException)
-            {
-                throw new McpException($"Unexpected error importing type from '{importPath}' to '{groupPath}': {ex.Message}", ex, McpErrorCode.InternalError);
-            }
-        }
-
         [McpServerTool(Name = "ExportTypes"), Description("Export types from the plc software to path")]
         public static async Task<ResponseExportTypes> ExportTypes(
             IMcpServer server,
@@ -1786,7 +1723,7 @@ namespace TiaMcpServer.ModelContextProtocol
                 // First, get the list of types to determine total count
                 Logger?.LogInformation($"Starting export of types from '{softwarePath}' to '{exportPath}'");
                 
-                var allTypes = await Task.Run(() => Portal.GetTypes(softwarePath, regexName));
+                var allTypes = await Task.Run(() => TiaMcpServer.Siemens.OpennessGate.Run(() => Portal.GetTypes(softwarePath, regexName)));
                 var totalTypes = allTypes?.Count ?? 0;
 
                 if (totalTypes == 0)
@@ -1830,7 +1767,7 @@ namespace TiaMcpServer.ModelContextProtocol
                 }
 
                 // Export types asynchronously
-                var exportedTypes = await Task.Run(() => Portal.ExportTypes(softwarePath, exportPath, regexName, preservePath));
+                var exportedTypes = await Task.Run(() => TiaMcpServer.Siemens.OpennessGate.Run(() => Portal.ExportTypes(softwarePath, exportPath, regexName, preservePath)));
 
                 // Build list of inconsistent (skipped) types for reporting
                 var inconsistentTypeInfos = new List<ResponseTypeInfo>();
@@ -1969,6 +1906,9 @@ namespace TiaMcpServer.ModelContextProtocol
             [Description("exportPath: defines the path where to export the documents")] string exportPath,
             [Description("preservePath: preserves the path/structure of the plc software")] bool preservePath = false)
         {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
             try
             {
                 if (Engineering.TiaMajorVersion < 20)
@@ -2019,7 +1959,7 @@ namespace TiaMcpServer.ModelContextProtocol
                 // First, get the list of blocks to determine total count
                 Logger?.LogInformation($"Starting export of blocks as documents from '{softwarePath}' to '{exportPath}'");
                 
-                var allBlocks = await Task.Run(() => Portal.GetBlocks(softwarePath, regexName));
+                var allBlocks = await Task.Run(() => TiaMcpServer.Siemens.OpennessGate.Run(() => Portal.GetBlocks(softwarePath, regexName)));
                 var totalBlocks = allBlocks?.Count ?? 0;
 
                 if (totalBlocks == 0)
@@ -2063,7 +2003,7 @@ namespace TiaMcpServer.ModelContextProtocol
                 }
 
                 // Export blocks as documents asynchronously
-                var exportedBlocks = await Task.Run(() => Portal.ExportBlocksAsDocuments(softwarePath, exportPath, regexName, preservePath));
+                var exportedBlocks = await Task.Run(() => TiaMcpServer.Siemens.OpennessGate.Run(() => Portal.ExportBlocksAsDocuments(softwarePath, exportPath, regexName, preservePath)));
                 
                 // Send progress update after export completion
                 if (exportedBlocks != null && progressToken != null)
@@ -2168,216 +2108,6 @@ namespace TiaMcpServer.ModelContextProtocol
             }
         }
 
-        [McpServerTool(Name = "ImportFromDocuments"), Description("Import program block from SIMATIC SD documents (.s7dcl/.s7res) into PLC software (V20+)")]
-        public static ResponseImportFromDocuments ImportFromDocuments(
-            [Description("softwarePath: defines the path in the project structure to the plc software")] string softwarePath,
-            [Description("groupPath: optional path within the PLC program where the block should be placed (empty for root)")] string groupPath,
-            [Description("importPath: directory containing the document files (.s7dcl/.s7res)")] string importPath,
-            [Description("fileNameWithoutExtension: name of the block file without extension") ] string fileNameWithoutExtension,
-            [Description("importOption: ImportDocumentOptions value (None, Override, SkipInactiveCultures, ActivateInactiveCultures)")] string importOption = "Override")
-        {
-            try
-            {
-                if (Engineering.TiaMajorVersion < 20)
-                {
-                    throw new McpException("ImportFromDocuments requires TIA Portal V20 or newer", McpErrorCode.InvalidParams);
-                }
-
-                var option = ParseImportDocumentOption(importOption);
-
-                // Pre-check .s7res for missing en-US tags
-                var warnings = new JsonArray();
-                try
-                {
-                    var missingIds = GetResMissingEnUsIds(importPath, fileNameWithoutExtension);
-                    if (missingIds != null && missingIds.Count > 0)
-                    {
-                        Logger?.LogWarning($".s7res for '{fileNameWithoutExtension}' missing en-US tags for {missingIds.Count} items: {string.Join(", ", missingIds)}");
-                        warnings.Add(new JsonObject
-                        {
-                            ["name"] = fileNameWithoutExtension,
-                            ["missingEnUsIds"] = new JsonArray(missingIds.Select(id => (JsonNode)id).ToArray())
-                        });
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Logger?.LogDebug(ex, "Failed to evaluate .s7res warnings");
-                }
-
-                var ok = Portal.ImportFromDocuments(softwarePath, groupPath, importPath, fileNameWithoutExtension, option);
-                if (ok)
-                {
-                    return new ResponseImportFromDocuments
-                    {
-                        Message = $"Imported '{fileNameWithoutExtension}' from '{importPath}'",
-                        Meta = new JsonObject
-                        {
-                            ["timestamp"] = DateTime.Now,
-                            ["success"] = true,
-                            ["warnings"] = warnings
-                        }
-                    };
-                }
-                else
-                {
-                    throw new McpException($"Failed importing '{fileNameWithoutExtension}' from '{importPath}'", McpErrorCode.InternalError);
-                }
-            }
-            catch (Exception ex) when (ex is not McpException)
-            {
-                throw new McpException($"Unexpected error importing from documents: {ex.Message}", ex, McpErrorCode.InternalError);
-            }
-        }
-
-        [McpServerTool(Name = "ImportBlocksFromDocuments"), Description("Import program blocks from SIMATIC SD documents (.s7dcl/.s7res) into PLC software (V20+)")]
-        public static async Task<ResponseImportBlocksFromDocuments> ImportBlocksFromDocuments(
-            IMcpServer server,
-            RequestContext<CallToolRequestParams> context,
-            [Description("softwarePath: defines the path in the project structure to the plc software")] string softwarePath,
-            [Description("groupPath: optional path within the PLC program where the blocks should be placed (empty for root)")] string groupPath,
-            [Description("importPath: directory containing the document files (.s7dcl/.s7res)")] string importPath,
-            [Description("regexName: name or regular expression to select block files (empty for all)")] string regexName = "",
-            [Description("importOption: ImportDocumentOptions value (None, Override, SkipInactiveCultures, ActivateInactiveCultures)")] string importOption = "Override")
-        {
-            var startTime = DateTime.Now;
-            var progressToken = context.Params?.ProgressToken;
-
-            try
-            {
-                if (Engineering.TiaMajorVersion < 20)
-                {
-                    throw new McpException("ImportBlocksFromDocuments requires TIA Portal V20 or newer", McpErrorCode.InvalidParams);
-                }
-
-                // Determine total by scanning .s7dcl files matching regex
-                int total = 0;
-                var scanWarnings = new JsonArray();
-                try
-                {
-                    if (Directory.Exists(importPath))
-                    {
-                        var rx = string.IsNullOrWhiteSpace(regexName) ? null : new Regex(regexName, RegexOptions.Compiled);
-                        var files = Directory.GetFiles(importPath, "*.s7dcl", SearchOption.TopDirectoryOnly);
-                        foreach (var f in files)
-                        {
-                            var name = Path.GetFileNameWithoutExtension(f);
-                            if (rx != null && !rx.IsMatch(name))
-                                continue;
-                            total++;
-
-                            try
-                            {
-                                var missingIds = GetResMissingEnUsIds(importPath, name);
-                                if (missingIds != null && missingIds.Count > 0)
-                                {
-                                    scanWarnings.Add(new JsonObject
-                                    {
-                                        ["name"] = name,
-                                        ["missingEnUsIds"] = new JsonArray(missingIds.Select(id => (JsonNode)id).ToArray())
-                                    });
-                                }
-                            }
-                            catch { }
-                        }
-                    }
-                }
-                catch { /* ignore pre-scan errors */ }
-
-                if (progressToken != null)
-                {
-                    await server.SendNotificationAsync("notifications/progress", new
-                    {
-                        Progress = 0,
-                        Total = total,
-                        Message = total > 0 ? $"Starting import of {total} blocks from documents..." : "Scanning import directory...",
-                        progressToken
-                    });
-                }
-
-                var option = ParseImportDocumentOption(importOption);
-                var imported = await Task.Run(() => Portal.ImportBlocksFromDocuments(softwarePath, groupPath, importPath, regexName, option));
-
-                var responseList = new List<ResponseBlockInfo>();
-                int processed = 0;
-                if (imported != null)
-                {
-                    foreach (var block in imported)
-                    {
-                        if (block != null)
-                        {
-                            var attributes = Helper.GetAttributeList(block);
-                            responseList.Add(new ResponseBlockInfo
-                            {
-                                Name = block.Name,
-                                TypeName = block.GetType().Name,
-                                Namespace = block.Namespace,
-                                ProgrammingLanguage = Enum.GetName(typeof(ProgrammingLanguage), block.ProgrammingLanguage),
-                                MemoryLayout = Enum.GetName(typeof(MemoryLayout), block.MemoryLayout),
-                                IsConsistent = block.IsConsistent,
-                                HeaderName = block.HeaderName,
-                                ModifiedDate = block.ModifiedDate,
-                                IsKnowHowProtected = block.IsKnowHowProtected,
-                                Attributes = attributes,
-                                Description = block.ToString()
-                            });
-                        }
-                        processed++;
-                    }
-                }
-
-                if (progressToken != null)
-                {
-                    await server.SendNotificationAsync("notifications/progress", new
-                    {
-                        Progress = processed,
-                        Total = total,
-                        Message = $"Document import completed: {processed} blocks imported successfully",
-                        progressToken
-                    });
-                }
-
-                var duration = (DateTime.Now - startTime).TotalSeconds;
-                Logger?.LogInformation($"Document import completed: {processed} blocks imported in {duration:F2} seconds");
-
-                return new ResponseImportBlocksFromDocuments
-                {
-                    Message = $"Document import completed: {processed} blocks imported from '{importPath}'",
-                    Items = responseList,
-                    Meta = new JsonObject
-                    {
-                        ["timestamp"] = DateTime.Now,
-                        ["success"] = true,
-                        ["totalBlocks"] = total,
-                        ["importedBlocks"] = processed,
-                        ["duration"] = duration,
-                        ["warnings"] = scanWarnings
-                    }
-                };
-            }
-            catch (Exception ex) when (ex is not McpException)
-            {
-                if (progressToken != null)
-                {
-                    try
-                    {
-                        await server.SendNotificationAsync("notifications/progress", new
-                        {
-                            Progress = 0,
-                            Total = 0,
-                            Message = $"Document import failed: {ex.Message}",
-                            Error = true,
-                            progressToken
-                        });
-                    }
-                    catch { }
-                }
-
-                Logger?.LogError(ex, $"Failed importing documents from '{importPath}'");
-                throw new McpException($"Unexpected error importing documents from '{importPath}': {ex.Message}", ex, McpErrorCode.InternalError);
-            }
-        }
-
         private static ImportDocumentOptions ParseImportDocumentOption(string option)
         {
             if (string.IsNullOrWhiteSpace(option)) return ImportDocumentOptions.Override;
@@ -2436,4 +2166,3 @@ namespace TiaMcpServer.ModelContextProtocol
         #endregion
     }
 }
-

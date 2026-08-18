@@ -34,3 +34,13 @@ scratch/
 # OS
 Thumbs.db
 Desktop.ini
+
+# Governance: the audit trail is a local record of this machine, never shared history.
+.tia-mcp/audit.jsonl
+
+# Copies of overwritten state: local safety net for this machine, not shared history. They can
+# also hold whole exported programs, which do not belong in a diff.
+.tia-mcp/backups/
+
+# The policy is per project and per machine; policy.example.json is the one that ships.
+.tia-mcp/policy.json

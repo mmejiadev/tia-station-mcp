@@ -4,6 +4,9 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <BaseOutputPath>.\bin</BaseOutputPath>
+
+    <!-- MTA, to match the server. See tia.runsettings for what was measured. -->
+    <RunSettingsFilePath>$(MSBuildProjectDirectory)\tia.runsettings</RunSettingsFilePath>
   </PropertyGroup>
 
   <!--

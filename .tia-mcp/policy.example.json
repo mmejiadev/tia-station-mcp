@@ -1,0 +1,32 @@
+﻿// Copy this file to .tia-mcp/policy.json and edit it. Without policy.json every write is refused,
+// which is deliberate: the absence of a decision is a refusal, never a permission.
+//
+// Targets come in three families:
+//   PLC_0/Blocks/FB_Station   a place in the project tree
+//   simulation/Station_1      a PLCSIM Advanced virtual controller
+//   project                   the project as a whole: save, save-as, close
+//
+// '*' stands for any run of characters. It is not a regular expression. Deny beats allow, and a
+// target matching neither list is refused. Workshop rules may not contain wildcards at all: every
+// target that can move a machine is written out in full, or the policy is refused when it loads.
+{
+  "study": {
+    "allow": [
+      "PLC_0",
+      "PLC_0/*",
+      "simulation/*",
+      "project"
+    ],
+    "deny": [
+      // Safety code is written by a person, reviewed by a person, and not by an agent.
+      "PLC_0/Safety/*"
+    ]
+  },
+
+  "workshop": {
+    "allow": [
+      "PLC_0/Blocks/FB_Station"
+    ],
+    "deny": []
+  }
+}

@@ -77,4 +77,25 @@
   <PropertyGroup Condition="'$(HasPlcSimApi)' == 'true'">
     <DefineConstants>$(DefineConstants);PLCSIM_AVAILABLE</DefineConstants>
   </PropertyGroup>
+
+  <!--
+    Workshop Mode — layer 0 of the safety design.
+
+    Commanding physical hardware is compiled out unless WorkshopMode is set, and it is NOT set
+    here on purpose. The binary built for everyday work does not contain the capability at all,
+    so no configuration mistake, forgotten flag or stale environment variable can reach a machine
+    with it. ModeGate.ForWorkshop refuses outright in this build, and Test16Governance asserts
+    that it does.
+
+    Turning this on is not a build option to be flipped when convenient. docs/ROADMAP.md sets the
+    five measured conditions that have to hold first, the last of which is an in-person design
+    review. Build it with:
+
+        dotnet build -p:WorkshopMode=true
+
+    and only ever with a teacher or workshop supervisor present and the emergency stop in reach.
+  -->
+  <PropertyGroup Condition="'$(WorkshopMode)' == 'true'">
+    <DefineConstants>$(DefineConstants);WORKSHOP_MODE</DefineConstants>
+  </PropertyGroup>
 </Project>

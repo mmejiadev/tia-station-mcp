@@ -322,6 +322,113 @@ namespace TiaMcpServer.ModelContextProtocol
         public IReadOnlyList<string> GeneratedBlocks { get; }
     }
 
+    /// <summary>One long operation, as it stood when asked.</summary>
+    public sealed class ResponseJob : ResponseMessage
+    {
+        /// <summary>Creates the response.</summary>
+        /// <param name="jobId">Which job.</param>
+        /// <param name="tool">The tool it runs.</param>
+        /// <param name="target">What it runs against.</param>
+        /// <param name="state">Queued, Running, Succeeded, Failed or Cancelled.</param>
+        /// <param name="detail">Its result, or the reason it failed. Empty while it runs.</param>
+        /// <param name="isCancellable">Whether cancelling it would do anything.</param>
+        public ResponseJob(string jobId, string tool, string target, string state, string detail, bool isCancellable)
+        {
+            JobId = jobId;
+            Tool = tool;
+            Target = target;
+            State = state;
+            Detail = detail;
+            IsCancellable = isCancellable;
+        }
+
+        /// <summary>Which job. Poll with this.</summary>
+        public string JobId { get; }
+
+        /// <summary>The tool it runs.</summary>
+        public string Tool { get; }
+
+        /// <summary>What it runs against.</summary>
+        public string Target { get; }
+
+        /// <summary>Queued, Running, Succeeded, Failed or Cancelled.</summary>
+        public string State { get; }
+
+        /// <summary>Its result, or the reason it failed. Empty while it runs.</summary>
+        public string Detail { get; }
+
+        /// <summary>
+        /// Whether cancelling it would do anything. True only while queued: Openness cannot
+        /// interrupt a compile or a download that has started.
+        /// </summary>
+        public bool IsCancellable { get; }
+    }
+
+    /// <summary>Every long operation this session has run.</summary>
+    public sealed class ResponseJobs : ResponseMessage
+    {
+        /// <summary>Creates the response.</summary>
+        /// <param name="items">One entry per job, newest first.</param>
+        public ResponseJobs(IReadOnlyList<ResponseJob> items)
+        {
+            Items = items;
+        }
+
+        /// <summary>One entry per job, newest first.</summary>
+        public IReadOnlyList<ResponseJob> Items { get; }
+    }
+
+    /// <summary>One backup the registry holds.</summary>
+    public sealed class ResponseBackup
+    {
+        /// <summary>Describes one backup.</summary>
+        /// <param name="path">The directory holding it.</param>
+        /// <param name="tool">The tool it was taken for.</param>
+        /// <param name="target">What that tool was about to write to.</param>
+        /// <param name="takenAt">When it was taken, in round-trip UTC.</param>
+        /// <param name="fileCount">How many files it holds.</param>
+        public ResponseBackup(string path, string tool, string target, string takenAt, int fileCount)
+        {
+            Path = path;
+            Tool = tool;
+            Target = target;
+            TakenAt = takenAt;
+            FileCount = fileCount;
+        }
+
+        /// <summary>The directory holding the backup.</summary>
+        public string Path { get; }
+
+        /// <summary>The tool it was taken for.</summary>
+        public string Tool { get; }
+
+        /// <summary>What that tool was about to write to.</summary>
+        public string Target { get; }
+
+        /// <summary>When it was taken, in round-trip UTC.</summary>
+        public string TakenAt { get; }
+
+        /// <summary>
+        /// How many files it holds. Zero means the change was refused or failed before exporting,
+        /// so there is nothing here to restore from.
+        /// </summary>
+        public int FileCount { get; }
+    }
+
+    /// <summary>Everything the backup registry holds.</summary>
+    public sealed class ResponseBackups : ResponseMessage
+    {
+        /// <summary>Creates the response.</summary>
+        /// <param name="items">One entry per backup, newest first.</param>
+        public ResponseBackups(IReadOnlyList<ResponseBackup> items)
+        {
+            Items = items;
+        }
+
+        /// <summary>One entry per backup, newest first.</summary>
+        public IReadOnlyList<ResponseBackup> Items { get; }
+    }
+
     /// <summary>Result of exporting a PLC program to text.</summary>
     public sealed class ResponseExportSnapshot : ResponseMessage
     {
