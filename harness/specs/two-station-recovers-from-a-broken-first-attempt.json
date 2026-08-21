@@ -1,0 +1,21 @@
+{
+  "name": "two-station-recovers-from-a-broken-first-attempt",
+  "goal": "The same two-station cell, but the first attempt does not compile. The loop must read the compiler errors, generate again, and reach a running cell.",
+  "cellPath": "spec/cells/two-station-demo.json",
+  "softwarePath": "PLC_0",
+  "breakFirstAttempt": true,
+  "controller": {
+    "name": "HarnessTwoStationRecovery",
+    "address": "192.168.0.1",
+    "subnetMask": "255.255.255.0",
+    "cpuType": "CPU1511"
+  },
+  "acceptance": [
+    { "action": "write", "tag": "DB_TwoStationDemo.Enable", "value": "true" },
+    { "action": "write", "tag": "DB_TwoStationDemo.ModeAuto", "value": "true" },
+    { "action": "write", "tag": "DB_TwoStationDemo.ModeManual", "value": "false" },
+    { "action": "write", "tag": "DB_TwoStationDemo.NextPieceId", "value": "23" },
+    { "action": "write", "tag": "DB_TwoStationDemo.CellStart", "value": "true" },
+    { "action": "waitFor", "tag": "DB_TwoStationDemo.CompletedPieceId", "equals": "23", "timeoutMilliseconds": 20000 }
+  ]
+}

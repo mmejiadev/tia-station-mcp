@@ -36,11 +36,24 @@ Thumbs.db
 Desktop.ini
 
 # Governance: the audit trail is a local record of this machine, never shared history.
-.tia-mcp/audit.jsonl
+**/.tia-mcp/audit.jsonl
 
 # Copies of overwritten state: local safety net for this machine, not shared history. They can
 # also hold whole exported programs, which do not belong in a diff.
-.tia-mcp/backups/
+**/.tia-mcp/backups/
 
 # The policy is per project and per machine; policy.example.json is the one that ships.
-.tia-mcp/policy.json
+**/.tia-mcp/policy.json
+
+# The harness (phase 3) is Node and TypeScript. Dependencies and build output are not history.
+harness/node_modules/
+harness/dist/
+
+# The Anthropic API key the generator uses. Never history, on any machine.
+.env
+harness/.env
+
+# What the harness produces on this machine: retrieved projects, which are large and are copies of
+# an asset already in the repository, and the measurement store. The numbers get reported, with
+# their sample size, in docs/STATUS.md; the database itself is a machine's record.
+**/.tia-mcp/harness/

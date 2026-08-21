@@ -1,10 +1,14 @@
 ﻿// Copy this file to .tia-mcp/policy.json and edit it. Without policy.json every write is refused,
 // which is deliberate: the absence of a decision is a refusal, never a permission.
 //
-// Targets come in three families:
+// Targets come in four families:
 //   PLC_0/Blocks/FB_Station   a place in the project tree
 //   simulation/Station_1      a PLCSIM Advanced virtual controller
+//   simulation-runtime        the PLCSIM Advanced runtime itself, machine-wide
 //   project                   the project as a whole: save, save-as, close
+//
+// Note that 'simulation/*' does NOT cover 'simulation-runtime', and that is the intent: one
+// controller affects itself, the runtime's network mode affects every PLCSIM user on the machine.
 //
 // '*' stands for any run of characters. It is not a regular expression. Deny beats allow, and a
 // target matching neither list is refused. Workshop rules may not contain wildcards at all: every

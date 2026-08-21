@@ -168,8 +168,13 @@ namespace TiaMcpServer.Siemens
         /// Ethernet adapter. Returns the mode in force afterwards.
         /// </summary>
         /// <remarks>
-        /// Environment setup, not a server capability, and deliberately not exposed as an MCP
-        /// tool: letting an agent reconfigure PLCSIM is what phase 7 exists to prevent.
+        /// **This was deliberately not an MCP tool, and on 2026-08-21 it became one.** The original
+        /// reason was sound — letting an agent reconfigure PLCSIM is what the workshop gate exists to
+        /// prevent — but it made the download unreachable through the server at all, because of the
+        /// per-process rule below: the harness cannot set the mode for a server it merely talks to.
+        /// So it is exposed, guarded, and against its own change target: <c>simulation-runtime</c>,
+        /// which a policy allowing <c>simulation/*</c> does not cover. A session that may create
+        /// controllers still may not reconfigure the runtime they live in.
         ///
         /// The setting does **not** persist across processes — setting it from a separate script
         /// looks like it worked and then has no effect on the next run, which cost one wasted

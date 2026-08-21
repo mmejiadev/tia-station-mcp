@@ -1,0 +1,23 @@
+{
+  "name": "two-station-runs",
+  "goal": "A two-station cell that admits a numbered piece, works it at each station in turn, and reports the piece as completed when it leaves the line.",
+  "cellPath": "spec/cells/two-station-demo.json",
+  "softwarePath": "PLC_0",
+  "breakFirstAttempt": false,
+  "controller": {
+    "name": "HarnessTwoStation",
+    "address": "192.168.0.1",
+    "subnetMask": "255.255.255.0",
+    "cpuType": "CPU1511"
+  },
+  "acceptance": [
+    { "action": "write", "tag": "DB_TwoStationDemo.Enable", "value": "true" },
+    { "action": "write", "tag": "DB_TwoStationDemo.ModeAuto", "value": "true" },
+    { "action": "write", "tag": "DB_TwoStationDemo.ModeManual", "value": "false" },
+    { "action": "write", "tag": "DB_TwoStationDemo.NextPieceId", "value": "17" },
+    { "action": "write", "tag": "DB_TwoStationDemo.CellStart", "value": "true" },
+    { "action": "waitFor", "tag": "DB_TwoStationDemo.CompletedPieceId", "equals": "17", "timeoutMilliseconds": 20000 },
+    { "action": "expect", "tag": "DB_TwoStationDemo.Feeder.Step", "notEquals": "90" },
+    { "action": "expect", "tag": "DB_TwoStationDemo.Driller.Step", "notEquals": "90" }
+  ]
+}

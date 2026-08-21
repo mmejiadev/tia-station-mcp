@@ -360,7 +360,17 @@ namespace TiaMcpServer.Siemens
                 // to be: measured on 2026-08-17, skipping the text libraries makes the hardware
                 // configuration itself fail to load ("0013 -32 0 0"), because they are part of it.
                 // Both options were tried; this one at least gets the hardware in.
-                [typeof(AlarmTextLibrariesDownload)] = c => ((AlarmTextLibrariesDownload)c).CurrentSelection = AlarmTextLibrariesDownloadSelections.ConsistentDownload
+                [typeof(AlarmTextLibrariesDownload)] = c => ((AlarmTextLibrariesDownload)c).CurrentSelection = AlarmTextLibrariesDownloadSelections.ConsistentDownload,
+
+                // Asked on 2026-08-21, the first time a download went to a controller created as
+                // the project's own CPU rather than as the unspecified one — the harness of phase 3
+                // was what got that far. The options are NoAction and DeleteAll, and DeleteAll is
+                // the only one that means anything here: a virtual controller starts empty, so
+                // there is nothing on it to lose, and NoAction leaves whatever is on the module
+                // beside what is being written. Against hardware this is the answer that would
+                // erase a machine's program, which is one more reason downloading there is not
+                // implemented.
+                [typeof(ResetModule)] = c => ((ResetModule)c).CurrentSelection = ResetModuleSelections.DeleteAll
             };
 
         private void Answer(DownloadConfiguration configuration)

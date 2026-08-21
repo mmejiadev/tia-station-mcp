@@ -144,11 +144,151 @@ namespace TiaMcpServer.ModelContextProtocol
             }
         }
 
-        [McpServerTool(Name = "CreateSimulationInstance"), Description("Create a PLCSIM Advanced virtual controller and give it an address. The address must match the CPU's address in the project, otherwise TIA Portal cannot download to it.")]
+        // Both halves of what a caller has to do next, and the difference between them is the point:
+        // turning the setting on invalidates the compiled hardware configuration, while finding it
+        // already on invalidates nothing.
+        private const string SimulationSupportTurnedOn =
+            "Simulation during block compilation is now on. Compile the software AND the hardware again: " +
+            "the setting governs compilation, and turning it on invalidates the compiled hardware configuration.";
+
+        private const string SimulationSupportAlreadyOn =
+            "Simulation during block compilation was already on; nothing changed and nothing needs recompiling.";
+
+        [McpServerTool(Name = "UseTcpIpNetworkMode"), Description("Put the PLCSIM Advanced runtime on the virtual Ethernet adapter, which a download needs: over the default Softbus a virtual controller is reachable only by PLCSIM itself and TIA Portal cannot find it. Call this BEFORE creating any instance. It is machine-wide and affects every PLCSIM user on this computer.")]
+        public static ResponseMessage UseTcpIpNetworkMode()
+        {
+            try
+            {
+                // The runtime, not a controller: this is machine-wide, so it is its own target and a
+                // policy allowing simulation/* deliberately does not allow it. See ChangeTarget.
+                var request = new Governance.ChangeRequest("UseTcpIpNetworkMode", ChangeTarget.SimulationRuntime, "TCPIP");
+
+                return GuardedTool.Run(
+                    GuardedWrites,
+                    request,
+                    () =>
+                    {
+                        // In this process, and before any instance exists. Measured on 2026-08-17:
+                        // setting it from a separate process reads back as applied and then has no
+                        // effect on the process that creates the controllers, which is why this is a
+                        // tool rather than something the caller does with a script.
+                        var mode = TiaMcpServer.Siemens.SimulationRuntime.UseTcpIpNetworkMode();
+
+                        // The mode after the attempt, not the fact that the attempt was made. This
+                        // reported success unconditionally at first, and a runtime left on Softbus
+                        // then let a caller go all the way to a download that failed with "Connect
+                        // to module PLC_0 failed" — the one symptom this project has spent the most
+                        // time on. A setting that did not take is a failure, and saying so here is
+                        // the difference between one clear message and that diagnosis again.
+                        if (!mode.StartsWith("TCPIP", StringComparison.Ordinal))
+                        {
+                            throw new TiaMcpServer.Siemens.PortalException(
+                                TiaMcpServer.Siemens.PortalErrorCode.InvalidState,
+                                $"The PLCSIM Advanced runtime is in {mode} mode and would not switch to TCP/IP. " +
+                                "A download cannot reach a controller over Softbus. This has to be set before any " +
+                                "instance is registered, so remove any existing instance and try again.");
+                        }
+
+                        return new ResponseMessage
+                        {
+                            Message = $"The PLCSIM Advanced runtime is now in {mode} mode",
+                            Meta = new JsonObject
+                            {
+                                ["timestamp"] = DateTime.Now,
+                                ["success"] = true,
+                                ["networkMode"] = mode
+                            }
+                        };
+                    },
+                    () => new ResponseMessage());
+            }
+            catch (TiaMcpServer.Siemens.PortalException pex)
+            {
+                throw ToMcpException(pex, "Failed setting the PLCSIM Advanced network mode");
+            }
+        }
+
+        [McpServerTool(Name = "CompileHardware"), Description("Compile a device's hardware configuration. Needed before DownloadToSimulation and after anything that invalidates the configuration — EnableSimulationSupport does. Downloading a stale configuration fails with 'Loading of hardware configuration failed', which names neither the cause nor the fix.")]
+        public static ResponseCompileSoftware CompileHardware(
+            [Description("deviceItemPath: full path to the device in the project, e.g. 'PLC_0'")] string deviceItemPath)
+        {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
+            try
+            {
+                // Guarded for the same reason CompileSoftware is: a compile is what makes something
+                // downloadable, and a session whose policy says nothing about a device must not be
+                // able to make that device's configuration ready for a controller.
+                var request = new Governance.ChangeRequest("CompileHardware", ChangeTarget.Program(deviceItemPath), "Compile");
+
+                return GuardedTool.Run(
+                    GuardedWrites,
+                    request,
+                    () =>
+                    {
+                        var report = Portal.CompileHardware(deviceItemPath);
+
+                        return Describe(
+                            report,
+                            $"Hardware for '{deviceItemPath}' compiled: {report.WarningCount} warning(s)",
+                            $"Hardware for '{deviceItemPath}' has {report.ErrorCount} error(s) and {report.WarningCount} warning(s); see Messages");
+                    },
+                    () => new ResponseCompileSoftware(0, 0, Array.Empty<string>()));
+            }
+            catch (TiaMcpServer.Siemens.PortalException pex)
+            {
+                throw ToMcpException(pex, $"Failed compiling the hardware of '{deviceItemPath}'");
+            }
+        }
+
+        [McpServerTool(Name = "EnableSimulationSupport"), Description("Turn on 'support simulation during block compilation' for the open project, which downloading to PLCSIM Advanced requires. Do this BEFORE compiling: the setting governs compilation, so blocks built without it stay unsimulatable however many times they are downloaded. It also invalidates the compiled hardware configuration, so compile the hardware again afterwards.")]
+        public static ResponseMessage EnableSimulationSupport()
+        {
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
+            try
+            {
+                // A change to the project's own properties, so the target is the project — the same
+                // name that governs saving and closing it. Guarded because without this setting no
+                // program can run on a virtual controller and with it every program can: it is a
+                // precondition for a download, not a diagnostic.
+                var request = new Governance.ChangeRequest("EnableSimulationSupport", ChangeTarget.Project, "Enable");
+
+                return GuardedTool.Run(
+                    GuardedWrites,
+                    request,
+                    () =>
+                    {
+                        var changed = Portal.EnableSimulationSupport();
+
+                        return new ResponseMessage
+                        {
+                            // The distinction matters to the caller: if it was already on, nothing
+                            // was invalidated and the program does not need compiling again.
+                            Message = changed ? SimulationSupportTurnedOn : SimulationSupportAlreadyOn,
+                            Meta = new JsonObject
+                            {
+                                ["timestamp"] = DateTime.Now,
+                                ["success"] = true,
+                                ["changed"] = changed
+                            }
+                        };
+                    },
+                    () => new ResponseMessage());
+            }
+            catch (TiaMcpServer.Siemens.PortalException pex)
+            {
+                throw ToMcpException(pex, "Failed enabling simulation support");
+            }
+        }
+
+        [McpServerTool(Name = "CreateSimulationInstance"), Description("Create a PLCSIM Advanced virtual controller and give it an address. The address must match the CPU's address in the project, otherwise TIA Portal cannot download to it. Pass cpuType matching the project's CPU: without it the controller is an unspecified one, and downloading text libraries to it fails with 'InvalidAID'.")]
         public static ResponseSimulationInstance CreateSimulationInstance(
             [Description("instanceName: a name for the virtual controller, unique within the runtime")] string instanceName,
             [Description("ipAddress: the address to assign, matching the CPU in the project, e.g. '192.168.0.1'")] string ipAddress,
-            [Description("subnetMask: usually '255.255.255.0'")] string subnetMask = "255.255.255.0")
+            [Description("subnetMask: usually '255.255.255.0'")] string subnetMask = "255.255.255.0",
+            [Description("cpuType: the CPU to emulate, e.g. 'CPU1511'. Omit for an unspecified controller, which cannot receive text libraries.")] string cpuType = "")
         {
             try
             {
@@ -161,7 +301,13 @@ namespace TiaMcpServer.ModelContextProtocol
                     {
                         var runtime = Simulation;
 
-                        runtime.CreateInstance(instanceName);
+                        // As the project's CPU when the caller says which, and not as the
+                        // unspecified controller. Measured on 2026-08-21 by a harness that could
+                        // not pass one: the hardware download succeeds either way, and then the
+                        // text libraries fail with "Download of text libraries to device failed due
+                        // to unknown reasons. (error code: InvalidAID)". Text libraries are tied to
+                        // device identity, so an unspecified controller has no identity to match.
+                        runtime.CreateInstance(instanceName, string.IsNullOrWhiteSpace(cpuType) ? null : cpuType);
 
                         return Describe(runtime.SetInstanceAddress(instanceName, ipAddress, subnetMask), $"Instance '{instanceName}' created at {ipAddress}");
                     },
@@ -328,20 +474,10 @@ namespace TiaMcpServer.ModelContextProtocol
                     {
                         var report = Portal.DownloadToSimulation(softwarePath);
 
-                        return new ResponseCompileSoftware(
-                            report.ErrorCount,
-                            report.WarningCount,
-                            report.Errors.Select(error => error.ToString()).ToList())
-                        {
-                            Message = report.IsSuccessful
-                                ? $"'{softwarePath}' downloaded to simulation"
-                                : $"Download of '{softwarePath}' reported {report.ErrorCount} error(s); see Messages",
-                            Meta = new JsonObject
-                            {
-                                ["timestamp"] = DateTime.Now,
-                                ["success"] = report.IsSuccessful
-                            }
-                        };
+                        return Describe(
+                            report,
+                            $"'{softwarePath}' downloaded to simulation",
+                            $"Download of '{softwarePath}' reported {report.ErrorCount} error(s); see Messages");
                     },
                     () => new ResponseCompileSoftware(0, 0, Array.Empty<string>()));
             }
@@ -564,6 +700,42 @@ namespace TiaMcpServer.ModelContextProtocol
             }
         }
 
+        /// <summary>
+        /// Turns a compilation or download report into the response those tools share.
+        /// </summary>
+        /// <param name="report">What the operation reported.</param>
+        /// <param name="succeeded">The message when there are no errors.</param>
+        /// <param name="failed">The message when there are.</param>
+        /// <returns>The response, with the messages the caller has to act on.</returns>
+        /// <remarks>
+        /// **An operation that finds errors is a successful call: the errors are the answer.** That
+        /// is the whole reason this shape exists, and the reason it is worth having once rather than
+        /// three times — compiling software, compiling hardware and downloading all report the same
+        /// way, and all three had their own copy of it until 2026-08-21.
+        ///
+        /// Throwing instead would discard the messages, which is what an earlier version did: it
+        /// interpolated the result object, so a failed build reported nothing but a type name and
+        /// the caller had no idea what to fix.
+        /// </remarks>
+        private static ResponseCompileSoftware Describe(
+            TiaMcpServer.Siemens.CompilationReport report,
+            string succeeded,
+            string failed)
+        {
+            return new ResponseCompileSoftware(
+                report.ErrorCount,
+                report.WarningCount,
+                report.Errors.Select(error => error.ToString()).ToList())
+            {
+                Message = report.IsSuccessful ? succeeded : failed,
+                Meta = new JsonObject
+                {
+                    ["timestamp"] = DateTime.Now,
+                    ["success"] = report.IsSuccessful
+                }
+            };
+        }
+
         private static ResponseSaveProject SaveOpenProject()
         {
             var isSession = Portal.IsLocalSession;
@@ -643,25 +815,10 @@ namespace TiaMcpServer.ModelContextProtocol
                     {
                         var report = Portal.CompileSoftware(softwarePath, password);
 
-                        // A compile that finds errors is a successful call: the errors are the
-                        // answer. Throwing here would discard them, which is what the previous
-                        // version did — it interpolated the CompilerResult object, so a failed
-                        // build reported nothing but a type name and the caller had no idea what
-                        // to fix.
-                        return new ResponseCompileSoftware(
-                            report.ErrorCount,
-                            report.WarningCount,
-                            report.Errors.Select(error => error.ToString()).ToList())
-                        {
-                            Message = report.IsSuccessful
-                                ? $"Software '{softwarePath}' compiled: {report.WarningCount} warning(s)"
-                                : $"Software '{softwarePath}' has {report.ErrorCount} error(s) and {report.WarningCount} warning(s); see Messages",
-                            Meta = new JsonObject
-                            {
-                                ["timestamp"] = DateTime.Now,
-                                ["success"] = report.IsSuccessful
-                            }
-                        };
+                        return Describe(
+                            report,
+                            $"Software '{softwarePath}' compiled: {report.WarningCount} warning(s)",
+                            $"Software '{softwarePath}' has {report.ErrorCount} error(s) and {report.WarningCount} warning(s); see Messages");
                     },
                     () => new ResponseCompileSoftware(0, 0, Array.Empty<string>()));
             }
