@@ -556,6 +556,59 @@ namespace TiaMcpServer.ModelContextProtocol
             }
         }
 
+        [McpServerTool(Name = "ListSimulationTags"), Description("List the tags of the program a virtual controller holds: the names ReadSimulationTags and WriteSimulationTag take. The list is read from the controller and not from the project, so it is empty until something has been downloaded. Filter by name — a CPU has thousands of tags.")]
+        public static ResponseSimulationTags ListSimulationTags(
+            [Description("instanceName: the virtual controller to ask")] string instanceName,
+            [Description("nameFilter: case-insensitive substring the tag name must contain, e.g. 'PieceId'. Omit for all of them.")] string? nameFilter = null,
+            [Description("limit: how many tags to return at most")] int limit = TiaMcpServer.Siemens.SimulationRuntime.DefaultTagLimit)
+        {
+            // No Openness gate: this reads the controller through the PLCSIM API and never touches
+            // TIA Portal, so queueing it behind a running compile would cost time and buy nothing.
+            try
+            {
+                var tags = Simulation.ListTags(instanceName, nameFilter, limit);
+
+                return new ResponseSimulationTags(tags.Items.Select(ToResponse).ToList(), tags.MatchCount, tags.TotalCount)
+                {
+                    Message = DescribeTagList(tags),
+                    Meta = new JsonObject
+                    {
+                        ["timestamp"] = DateTime.Now,
+                        ["success"] = true
+                    }
+                };
+            }
+            catch (TiaMcpServer.Siemens.PortalException pex)
+            {
+                throw ToMcpException(pex, $"Failed to list the tags of '{instanceName}'");
+            }
+        }
+
+        [McpServerTool(Name = "ReadSimulationTags"), Description("Read tags of a running virtual controller, several in one call. This is how a downloaded program is observed: call ListSimulationTags first to get the exact names. A struct or an array has no value of its own — read its members.")]
+        public static ResponseSimulationTagValues ReadSimulationTags(
+            [Description("instanceName: the virtual controller to read from")] string instanceName,
+            [Description("tagNames: the tag names, spelled exactly as ListSimulationTags reports them. A data block member has no quotes: DB_Cell.Feeder.Step")] string[] tagNames)
+        {
+            try
+            {
+                var values = Simulation.ReadTags(instanceName, tagNames);
+
+                return new ResponseSimulationTagValues(values.Select(ToResponse).ToList())
+                {
+                    Message = $"{values.Count} tag(s) read from '{instanceName}'",
+                    Meta = new JsonObject
+                    {
+                        ["timestamp"] = DateTime.Now,
+                        ["success"] = true
+                    }
+                };
+            }
+            catch (TiaMcpServer.Siemens.PortalException pex)
+            {
+                throw ToMcpException(pex, $"Failed to read tags of '{instanceName}'");
+            }
+        }
+
         [McpServerTool(Name = "GetSimulationTargetName"), Description("Report which PC interface a download would go through, without downloading. It is always a PLCSIM interface: this server refuses to download through a real network adapter.")]
         public static ResponseMessage GetSimulationTargetName(
             [Description("softwarePath: full path to the CPU in the project, e.g. 'PLC_0'")] string softwarePath)
@@ -586,6 +639,32 @@ namespace TiaMcpServer.ModelContextProtocol
         private static ResponseSimulationInstance ToResponse(TiaMcpServer.Siemens.SimulationInstanceInfo instance)
         {
             return new ResponseSimulationInstance(instance.Name, instance.OperatingState, instance.CpuType, instance.IpAddresses);
+        }
+
+        private static ResponseSimulationTag ToResponse(TiaMcpServer.Siemens.SimulationTagInfo tag)
+        {
+            return new ResponseSimulationTag(tag.Name, tag.Area, tag.DataType, tag.IsReadable);
+        }
+
+        private static ResponseSimulationTagValue ToResponse(TiaMcpServer.Siemens.SimulationTagValue value)
+        {
+            return new ResponseSimulationTagValue(value.Name, value.DataType, value.Value);
+        }
+
+        /// <summary>Says how much of the tag list the caller is looking at.</summary>
+        private static string DescribeTagList(TiaMcpServer.Siemens.SimulationTagList tags)
+        {
+            if (tags.TotalCount == 0)
+            {
+                return "This controller holds no program, so it has no tags. Download one first.";
+            }
+
+            if (tags.IsTruncated)
+            {
+                return $"{tags.Items.Count} of {tags.MatchCount} matching tag(s), out of {tags.TotalCount}. Narrow the filter or raise the limit.";
+            }
+
+            return $"{tags.Items.Count} matching tag(s), out of {tags.TotalCount}";
         }
 
         private static ResponseSimulationInstance Describe(TiaMcpServer.Siemens.SimulationInstanceInfo instance, string message)
@@ -692,6 +771,74 @@ namespace TiaMcpServer.ModelContextProtocol
             };
 
             return response;
+        }
+
+        [McpServerTool(Name = "ExpandCellScl"), Description("Generate the SCL for a cell from its specification in spec/cells/ and the patterns in spec/patterns/. Returns the source without writing anything; pass Scl to WriteScl to put it in a project, then CompileSoftware. Station pattern first, coordinator second, because the coordinator instantiates the station.")]
+        public static ResponseCellScl ExpandCellScl(
+            [Description("cellPath: path to the cell specification, e.g. 'spec/cells/two-station-demo.json'")] string cellPath,
+            [Description("patternDirectory: where station.scl.tmpl and coordinator.scl.tmpl live, default 'spec/patterns'")] string patternDirectory = "spec/patterns",
+            [Description("includeEntryPoint: also generate the cell's instance data block and a Main OB that calls it every scan. Needed for the cell to run at all, and for a tag write to reach it — but it REPLACES the project's existing Main. False by default.")] bool includeEntryPoint = false)
+        {
+            // No Openness gate, deliberately. This reads two text files and does string work; it
+            // never touches TIA Portal, so taking the gate would queue it behind a running compile
+            // for no reason. See OpennessGate: only the tools that reach the portal take it.
+            try
+            {
+                var cell = Spec.CellSpecificationFile.Load(cellPath);
+                var expander = new Spec.SclTemplateExpander();
+
+                var stationPattern = expander.Expand(ReadPattern(patternDirectory, "station.scl.tmpl"), cell);
+                var coordinator = expander.Expand(ReadPattern(patternDirectory, "coordinator.scl.tmpl"), cell);
+                var scl = stationPattern + Environment.NewLine + coordinator;
+
+                if (includeEntryPoint)
+                {
+                    // Last, and it has to be: the data block is an instance of the coordinator, so
+                    // a source declaring it before the block it instantiates does not compile.
+                    scl += Environment.NewLine + expander.Expand(ReadPattern(patternDirectory, "main.scl.tmpl"), cell);
+                }
+
+                return new ResponseCellScl(cell.Name, cell.Stations.Select(item => item.Name).ToList(), scl)
+                {
+                    Message =
+                        $"Generated SCL for cell {cell.Name} with {cell.Stations.Count} station(s)"
+                        + (includeEntryPoint ? ", including a Main OB that replaces the project's. " : ". ")
+                        + "Nothing has been written; pass Scl to WriteScl, then CompileSoftware.",
+                    Meta = new JsonObject
+                    {
+                        ["timestamp"] = DateTime.Now,
+                        ["success"] = true,
+                        ["stationCount"] = cell.Stations.Count,
+                        ["handoverCount"] = cell.Handovers().Count
+                    }
+                };
+            }
+            catch (TiaMcpServer.Siemens.PortalException pex)
+            {
+                throw ToMcpException(pex, $"Failed to generate SCL for the cell at {cellPath}");
+            }
+            catch (ArgumentException ex)
+            {
+                // The specification types refuse invalid input with ArgumentException. Reported as
+                // bad parameters rather than an internal error: it is the given file that is wrong,
+                // and reporting a failure would invite a retry of a typo.
+                throw new McpException(
+                    $"The cell at {cellPath} cannot be used: {ex.Message}", ex, McpErrorCode.InvalidParams);
+            }
+        }
+
+        private static string ReadPattern(string patternDirectory, string pattern)
+        {
+            var path = Path.Combine(patternDirectory ?? string.Empty, pattern);
+
+            if (!File.Exists(path))
+            {
+                throw new TiaMcpServer.Siemens.PortalException(
+                    TiaMcpServer.Siemens.PortalErrorCode.InvalidParams,
+                    $"No pattern at {path}. The cell patterns ship in spec/patterns/.");
+            }
+
+            return File.ReadAllText(path);
         }
 
         [McpServerTool(Name = "ListBackups"), Description("List every copy of previous state the server saved before overwriting something. A write tool takes one automatically; this is how the copy is found again. An entry with fileCount 0 is a change that was refused or failed before exporting, so there is nothing in it.")]

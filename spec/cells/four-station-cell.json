@@ -1,0 +1,16 @@
+﻿// The four-station cell of the coursework.
+//
+// Same patterns, same generated handshake, one more entry in this list per station. If this file is
+// the only thing that changed to go from two stations to four, the pattern did its job.
+//
+// The names are what appear in TIA Portal and on the machine, so they are the station's identity
+// rather than a number. That is why the coordinator declares named instances instead of an array.
+{
+  "cell": "FourStationCell",
+  "stations": [
+    { "name": "Feeder", "workSteps": 2, "dwellCycles": 5 },
+    { "name": "Driller", "workSteps": 3, "dwellCycles": 10 },
+    { "name": "Tester", "workSteps": 2, "dwellCycles": 8 },
+    { "name": "Sorter", "workSteps": 2, "dwellCycles": 5 }
+  ]
+}

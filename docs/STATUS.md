@@ -1,11 +1,33 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-08-18**
+> Last updated: **2026-08-21**
 
 ## ▶ RESUME HERE
 
-**2026-08-18 — phase 1 is done. Every deliverable it promised exists, and the calendar is gone.**
+**2026-08-21 — the cell runs. A numbered piece goes through both stations on a virtual CPU.**
+
+Phase 2's last open item is closed, and it is the one that mattered: until today the handshake
+between one station and the next was asserted nowhere but in the compiler. It is now asserted on a
+controller in RUN.
+
+- **TIA suite: 136 cases, 132 passing, 4 skipped, 0 failing, 9 m 50 s.** No orphan portal.
+- **Governance suite: 63/63**, and **Spec suite: 35/35**, both without TIA Portal.
+- **55 tools**, up from 52: `ListSimulationTags`, `ReadSimulationTags`, `WriteSimulationTag`.
+- **0 warnings**, `TreatWarningsAsErrors` on, across the whole solution.
+
+Phase 1 was merged as pull request #6. **Everything since is in the working tree, unmerged** —
+phase 2 and today's work both. That is two sessions uncommitted and it is the first thing to fix.
+
+What closed it was tag access, which the server did not have. Note 14 of 2026-08-13 had measured
+that reading tags was not independent of the download; the download works since 2026-08-17, so it
+was possible now. See "The cell runs" under phase 2, including the two things that could only be
+settled by running and the one property of the pattern that a test found.
+
+See "Phase 2" below. What follows is the phase 1 record, kept because the diff of #6 is large and
+this is written to be read alongside it.
+
+**Phase 1: every deliverable it promised exists, and the calendar is gone.**
 
 The day began with the governance layer written but never run against TIA Portal, and ended with
 phase 1 actually finished rather than out of time. Three deliverables the roadmap had named were
@@ -55,8 +77,15 @@ production code rather than in the test:
    context is the same condition as a caller that did not ask for progress, and the tool reports
    none and does the work.
 
-**Next action:** commit on a branch and open a pull request — never push to `main`. The diff is
-large; "Phase 1 — governance" below is written to be read alongside it.
+**Next action:** commit phase 2 and the tag work on a branch and open a pull request — never push
+to `main`. Two sessions are sitting in the working tree.
+
+Then **phase 3, the metrics harness**, which makes sense for the first time now: its deliverable is
+what fraction of specifications passes on a simulated CPU, and until today there was no way to ask
+whether a program passes — only whether it compiles.
+
+One decision is waiting and is the user's: **the mode selector**, see "The mode may only be changed
+with the cell empty" under phase 2. It blocks nothing.
 
 Then, before phase 2 and agreed with the user on 2026-08-18: **the single Openness thread.** See
 "The hazard the apartment fix does not remove". The user chose it over leaving the concurrency
@@ -138,6 +167,192 @@ State during the session of 2026-08-12 (afternoon):
 Required reading at startup: this file, `../CLAUDE.md` and `REFERENCE-REPOS.md`.
 The plan for what comes next is in `ROADMAP.md`.
 
+## Phase 2 — FB_Station and multi-station (2026-08-18)
+
+The coursework content, standing on phase 1. Everything cell-specific is data in `spec/`; nothing
+in `src/` knows what a station does or how many there are.
+
+```
+spec/patterns/station.scl.tmpl       FB_Station, one block, one instance per station
+spec/patterns/coordinator.scl.tmpl   FB_<Cell>, owns the instances and moves the pieces
+spec/cells/two-station-demo.json
+spec/cells/four-station-cell.json
+src/TiaMcpServer/Spec/                CellSpecification, its loader, SclTemplateExpander
+```
+
+**Both cells write into a real project and compile with 0 errors in TIA Portal V20.** That is the
+only claim worth making about generated PLC code, and `Test19CellPattern` is what makes it: SCL
+that looks right and does not compile is the normal outcome of writing it from memory. It goes
+through `WriteScl` and `CompileSoftware`, so phase 2 is the first thing that actually needed the
+loop phase 1 built.
+
+### The handshake, which is the whole of the coordination
+
+```
+Ready   "I am empty and able to take a piece."
+        The coordinator writes PieceId and raises Start. Start high means "this piece is yours".
+Busy    "working on it."
+Done    "finished, and the piece is still mine until you take it."
+        The coordinator drops Start once it has moved the piece. Only then does the station idle.
+```
+
+Two decisions in that are the difference between a coordinator and a diagram:
+
+- **A station holds its piece until Start drops.** Returning to idle the moment it finished would
+  release a piece nobody had accepted, and a piece in no station is exactly the state a
+  traceability number cannot describe.
+- **If station N+1 has faulted, station N keeps its piece** and the cell reports `BlockedAtStation`.
+  The roadmap names this as the question that decides whether the coordination is real. Releasing
+  anyway would put a piece into a station that cannot work it.
+
+Handovers run **from the far end backwards**, so the space the last station frees is available to
+its neighbour in the same scan and a piece advances one station per scan. Forwards would move a
+piece into a station not yet emptied.
+
+### The interface is fixed, and what that forced
+
+`IN Start, Reset, Enable, ModeAuto, ModeManual`; `OUT Busy, Done, Error, ErrorId, Ready`;
+`IN_OUT PieceId`. Nothing was added to it.
+
+That ruled out the obvious way to give each station its own step count. There is one `FB_Station`
+and one instance per station, so a block constant cannot differ between them, and an input would
+change the interface. `WorkStepCount` and `DwellCycles` are therefore **statics**, which are per
+instance, written once by the coordinator on its first scan. Their defaults are zero and an
+unconfigured instance faults with `ERR_NOT_CONFIGURED` rather than running a sequence of no steps
+and reporting Done without having done anything.
+
+The steps themselves do nothing, and that is the honest shape for generated code: what a station
+physically does is cylinders, sensors and interlocks, and none of it can be inferred from a JSON
+file. The steps are where that work goes, and the handshake around it already works without it.
+
+### The template language is deliberately not a language
+
+Two constructs: `{{name}}`, and `{{#stations}}` / `{{#handovers}}` regions. No conditionals, no
+expressions.
+
+The one thing a coordinator template would want a conditional for is "the last station hands over
+to nobody", and `CellSpecification.Handovers()` answers that in C# by returning a list one shorter.
+A template language would need its own parser, its own error messages and its own tests, and a
+person debugging generated PLC code would then have two languages to hold in their head.
+
+Three details that are load-bearing rather than tidy:
+
+- **An unreplaced placeholder is an error.** Left alone it reaches the SCL compiler as
+  `{{stationNmae}}` and comes back as a syntax error in generated code, which is the least useful
+  place to be told about a typo. All of them are reported at once, so three typos take one round
+  trip.
+- **A region tag alone on its line takes the whole line with it.** Otherwise every region leaves a
+  blank line behind, and generated code nobody wants to read is generated code nobody checks.
+- **Names are validated as SCL identifiers** when the specification is built. "Drill 1" would
+  otherwise generate a block that does not compile, and the compiler would blame the generated
+  code rather than the JSON. Accented letters are accepted: TIA allows them, and rejecting them
+  would be inventing a rule the platform does not have.
+
+### ExpandCellScl, and why it writes nothing
+
+One new tool, and it is a read: it returns the SCL and touches no project. Writing it is `WriteScl`,
+which is guarded, audited and takes a backup. So phase 2 added no new way to change anything, and
+the agent can look at the generated code before any of it lands.
+
+It also takes **no Openness gate**, deliberately: it reads two text files and does string work, so
+queueing it behind a running compile would cost something and buy nothing.
+
+### A third test project
+
+`tests/TiaMcpServer.Spec.Test/`, 35 cases, no TIA Portal. The reason is the one that created the
+second project: cell specifications and template expansion are text in and text out, and making
+them wait for a portal would mean nobody could check the patterns on a laptop.
+
+Not in `TiaMcpServer.Governance.Test` because that project holds one explicit test per safety rule
+and its value comes from being exactly that list.
+
+What that project cannot cover is whether the SCL compiles. `Test19CellPattern` does, in the TIA
+suite. The split is worth stating: 35 tests say the text came out as intended, and 2 say the
+patterns are correct.
+
+### The cell runs (2026-08-21)
+
+The item below that said "nothing has been downloaded and watched running" is closed. The
+two-station cell is downloaded to PLCSIM Advanced, the CPU is in RUN, and **a numbered piece goes
+through both stations** — asserted, not watched by hand. `Test20CellRuns`, 3/3.
+
+What it took was tag access, which the server did not have: reading and writing a controller's tags
+is how a downloaded program is observed, and note 14 of 2026-08-13 had correctly measured that it
+was not independent of the download. The download has worked since 2026-08-17, so it was possible
+now.
+
+- `ListSimulationTags`, `ReadSimulationTags`, `WriteSimulationTag`. **55 tools**, up from 52.
+- `ExpandCellScl` takes `includeEntryPoint`: the instance data block and a `Main` OB that calls it
+  every scan. Off by default, because it replaces the project's `Main`.
+- `spec/patterns/main.scl.tmpl`, the third pattern.
+
+**The OB calls the instance with no parameters, and that is the whole design of that file.** Passing
+constants would assign the inputs every scan, and a tag write would be overwritten before the next
+call — the cell would be undrivable from outside, which is to say untestable.
+
+Two things could not be known by reading and were settled by running:
+
+1. **TIA accepts an `ORGANIZATION_BLOCK "Main"` generated from an SCL source**, and it replaces the
+   project's own.
+2. **PLCSIM exposes the whole instance data block, nested instances included**, as
+   `DB_TwoStationDemo.Feeder.Step` — no quotes in the name, whatever SCL requires when writing it.
+
+#### The mode may only be changed with the cell empty
+
+Found by a test that tried the obvious thing: hold the piece in manual mode, then switch to
+automatic and watch it finish. The second station faulted every time, with the piece in it.
+
+`ModeAuto` and `ModeManual` are two bits, and two tag writes cannot land in the same scan. Between
+them both hold the same value, and `FB_Station` treats `ModeAuto = ModeManual` as a wiring fault —
+which is right, because two modes at once is one. Dropping `CellStart` first does not help: that
+gates admission at the first station, and a handover to the second is not gated at all.
+
+So this is not a test detail, it is a property of the pattern: **a mode change belongs to a stopped
+cell, not to a running one.** An operator turning an Auto/Manual selector with a piece on the line
+faults the station that piece is entering.
+
+Three ways out, and the choice is the user's:
+
+1. **Leave it and write it down** — what is done now. Does not touch the interface, which this
+   document declares fixed.
+2. **One `Mode : Int`** instead of two bits: one write, no intermediate state, impossible by
+   construction. Changes `FB_Station`'s interface.
+3. **Tolerate the ambiguity transiently**, keeping the last valid mode. Rejected: it would hide a
+   genuinely miswired machine, which is what the check exists to catch.
+
+#### The build without PLCSIM Advanced does not work, and the project claims it does
+
+Measured on 2026-08-21 by building with `PlcSimApiPath` pointed at nothing. The comment in
+`TiaMcpServer.csproj` says a machine without PLCSIM Advanced "still builds — the simulation tools
+then report that the runtime is unavailable instead of failing to compile", and
+`SimulationRuntime`'s remarks say the same. **Neither is true**, and it predates the tag work.
+
+Two layers of it:
+
+1. `StartInstance`, `StopInstance` and `PowerCycleInstance` delegate to `WithInstance`, whose
+   non-PLCSIM overload takes `Action<object>`. The lambdas then call `.Run()`, `.Stop()` and
+   `.OperatingState` on `object`, which does not compile.
+2. Guarding those three is not enough. With the API absent, nearly every private member of
+   `SimulationRuntime` becomes unreachable — `_logger`, `Execute`, `IsMissingRuntime`,
+   `TransitionTimeoutMilliseconds` — and this repository runs the analysers as errors, so the
+   build fails on IDE0051, IDE0052 and CA1823 instead.
+
+So the fix is not a few `#if`s. It is either guarding every private member of that class, which
+makes it unreadable, or turning specific analysers down for the configuration where the API is
+absent, which is a build-level decision. **Attempted and reverted on 2026-08-21** rather than
+smuggled into a feature commit; `SimulationRuntime.cs` is back to a one-line diff.
+
+Worth doing, because the promise is load-bearing: it is what lets somebody work on the cell pattern
+or the governance layer on a laptop with no PLCSIM licence.
+
+### Still open in phase 2
+
+- **The work steps are empty.** By design, but the coursework needs real actuation in them, and
+  that is hardware-specific work rather than pattern work.
+- **The mode selector question above** is a decision waiting, not a defect.
+- **The no-PLCSIM build**, above. A real defect, scoped and not started.
+- **MQTT**, the remaining piece of phase 8, is generated code rather than configuration and belongs
+  in `spec/` the same way these do.
 ## Phase 1 — governance (2026-08-17)
 
 The layer itself was written earlier the same day: mode gate, confirmation phrase, single-action
