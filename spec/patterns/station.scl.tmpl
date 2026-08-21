@@ -1,0 +1,185 @@
+﻿// FB_Station - one station of a cell.
+//
+// Expanded by SclTemplateExpander from a cell specification in spec/cells/. This file is data, not
+// server code: nothing in src/ knows what a station does.
+//
+// The interface is fixed and is the one designed in docs/STATUS.md. Nothing may be added to it,
+// because the handshake between stations is defined in terms of exactly these signals:
+//
+//   IN     Start, Reset, Enable, ModeAuto, ModeManual
+//   OUT    Busy, Done, Error, ErrorId, Ready
+//   IN_OUT PieceId
+//
+// The protocol, stated once so the coordinator and the station cannot drift apart:
+//
+//   Ready = "I am empty and able to take a piece."
+//   The coordinator writes PieceId and raises Start. Start held high means "this piece is yours".
+//   Busy  = "working on it."
+//   Done  = "finished, the piece is still mine until you take it."
+//   The coordinator drops Start once it has moved the piece on. Only then does the station idle.
+//
+// Holding the piece until Start drops is the part that matters. A station that returned to idle the
+// moment it finished would have released a piece nobody had accepted yet, and a piece that exists in
+// no station is exactly the state a traceability number cannot describe.
+
+FUNCTION_BLOCK "FB_Station"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR_INPUT
+      Start : Bool;         // held high by the coordinator while this piece is ours
+      Reset : Bool;         // clears a fault; dominates everything
+      Enable : Bool;        // withdrawn means the station may not move
+      ModeAuto : Bool;      // run the sequence through
+      ModeManual : Bool;    // advance one step per rising edge of Start
+   END_VAR
+
+   VAR_OUTPUT
+      Busy : Bool;
+      Done : Bool;
+      Error : Bool;
+      ErrorId : Int;
+      Ready : Bool;
+   END_VAR
+
+   VAR_IN_OUT
+      PieceId : DInt;       // traceability: which piece this is
+   END_VAR
+
+   VAR
+      Step : Int;           // 0 idle, 10 working, 20 done, 90 faulted
+      WorkStep : Int;       // which of the station's own steps is running
+      DwellCounter : Int;   // scan cycles spent in the current work step
+      StartPrevious : Bool; // for the rising edge Manual mode needs
+
+      // Per-instance configuration, written once by the coordinator at startup.
+      //
+      // These are STATIC and not constants, and not inputs either, and both halves of that are
+      // deliberate. There is one FB_Station and one instance per station, so a constant could not
+      // differ between them; and the interface above is fixed by the design in docs/STATUS.md, so
+      // nothing may be added to it. A static is per instance, which is exactly what a per-station
+      // value is.
+      //
+      // The defaults are the safe ones rather than the useful ones: an unconfigured instance
+      // faults instead of running a sequence nobody specified.
+      WorkStepCount : Int := 0;
+      DwellCycles : Int := 0;
+   END_VAR
+
+   VAR CONSTANT
+      STEP_IDLE : Int := 0;
+      STEP_WORKING : Int := 10;
+      STEP_DONE : Int := 20;
+      STEP_FAULT : Int := 90;
+
+      // ErrorId values. Numbered, not enumerated, because a watch table shows a number and the
+      // person reading it needs this list to be short enough to remember.
+      ERR_NONE : Int := 0;
+      ERR_NO_MODE : Int := 1;        // neither Auto nor Manual, or both at once
+      ERR_NO_PIECE : Int := 2;       // Start with PieceId 0: nothing to work on
+      ERR_ENABLE_LOST : Int := 3;    // Enable withdrawn mid-cycle
+      ERR_NOT_CONFIGURED : Int := 4; // WorkStepCount or DwellCycles still zero
+   END_VAR
+
+BEGIN
+    // Reset first and unconditionally. A fault that can only be cleared by restarting the CPU is a
+    // fault that gets cleared by restarting the CPU, on a machine, with a piece still in it.
+    IF #Reset THEN
+        #Step := #STEP_IDLE;
+        #WorkStep := 0;
+        #DwellCounter := 0;
+        #Error := FALSE;
+        #ErrorId := #ERR_NONE;
+        #Done := FALSE;
+        #Busy := FALSE;
+    END_IF;
+
+    // Losing Enable in the middle of a cycle is a fault, not a pause. The piece is somewhere between
+    // two steps and no code here can know where, so it must not silently continue later.
+    IF NOT #Enable AND #Step > #STEP_IDLE AND #Step < #STEP_FAULT THEN
+        #Step := #STEP_FAULT;
+        #ErrorId := #ERR_ENABLE_LOST;
+    END_IF;
+
+    CASE #Step OF
+        #STEP_IDLE:
+            #Busy := FALSE;
+            #Done := FALSE;
+            #Ready := #Enable AND NOT #Error;
+
+            IF #Start AND #Ready THEN
+                // Exactly one mode. Both at once is a wiring mistake and must not be resolved by
+                // preferring one: the two behave differently and guessing would hide the mistake.
+                IF #WorkStepCount < 1 OR #DwellCycles < 1 THEN
+                    // Nobody configured this instance. Starting anyway would run a sequence of no
+                    // steps and report Done without having done anything, which is the worst of
+                    // the available outcomes.
+                    #Step := #STEP_FAULT;
+                    #ErrorId := #ERR_NOT_CONFIGURED;
+                ELSIF #ModeAuto = #ModeManual THEN
+                    #Step := #STEP_FAULT;
+                    #ErrorId := #ERR_NO_MODE;
+                ELSIF #PieceId = 0 THEN
+                    #Step := #STEP_FAULT;
+                    #ErrorId := #ERR_NO_PIECE;
+                ELSE
+                    #Step := #STEP_WORKING;
+                    #WorkStep := 1;
+                    #DwellCounter := 0;
+                END_IF;
+            END_IF;
+
+        #STEP_WORKING:
+            #Ready := FALSE;
+            #Busy := TRUE;
+            #Done := FALSE;
+
+            // WORK_STEPS steps of DWELL_CYCLES scans each. The steps do nothing, and that is the
+            // honest shape for generated code: what this station physically does is cylinders,
+            // sensors and interlocks, and none of it can be inferred from a JSON file. Real actuation
+            // goes here, one branch per #WorkStep, and the handshake around it already works.
+            IF #ModeAuto THEN
+                #DwellCounter := #DwellCounter + 1;
+            ELSIF #Start AND NOT #StartPrevious THEN
+                // Manual: one press, one step. A person walking the sequence needs the machine to
+                // stop between steps, not to run on because they held the button a moment too long.
+                #DwellCounter := #DwellCycles;
+            END_IF;
+
+            IF #DwellCounter >= #DwellCycles THEN
+                #DwellCounter := 0;
+
+                IF #WorkStep >= #WorkStepCount THEN
+                    #Step := #STEP_DONE;
+                ELSE
+                    #WorkStep := #WorkStep + 1;
+                END_IF;
+            END_IF;
+
+        #STEP_DONE:
+            #Busy := FALSE;
+            #Ready := FALSE;
+            #Done := TRUE;
+
+            // The piece is still ours. We idle only when the coordinator drops Start, which is its
+            // way of saying it has taken the piece somewhere.
+            IF NOT #Start THEN
+                #Step := #STEP_IDLE;
+                #WorkStep := 0;
+                #Done := FALSE;
+            END_IF;
+
+        #STEP_FAULT:
+            #Busy := FALSE;
+            #Done := FALSE;
+            #Ready := FALSE;
+            #Error := TRUE;
+
+        ELSE
+            // An unreachable step number is a bug in this block, not a state to recover from
+            // silently. It faults, so it is visible instead of behaving like idle.
+            #Step := #STEP_FAULT;
+            #Error := TRUE;
+    END_CASE;
+
+    #StartPrevious := #Start;
+END_FUNCTION_BLOCK

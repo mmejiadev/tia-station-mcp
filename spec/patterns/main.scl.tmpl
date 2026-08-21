@@ -1,0 +1,30 @@
+﻿// The cell on a controller: one instance of FB_{{cellName}}, and the cyclic OB that calls it.
+//
+// The station and coordinator patterns produce code that *compiles*. This is what makes it *run*,
+// and it is a separate pattern because it is the only one that changes a block somebody else owns:
+// a project already has a Main, and generating this replaces it. A caller that only wants the cell
+// in the project should not be made to overwrite its entry point to get it.
+//
+// The OB calls the instance with **no parameters**, and that is the whole point of the file. Passing
+// constants would assign the inputs on every scan, and then nothing outside the program could drive
+// the cell: a tag write would land in the instance data block and be gone before the next call. With
+// no parameters the inputs keep whatever was last written to them, which is what makes CellStart
+// something a test, a watch table or an operator can actually set.
+//
+// The instance data block is named here rather than in the coordinator because its name is what
+// every tag read has to spell: "DB_{{cellName}}".CellStart, "DB_{{cellName}}".{{firstStationName}}.Step.
+
+DATA_BLOCK "DB_{{cellName}}"
+{ S7_Optimized_Access := 'TRUE' }
+"FB_{{cellName}}"
+BEGIN
+END_DATA_BLOCK
+
+ORGANIZATION_BLOCK "Main"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+BEGIN
+    // Every scan, unconditionally. A cell that only runs when something enables it would need that
+    // something to exist first, and there is nothing above the coordinator in this program.
+    "DB_{{cellName}}"();
+END_ORGANIZATION_BLOCK

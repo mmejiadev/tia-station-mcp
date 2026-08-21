@@ -1,0 +1,54 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <BaseOutputPath>.\bin</BaseOutputPath>
+  </PropertyGroup>
+
+  <!--
+    A third test project, for the same reason there is a second one: **these tests must run without
+    TIA Portal.**
+
+    What belongs here is anything that is text in and text out. That started as cell specifications
+    and template expansion and now also covers SimulationTagValueParser, which turns the text of a
+    tag write into a value: no controller, no portal, and the one part of the simulation code that a
+    laptop can check. The criterion is the run-without-TIA one, not the subject matter.
+
+    TiaMcpServer.Test starts a portal in [AssemblyInitialize], so every test in that assembly pays
+    for one and none of them can run on a machine without a licence. Cell specifications and template
+    expansion are text in and text out, so making them wait for a portal would be paying that price
+    for nothing - and worse, it would mean nobody could check the patterns on a laptop.
+
+    Why not put them in TiaMcpServer.Governance.Test, which already runs without TIA? Because that
+    project holds one explicit test per safety rule, as CLAUDE.md requires, and its value comes from
+    being exactly that list. Filling it with SCL template tests would make the safety tests harder to
+    find, which is the one thing that project cannot afford.
+
+    Note what this project does NOT cover: whether the generated SCL compiles. Nothing here can know
+    that. Test19CellPattern in the TIA suite writes the real patterns into a real project and
+    compiles them, and that is the test that says the patterns are correct. These say the text came
+    out as intended, which is a different and smaller claim.
+
+    The two entries below are repository-wide style decisions already justified in
+    src/TiaMcpServer/TiaMcpServer.csproj, repeated so the same code does not pass in one project and
+    fail in another.
+  -->
+  <PropertyGroup>
+    <NoWarn>$(NoWarn);IDE0008</NoWarn>  <!-- var: CLAUDE.md asks for judgement the analyzer cannot make -->
+    <NoWarn>$(NoWarn);CA1861</NoWarn>   <!-- constant arrays as arguments: a hot-path concern, in test setup -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="MSTest" Version="3.9.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\TiaMcpServer\TiaMcpServer.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
+  </ItemGroup>
+</Project>

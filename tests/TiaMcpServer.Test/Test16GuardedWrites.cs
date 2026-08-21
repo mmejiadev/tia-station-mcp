@@ -182,6 +182,18 @@ namespace TiaMcpServer.Test
         }
 
         [TestMethod]
+        public void WriteSimulationTag_WithNoPolicy_IsRefusedAndReportsNoValue()
+        {
+            // Driving an input on a controller is a change to what a machine is doing, so it asks
+            // permission like every other write. The value stays null: a refused Bool write that
+            // reported false would read as the tag holding false.
+            var response = McpServer.WriteSimulationTag("TiaMcpRefused", "DB_Cell.CellStart", "true");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+            Assert.IsNull(response.Value);
+        }
+
+        [TestMethod]
         public void DeleteSimulationInstance_WithNoPolicy_IsRefused()
         {
             var response = McpServer.DeleteSimulationInstance("TiaMcpRefused");

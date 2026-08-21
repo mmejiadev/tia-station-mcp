@@ -36,7 +36,7 @@ namespace TiaMcpServer.Siemens
     /// else's to keep alive, so those are opened transiently, the same ownership distinction
     /// <see cref="Portal"/> makes about the TIA Portal process.
     /// </remarks>
-    public sealed class SimulationRuntime : IDisposable
+    public sealed partial class SimulationRuntime : IDisposable
     {
         private const string UnavailableMessage =
             "The PLCSIM Advanced runtime is not available. Install PLCSIM Advanced, or set PlcSimApiPath if it is installed somewhere unusual.";

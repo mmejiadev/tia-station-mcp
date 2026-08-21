@@ -242,7 +242,7 @@ The layer described above, plus the documentation of the security model in the R
 
 **What this phase does not do: write a single line that downloads to hardware.**
 
-### Phase 2 — FB_Station and multi-station
+### Phase 2 — FB_Station and multi-station — **done, 2026-08-18**
 
 In `spec/`, as data rather than as server code:
 

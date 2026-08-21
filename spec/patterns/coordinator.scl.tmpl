@@ -1,0 +1,137 @@
+﻿// FB_{{cellName}} - the coordinator for a cell of {{stationCount}} stations.
+//
+// Expanded by SclTemplateExpander from spec/cells/. Everything cell-specific is in that JSON file:
+// change the cell and no code in src/ changes.
+//
+// It owns one FB_Station instance per station and moves pieces along the line. The whole of the
+// coordination is the Ready / Done / PieceId handshake, and it is worth stating in one place:
+//
+//   A piece enters at {{firstStationName}} when the cell is started and that station is Ready.
+//   Station N holds its piece until N+1 is Ready. Then PieceId moves and Start swaps over.
+//   A piece leaves the line at {{lastStationName}} and is reported on CompletedPieceId.
+//
+// What station N does when N+1 has faulted is the question that decides whether this is a real
+// coordinator or a diagram: **N keeps its piece.** It stays in Done, holding the piece, and the cell
+// reports where it is blocked. The alternative - releasing anyway - would put a piece into a station
+// that cannot work it, and the traceability number would then point at a machine that is not moving.
+
+FUNCTION_BLOCK "FB_{{cellName}}"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR_INPUT
+      CellStart : Bool;      // feed pieces while high
+      CellReset : Bool;      // clears faults in the coordinator and every station
+      Enable : Bool;         // passed to every station
+      ModeAuto : Bool;
+      ModeManual : Bool;
+      NextPieceId : DInt;    // the traceability number for the next piece to enter
+   END_VAR
+
+   VAR_OUTPUT
+      CellBusy : Bool;           // at least one station is working
+      CellDone : Bool;           // a piece left the line this scan
+      CellError : Bool;          // at least one station has faulted
+      BlockedAtStation : Int;    // index of a station holding a piece it cannot pass on; 0 if none
+      CompletedPieceId : DInt;   // the last piece to leave the line
+   END_VAR
+
+   VAR
+{{#stations}}
+      {{stationName}} : "FB_Station";
+{{/stations}}
+
+      // Written to each station's Start input, and read back to decide the handovers. Held here
+      // rather than read from the instances because a station's Start is an input: the coordinator is
+      // the only thing that may write it, so the coordinator is where its value lives.
+{{#stations}}
+      Start_{{stationName}} : Bool;
+{{/stations}}
+
+      Configured : Bool;     // the per-instance configuration has been written
+   END_VAR
+
+BEGIN
+    // One-time configuration of the instances. Done here and not with initial values because
+    // WorkStepCount and DwellCycles differ per station and FB_Station is one block: see the comment
+    // on those statics in station.scl.tmpl.
+    IF NOT #Configured THEN
+{{#stations}}
+        #{{stationName}}.WorkStepCount := {{workSteps}};
+        #{{stationName}}.DwellCycles := {{dwellCycles}};
+{{/stations}}
+        #Configured := TRUE;
+    END_IF;
+
+    // Reset clears the coordinator's own state. It is passed to the stations below, where it also
+    // dominates.
+    IF #CellReset THEN
+{{#stations}}
+        #Start_{{stationName}} := FALSE;
+{{/stations}}
+        #BlockedAtStation := 0;
+        #CompletedPieceId := 0;
+        #CellDone := FALSE;
+    END_IF;
+
+    // CellDone is true for the scan in which a piece leaves, and no longer. A latched CellDone would
+    // count one piece for as long as nobody cleared it.
+    #CellDone := FALSE;
+    #BlockedAtStation := 0;
+
+    // Call every station first, then decide the movements from what they report. Deciding from
+    // half-updated outputs would move a piece on the strength of last scan's Done.
+{{#stations}}
+    #{{stationName}}(
+        Start := #Start_{{stationName}},
+        Reset := #CellReset,
+        Enable := #Enable,
+        ModeAuto := #ModeAuto,
+        ModeManual := #ModeManual);
+{{/stations}}
+
+    // Hand over from the far end backwards. Emptying the last station first means the space it frees
+    // is available to its neighbour in the same scan, so a piece can advance one station per scan
+    // rather than one station every N scans. Going forwards instead would move a piece into a station
+    // that has not yet been emptied.
+{{#handovers}}
+    IF #{{fromName}}.Done AND #{{toName}}.Ready THEN
+        #{{toName}}.PieceId := #{{fromName}}.PieceId;
+        #{{fromName}}.PieceId := 0;
+        #Start_{{toName}} := TRUE;
+        #Start_{{fromName}} := FALSE;
+    ELSIF #{{fromName}}.Done AND NOT #{{toName}}.Ready THEN
+        // {{fromName}} is finished and has nowhere to put the piece. It keeps it, and the cell says
+        // where it is stuck rather than leaving someone to work that out from five watch tables.
+        #BlockedAtStation := {{fromIndex}};
+    END_IF;
+{{/handovers}}
+
+    // The piece leaves the line.
+    IF #{{lastStationName}}.Done THEN
+        #CompletedPieceId := #{{lastStationName}}.PieceId;
+        #{{lastStationName}}.PieceId := 0;
+        #Start_{{lastStationName}} := FALSE;
+        #CellDone := TRUE;
+    END_IF;
+
+    // And enters it. Last, so a piece that entered this scan is not also advanced this scan.
+    IF #CellStart AND #{{firstStationName}}.Ready AND NOT #Start_{{firstStationName}} THEN
+        IF #NextPieceId = 0 THEN
+            // A piece with no number cannot be traced, which is the one thing this cell exists to
+            // do. Refusing to admit it is better than admitting it as piece zero.
+            #BlockedAtStation := 1;
+        ELSE
+            #{{firstStationName}}.PieceId := #NextPieceId;
+            #Start_{{firstStationName}} := TRUE;
+        END_IF;
+    END_IF;
+
+    // Summaries, from the stations rather than from anything this block remembers.
+    #CellBusy := FALSE;
+    #CellError := FALSE;
+
+{{#stations}}
+    #CellBusy := #CellBusy OR #{{stationName}}.Busy;
+    #CellError := #CellError OR #{{stationName}}.Error;
+{{/stations}}
+END_FUNCTION_BLOCK

@@ -223,6 +223,49 @@ namespace TiaMcpServer.ModelContextProtocol
             }
         }
 
+        [McpServerTool(Name = "WriteSimulationTag"), Description("Write one tag of a running virtual controller: how an input is driven so a program can be exercised. The value is text and is parsed as the tag's declared type, and what the controller holds afterwards is read back rather than echoed — a tag the program assigns every scan will not keep what you write.")]
+        public static ResponseSimulationTagValue WriteSimulationTag(
+            [Description("instanceName: the virtual controller to write to")] string instanceName,
+            [Description("tagName: the tag name, spelled as ListSimulationTags reports it")] string tagName,
+            [Description("value: the value as text — 'true', '17', '1.5'. A decimal point, never a comma.")] string value)
+        {
+            try
+            {
+                // The target is the controller, the same name that governs starting and stopping
+                // it, because a policy author decides about controllers rather than about
+                // individual tags — and stopping one is at least as consequential as driving an
+                // input on it. Which tag and which value are the change's value, so the audit line
+                // names them even though no rule matches on them.
+                var request = new Governance.ChangeRequest(
+                    "WriteSimulationTag",
+                    ChangeTarget.Simulation(instanceName),
+                    $"{tagName} := {value}");
+
+                return GuardedTool.Run(
+                    GuardedWrites,
+                    request,
+                    () =>
+                    {
+                        var written = Simulation.WriteTag(instanceName, tagName, value);
+
+                        return new ResponseSimulationTagValue(written.Name, written.DataType, written.Value)
+                        {
+                            Message = $"'{written.Name}' on '{instanceName}' now holds {written.Value}",
+                            Meta = new JsonObject
+                            {
+                                ["timestamp"] = DateTime.Now,
+                                ["success"] = true
+                            }
+                        };
+                    },
+                    () => new ResponseSimulationTagValue(tagName, string.Empty, null));
+            }
+            catch (TiaMcpServer.Siemens.PortalException pex)
+            {
+                throw ToMcpException(pex, $"Failed to write '{tagName}' on '{instanceName}'");
+            }
+        }
+
         [McpServerTool(Name = "DeleteSimulationInstance"), Description("Power off a virtual controller and remove it from the runtime.")]
         public static ResponseMessage DeleteSimulationInstance(
             [Description("instanceName: the virtual controller to remove")] string instanceName)

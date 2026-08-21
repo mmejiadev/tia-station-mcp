@@ -305,6 +305,121 @@ namespace TiaMcpServer.ModelContextProtocol
         public string NetworkMode { get; }
     }
 
+    /// <summary>One entry of a virtual controller's tag list.</summary>
+    public sealed class ResponseSimulationTag
+    {
+        /// <summary>Creates the entry.</summary>
+        /// <param name="name">The name a read or a write must use.</param>
+        /// <param name="area">Input, Output, Marker, Timer, Counter or DataBlock.</param>
+        /// <param name="dataType">The declared PLC data type.</param>
+        /// <param name="isReadable">Whether this server can read a value for it.</param>
+        public ResponseSimulationTag(string name, string area, string dataType, bool isReadable)
+        {
+            Name = name;
+            Area = area;
+            DataType = dataType;
+            IsReadable = isReadable;
+        }
+
+        /// <summary>
+        /// The name a read or a write must use, spelled exactly as the controller reports it. Members
+        /// of a data block are fully qualified and carry no quotes: <c>DB_Cell.Feeder.Step</c>.
+        /// </summary>
+        public string Name { get; }
+
+        /// <summary>Input, Output, Marker, Timer, Counter or DataBlock.</summary>
+        public string Area { get; }
+
+        /// <summary>The declared PLC data type, e.g. Bool, Int, DInt, Real.</summary>
+        public string DataType { get; }
+
+        /// <summary>
+        /// Whether this server can read a value for it. False for a struct or an array: read their
+        /// members instead, which are separate entries in the same list.
+        /// </summary>
+        public bool IsReadable { get; }
+    }
+
+    /// <summary>A page of a virtual controller's tag list.</summary>
+    public sealed class ResponseSimulationTags : ResponseMessage
+    {
+        /// <summary>Creates the response.</summary>
+        /// <param name="items">The tags returned, ordered by name.</param>
+        /// <param name="matchCount">How many tags matched the filter, returned or not.</param>
+        /// <param name="totalCount">How many tags the program has in total.</param>
+        public ResponseSimulationTags(IReadOnlyList<ResponseSimulationTag> items, int matchCount, int totalCount)
+        {
+            Items = items;
+            MatchCount = matchCount;
+            TotalCount = totalCount;
+        }
+
+        /// <summary>The tags returned, ordered by name.</summary>
+        public IReadOnlyList<ResponseSimulationTag> Items { get; }
+
+        /// <summary>How many tags matched the filter, whether returned or not.</summary>
+        public int MatchCount { get; }
+
+        /// <summary>
+        /// How many tags the program has in total. Zero means the controller holds no program at
+        /// all: the tag list is read from the controller, so download before expecting names.
+        /// </summary>
+        public int TotalCount { get; }
+
+        /// <summary>
+        /// Whether matching tags were left out because of the limit. Reported so a filtered list
+        /// that happens to be a page is not mistaken for the whole answer.
+        /// </summary>
+        public bool IsTruncated => Items.Count < MatchCount;
+    }
+
+    /// <summary>The value of one tag of a virtual controller.</summary>
+    public sealed class ResponseSimulationTagValue : ResponseMessage
+    {
+        /// <summary>Creates the response.</summary>
+        /// <param name="name">The tag the value belongs to.</param>
+        /// <param name="dataType">The declared PLC data type it was read as.</param>
+        /// <param name="value">The value, or null when nothing was read.</param>
+        public ResponseSimulationTagValue(string name, string dataType, object? value)
+        {
+            Name = name;
+            DataType = dataType;
+            Value = value;
+        }
+
+        /// <summary>The tag the value belongs to.</summary>
+        public string Name { get; }
+
+        /// <summary>The declared PLC data type it was read as.</summary>
+        public string DataType { get; }
+
+        /// <summary>
+        /// The value, as a bool or a number rather than as text, so it can be compared without
+        /// being parsed first — except a WChar, which is a one-character string. Null when nothing
+        /// was read: a write the guard refused reports no value rather than a plausible one,
+        /// because a refused Bool write reporting <c>false</c> would read as the tag holding false.
+        /// </summary>
+        public object? Value { get; }
+    }
+
+    /// <summary>The values of several tags of a virtual controller.</summary>
+    public sealed class ResponseSimulationTagValues : ResponseMessage
+    {
+        /// <summary>Creates the response.</summary>
+        /// <param name="items">One value per tag asked for, in the order asked for.</param>
+        public ResponseSimulationTagValues(IReadOnlyList<ResponseSimulationTagValue> items)
+        {
+            Items = items;
+        }
+
+        /// <summary>
+        /// One value per tag asked for, in the order asked for. They are read through one handle in
+        /// one call, so they come from nearly the same moment — but the controller keeps scanning
+        /// while they are read, so this is not a consistent snapshot of a scan.
+        /// </summary>
+        public IReadOnlyList<ResponseSimulationTagValue> Items { get; }
+    }
+
     /// <summary>Result of writing SCL into a PLC program.</summary>
     public sealed class ResponseWriteScl : ResponseMessage
     {
@@ -376,6 +491,35 @@ namespace TiaMcpServer.ModelContextProtocol
 
         /// <summary>One entry per job, newest first.</summary>
         public IReadOnlyList<ResponseJob> Items { get; }
+    }
+
+    /// <summary>SCL generated for a cell, not yet written anywhere.</summary>
+    public sealed class ResponseCellScl : ResponseMessage
+    {
+        /// <summary>Creates the response.</summary>
+        /// <param name="cellName">The cell the source describes.</param>
+        /// <param name="stationNames">Its stations, in the order a piece visits them.</param>
+        /// <param name="scl">The SCL source, station pattern first.</param>
+        public ResponseCellScl(string cellName, IReadOnlyList<string> stationNames, string scl)
+        {
+            CellName = cellName;
+            StationNames = stationNames;
+            Scl = scl;
+        }
+
+        /// <summary>The cell the source describes.</summary>
+        public string CellName { get; }
+
+        /// <summary>Its stations, in the order a piece visits them.</summary>
+        public IReadOnlyList<string> StationNames { get; }
+
+        /// <summary>The SCL source, station pattern first and coordinator second.</summary>
+        /// <remarks>
+        /// The order is not cosmetic: the coordinator declares instances of the station, so the
+        /// station type has to exist before it. One source rather than two because <c>WriteScl</c>
+        /// generates every block a source declares, in the order it reads them.
+        /// </remarks>
+        public string Scl { get; }
     }
 
     /// <summary>One backup the registry holds.</summary>

@@ -1,0 +1,17 @@
+﻿// Two stations that work.
+//
+// This is the one to get running first, and not as a stepping stone to the real thing: the whole of
+// the coordination is the handshake between one station and the next, and two stations contain it
+// completely. What four stations add is three copies of a problem already solved.
+//
+// workSteps  - how many steps the station's own sequence has. They do nothing; they are where real
+//              actuation goes. See spec/patterns/station.scl.tmpl.
+// dwellCycles - scan cycles each step occupies. Without it a sequence finishes in one scan and
+//              nothing is observable in a watch table.
+{
+  "cell": "TwoStationDemo",
+  "stations": [
+    { "name": "Feeder", "workSteps": 2, "dwellCycles": 5 },
+    { "name": "Driller", "workSteps": 3, "dwellCycles": 10 }
+  ]
+}
