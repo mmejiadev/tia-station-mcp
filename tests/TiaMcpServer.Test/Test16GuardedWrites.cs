@@ -182,6 +182,39 @@ namespace TiaMcpServer.Test
         }
 
         [TestMethod]
+        public void UseTcpIpNetworkMode_WithNoPolicy_IsRefused()
+        {
+            // Machine-wide, and that is why it is guarded and why it has its own target: it changes
+            // the runtime every PLCSIM user on this computer shares, not one controller.
+            var response = McpServer.UseTcpIpNetworkMode();
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void CompileHardware_WithNoPolicy_IsRefusedAndCompilesNothing()
+        {
+            // Guarded for the same reason CompileSoftware is: it is what makes a configuration
+            // downloadable. The error count stays at zero because a refusal is not a compile that
+            // found nothing wrong — nothing was compiled at all.
+            var response = McpServer.CompileHardware(Settings.Project1PlcSoftwarePath0);
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+            Assert.AreEqual(0, response.ErrorCount);
+        }
+
+        [TestMethod]
+        public void EnableSimulationSupport_WithNoPolicy_IsRefused()
+        {
+            // Without this setting no program can run on a virtual controller, and with it every
+            // program can. That makes it a precondition for a download rather than a diagnostic,
+            // so an ungoverned session must not be able to turn it on.
+            var response = McpServer.EnableSimulationSupport();
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
         public void WriteSimulationTag_WithNoPolicy_IsRefusedAndReportsNoValue()
         {
             // Driving an input on a controller is a change to what a machine is doing, so it asks

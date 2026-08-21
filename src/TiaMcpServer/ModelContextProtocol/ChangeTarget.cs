@@ -10,10 +10,11 @@
     /// and an unmatched target is refused, so the mistake would show up as an inexplicable refusal
     /// rather than as a typo.
     ///
-    /// Three families, and nothing else:
+    /// Four families, and nothing else:
     /// <list type="bullet">
     /// <item><description><c>PLC_0/Blocks/FB_Station</c> — a place in the project tree.</description></item>
     /// <item><description><c>simulation/Station_1</c> — a virtual controller, which is not in the project.</description></item>
+    /// <item><description><c>simulation-runtime</c> — the PLCSIM Advanced runtime itself, machine-wide.</description></item>
     /// <item><description><c>project</c> — the project as a whole: saving it, closing it, copying it.</description></item>
     /// </list>
     /// </remarks>
@@ -29,6 +30,21 @@
         /// matched against rules.
         /// </remarks>
         public const string Project = "project";
+
+        /// <summary>
+        /// The PLCSIM Advanced runtime itself, as opposed to a controller inside it.
+        /// </summary>
+        /// <remarks>
+        /// Its own name, and not under the <c>simulation/</c> prefix, because it is a different
+        /// authority: the runtime's network mode is machine-wide and affects every PLCSIM user on
+        /// that machine, while a controller affects only itself. A policy that let a session create
+        /// controllers should not thereby let it reconfigure the runtime those controllers — and
+        /// everybody else's — live in.
+        ///
+        /// It follows that a policy allowing <c>simulation/*</c> does **not** allow this. That is
+        /// the intent, and a session that needs it names it.
+        /// </remarks>
+        public const string SimulationRuntime = "simulation-runtime";
 
         private const string SimulationPrefix = "simulation/";
 

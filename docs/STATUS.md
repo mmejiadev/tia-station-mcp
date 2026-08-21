@@ -77,12 +77,12 @@ production code rather than in the test:
    context is the same condition as a caller that did not ask for progress, and the tool reports
    none and does the work.
 
-**Next action:** commit phase 2 and the tag work on a branch and open a pull request — never push
-to `main`. Two sessions are sitting in the working tree.
+**Phase 2 and the tag work were merged as pull request #7 on 2026-08-21.**
 
-Then **phase 3, the metrics harness**, which makes sense for the first time now: its deliverable is
-what fraction of specifications passes on a simulated CPU, and until today there was no way to ask
-whether a program passes — only whether it compiles.
+**Next action:** the loop closed end to end once — 2 of 2 specifications on a simulated CPU — and
+then the download stopped working, five runs in a row, for a reason not yet found. **Read "OPEN: the
+download stopped working" under Phase 3 first**; it lists what has been ruled out by measurement and
+what to try, cheapest first. `generator.ts` against the Anthropic API is what remains after that.
 
 One decision is waiting and is the user's: **the mode selector**, see "The mode may only be changed
 with the cell empty" under phase 2. It blocks nothing.
@@ -166,6 +166,245 @@ State during the session of 2026-08-12 (afternoon):
 
 Required reading at startup: this file, `../CLAUDE.md` and `REFERENCE-REPOS.md`.
 The plan for what comes next is in `ROADMAP.md`.
+
+## Phase 3 — the harness (started 2026-08-21)
+
+`harness/`, Node and TypeScript, outside the solution as the roadmap says. Started with the client
+and the loop rather than the generator, on the user's decision: a generator wired in on day one
+means a failure could be the loop, the MCP server or the prompt, and separating those afterwards
+costs more than building them in order.
+
+**Done: the harness talks to the server, and records what happens.** `npm run check` — type-check
+plus **9 tests, 9/9**, no TIA Portal needed.
+
+```
+harness/src/mcpClient.ts        owns the process, the transport, and the result shape
+harness/src/serverLocation.ts   finds TiaMcpServer.exe; TIA_MCP_SERVER overrides
+harness/src/telemetry.ts        runs, iterations and phase timings, in SQLite
+harness/test/*.test.ts          9 cases
+```
+
+Three decisions in that, each measured rather than assumed:
+
+- **No build step.** Node runs the TypeScript by stripping types, so `tsconfig.json` type-checks and
+  emits nothing. The cost is the features that need a real transform — no enums, no namespaces, no
+  decorators, no parameter properties — and `erasableSyntaxOnly` makes the compiler enforce it
+  rather than leaving it to memory. What it buys is that there is no `dist/` to be stale.
+- **A refusal is not a failed call, and the harness had to learn the difference the hard way.** The
+  first version asserted it with `WriteScl`, which throws when no project is open — that is an
+  invalid state, not a policy decision, and it arrives as `isError`. A governance refusal comes back
+  as an ordinary response with `meta.success` false and `meta.outcome` `Refused`. Both are now
+  tests, one per side, and the refusal one also asserts that nothing was created.
+- **The server's stderr is empty unless logging is on.** Measured. The transport pipes it anyway,
+  because that is where diagnostics appear when there are any, but the comment says what an empty
+  log means: nothing was logged, never nothing went wrong.
+
+The test asserts the toolset is large rather than exactly 55. A count would fail for the one reason
+that is never a defect.
+
+### The telemetry store
+
+`node:sqlite`, which ships with Node, chosen over `better-sqlite3` for one reason: a native module
+has to be compiled, and a harness that needs a C++ toolchain before it can record a number is a
+harness that does not get run on the machine that has TIA Portal on it.
+
+Three things in it are deliberate:
+
+- **Every timestamp is epoch milliseconds.** These get subtracted, sorted and compared across runs,
+  and a local-time string does none of those correctly twice a year.
+- **A phase is timed in a `finally`, so a phase that threw is still timed.** "The compile took
+  ninety seconds and then failed" is a different problem from "the compile failed at once", and only
+  one of them is visible if a failed phase records nothing.
+- **Opening a store written by another schema version is refused.** The alternative is not a crash,
+  it is a number computed from columns that used to mean something else.
+
+**A defect the tests found, in the harness's own code:** when `Telemetry.open` refused a schema
+version it threw without closing the database, so on Windows the file stayed locked and the next
+thing to touch it failed with a permission error that said nothing about the schema. The test for
+the refusal could not delete its own temporary directory, which is how it surfaced. Same shape as
+the orphan TIA portal and the unheld PLCSIM handle: a handle not released on the failure path.
+
+`SUM` over no rows is NULL in SQL, so a run with no iterations is read as zeroes rather than passed
+on to become a NaN in a report. That has its own test, because a crashed run is exactly the case
+that produces it.
+
+**Not built yet, and deliberately:** the `audit` table the roadmap names. Creating it now would add
+a table nothing writes to; it wants an ingester for `.tia-mcp/audit.jsonl`, which is its own piece.
+
+### The loop closes, end to end (2026-08-21)
+
+**2 of 2 specifications passed on a simulated CPU, n=2, 3 iterations, 2 m 21 s.** The chain is
+generate, write, compile, download, start, and check the cell behaves — the whole thing, on the
+user's decision. One of the two cases is deliberately broken on its first attempt and recovers on
+its second, so the corrective half of the loop is exercised and not merely present.
+
+First real numbers, which is what this phase exists to produce:
+
+| phase | n | mean |
+|---|---|---|
+| download | 2 | **46.1 s** |
+| write | 3 | 5.1 s |
+| compile | 3 | 2.3 s |
+| verify | 2 | 0.8 s |
+| generate | 3 | 0.013 s |
+
+**The download is 91% of an iteration.** Compiling is 2.3 seconds and downloading is 46, which is
+worth knowing before anyone designs a bigger measurement — and the loop's ordering already exploits
+it: `download n=2` for three iterations, because the attempt that did not compile never reached the
+download and saved the whole 46 seconds.
+
+```
+harness/src/specification.ts   the cases, and their acceptance language
+harness/src/generator.ts       the stub, which proves nothing about generation and is not meant to
+harness/src/verification.ts    write, waitFor and expect against a running controller
+harness/src/loop.ts            which failures continue and which stop
+harness/src/toolContract.ts    the harness's calls, checked against the server's schemas
+harness/src/run.ts             the CLI
+harness/policy.json            versioned, because it is part of the experiment
+harness/specs/                 two cases
+```
+
+`npm run check` — type-check plus **18 tests, 18/18**, none of them needing TIA Portal.
+
+#### It took ten runs, and not one failure was in the loop or in the cell
+
+Worth listing, because the pattern is the argument for having built the harness before the
+generator. Every one of these would have looked like "the model generates bad code":
+
+1. **The MCP SDK times out requests after 60 s.** Connecting to TIA alone takes 45. A timeout
+   shorter than the work turns every measurement into a measurement of the timeout.
+2. **Openness refuses relative paths** — "The argument 'sourcePath' cannot be a relative path". The
+   CLI now resolves every path itself; a CLI that only works with absolute paths is a trap.
+3. **A failing tool arrives in two shapes**, and the client handled one: a result with `isError`, or
+   a JSON-RPC error the SDK raises as an exception. `GetProject` took the second path and killed the
+   run outright instead of recording an outcome and carrying on.
+4. **`--logging` selects a destination, not a level.** 1 is stderr; 0, which is what a flag called
+   "logging" invites, turns it off — which is why the log was empty when it was needed.
+5. **Two parameter names were guessed wrong**: `scl` where `WriteScl` takes `sclCode`, and
+   `projectPath` where `OpenProject` takes `path`. See "The contract" below.
+6. **A block written into a project stays in it.** The stub broke the first attempt by *appending* a
+   block that could not compile, so the next attempt omitting it repaired nothing: the project kept
+   two errors for every remaining attempt, and for the next specification too. It now breaks the
+   `Main` OB, which every attempt regenerates. Regenerating a block overwrites it; not mentioning one
+   does not delete it.
+7. **The report said "2 compiler error(s)" and not which.** A count says something is wrong and
+   nothing about what, which is exactly what this repository's error model exists to prevent.
+8. **Four gaps in the server**, below.
+9. **`ResetModule`**, below.
+10. **A dialog, twice.** See "The whitelist" below.
+
+#### The contract
+
+`toolContract.ts` lists every tool the harness calls with the arguments it sends, and checks that
+against the server's own schemas in **74 ms without TIA Portal**. It exists because finding one wrong
+parameter name cost a full download-length run, the server's logging turned on, and a stack trace:
+the protocol carries no detail, so `WriteScl` failing arrives as "An error occurred invoking
+'WriteScl'".
+
+It checks three things, and the third matters most later: every **required** parameter of a tool is
+one the harness sends. A parameter that becomes required would otherwise break the loop mid-run with
+no explanation. Its test also asserts that the check can fail, because a contract check that always
+passes is worse than none.
+
+#### Four gaps in the server, all found by trying to close the loop
+
+None was visible by reading. **58 tools**, up from 55.
+
+- **`CompileHardware` and `EnableSimulationSupport` existed in the `Portal` layer and were not
+  exposed.** They are the two steps `Test20CellRuns` does internally, and without them a download
+  fails blaming the target rather than the project. Both guarded.
+- **`UseTcpIpNetworkMode` was called by nobody** — only by the C# tests, in-process. Without it the
+  runtime stays on Softbus, where a controller is reachable only by PLCSIM itself. Nor can it be
+  fixed from outside: the code records, measured, that setting it from another process reads back as
+  applied and has no effect. So it is a tool now, and guarded.
+- **`CreateSimulationInstance` could not be given a CPU type.** It created the unspecified
+  controller, the hardware download succeeded, and the text libraries then failed with `InvalidAID`.
+  `Test11Download`'s own comment had recorded why it creates a `CPU1511`; without that comment this
+  would have cost hours.
+
+That last one forced a governance decision: **a fourth family of change targets**,
+`simulation-runtime`. The network mode is machine-wide and affects every PLCSIM user on the computer,
+while a controller affects only itself, so a policy that permits creating controllers must not
+thereby permit reconfiguring the runtime they all live in. `simulation/*` deliberately does not cover
+it.
+
+#### ResetModule, the seventh answer
+
+The download asked `ResetModule` for the first time, because the controller is now created as the
+project's CPU rather than the unspecified one — the previous fix opened this door. Answered
+`DeleteAll`: a virtual controller starts empty so there is nothing to lose, and `NoAction` leaves
+whatever is on the module beside what is being written. Against hardware that answer would erase a
+machine's program, which is one more reason downloading there is not implemented.
+
+The diagnostic is why this cost one line instead of hours. It did not say the download failed; it
+said *"The download asked something this server cannot answer: ResetModule. Add it to the answer
+table in SimulationDownloader."* That sentence was written by the work of 2026-08-17, and it paid for
+itself today.
+
+#### The whitelist, and why unattended measurement is not solved
+
+**TIA Portal asks for Openness confirmation again every time the server executable is rebuilt**, and
+while that dialog is open `Connect` blocks. Measured: run 7 hung right after a rebuild, run 8
+connected with no dialog and no rebuild, run 9 hung again after a rebuild. It cost twenty minutes
+across two runs, and the visible symptom was `Request timed out` — which points at the server when
+the cause is on the screen.
+
+This is a constraint on the phase, not an anecdote. The roadmap wants `n=10, 3 repetitions`, and a
+loop that hangs for ten minutes whenever the server is rebuilt cannot run unattended. The way out is
+to pin `TIA_MCP_SERVER` to an already-confirmed copy of the executable and not rebuild it between
+measurements.
+
+`Connect` should also get a timeout of its own, shorter than the ten-minute default: it takes a known
+forty-five seconds, so waiting ten minutes protects nothing and only delays the news.
+
+#### OPEN: the download stopped working after the run that passed, and I do not know why
+
+**This is the first thing to look at when picking the work up.** The loop passed 2 of 2 on run 10.
+Runs 11 to 15 all failed at the download with `Connect to module PLC_0 failed` — the single symptom
+this project has spent the most time on, and whose known cause (a controller unregistering itself
+because no handle was held) was fixed on 2026-08-17.
+
+What has been ruled out, by measurement rather than by reasoning:
+
+- **Not the network mode.** The suspicion was that `UseTcpIpNetworkMode` reported success while the
+  runtime stayed on Softbus. It now fails closed in both layers — see below — and the run reached
+  the download anyway, so the mode was TCP/IP.
+- **Not a stale controller.** `ListSimulationInstances` reports none before a run.
+- **Not the virtual adapter.** "Siemens PLCSIM Virtual Ethernet Adapter" is Up at 192.168.0.100,
+  the same subnet as the controller at 192.168.0.1.
+- **Not an orphan process.** No `Siemens.Automation.Portal` and no `TiaMcpServer` afterwards.
+- **Not the pinned executable.** Runs 11 and 12 used the ordinary build and failed the same way.
+
+What changed between run 10 and run 11, in order of how much they are worth trying:
+
+1. **The machine had started TIA Portal about fourteen times by then.** This repository already
+   records that the environment degrades; a restart of the PLCSIM Advanced runtime, or of the
+   machine, is the cheapest thing to try and was not tried because of the hour.
+2. **The server's audit trail and backup root moved.** Run 10 let them default beside the harness's
+   working directory; they are now named explicitly under `.tia-mcp/harness/`. Nothing about that
+   should touch a download — and "should" is what this session disproved five times, so reverting
+   to run 10's conditions is a real experiment.
+3. **`Describe` was extracted** in `McpServerWrites.cs`, which touches how a download's *response*
+   is built and not the download. The 139-case suite passed after it.
+
+Two things were fixed while chasing this, and both are worth keeping whatever the cause turns out
+to be:
+
+- **`UseTcpIpNetworkMode` reported success for having been called**, not for the mode it left behind.
+  A runtime still on Softbus then let a caller spend a compile and a download before failing with
+  `Connect to module failed`. It now refuses when the mode is not TCP/IP, in the tool and again in
+  the harness.
+- **`Connect` has its own three-minute timeout**, against ten for everything else. A slow Connect is
+  almost never slow: it is the Openness confirmation dialog waiting for somebody. The message says
+  so now.
+
+**Two harness runs at once do not work.** Openness attaches to the TIA Portal already running, finds
+the other run's project open, and `RetrieveProject` fails with "Another project is already open".
+Found by accident, worth knowing before anyone tries to parallelise measurements.
+
+**Next in this phase:** `generator.ts` against the Anthropic API. It is the only piece missing, and
+the one whose failures can finally be attributed to it, because everything around it has been
+measured.
 
 ## Phase 2 — FB_Station and multi-station (2026-08-18)
 

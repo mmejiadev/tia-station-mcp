@@ -1,0 +1,24 @@
+// The write policy the harness runs under, and the exact list of what a measured run needs.
+//
+// It ships with the harness rather than being copied from policy.example.json because it is not a
+// machine's configuration: it is part of the experiment. A run whose permissions differ from
+// another run's is not comparable with it, and a policy in .gitignore could differ silently.
+//
+// Study mode only. There is no workshop section, and that is the point: nothing in this file can
+// authorise anything on physical hardware, so a harness left running unattended cannot move a
+// machine even if somebody switched the mode.
+{
+  "study": {
+    "allow": [
+      "PLC_0",
+      "PLC_0/*",
+      "project",
+      "simulation/*",
+      "simulation-runtime"
+    ],
+    "deny": [
+      // Safety code is written by a person and reviewed by a person. A measurement loop least of all.
+      "PLC_0/Safety/*"
+    ]
+  }
+}
