@@ -1,0 +1,56 @@
+{
+  "name": "two-station-without-enable-admits-nothing",
+  "goal": "A station reports Ready only while Enable is held, so a cell started with Enable low must admit no piece at all - and must not fault either, because refusing to start is not a fault.",
+  "cellPath": "spec/cells/two-station-demo.json",
+  "softwarePath": "PLC_0",
+  "breakFirstAttempt": false,
+  "controller": {
+    "name": "HarnessNoEnable",
+    "address": "192.168.0.1",
+    "subnetMask": "255.255.255.0",
+    "cpuType": "CPU1511"
+  },
+  "acceptance": [
+    {
+      "action": "write",
+      "tag": "DB_TwoStationDemo.Enable",
+      "value": "false"
+    },
+    {
+      "action": "write",
+      "tag": "DB_TwoStationDemo.ModeAuto",
+      "value": "true"
+    },
+    {
+      "action": "write",
+      "tag": "DB_TwoStationDemo.ModeManual",
+      "value": "false"
+    },
+    {
+      "action": "write",
+      "tag": "DB_TwoStationDemo.NextPieceId",
+      "value": "66"
+    },
+    {
+      "action": "write",
+      "tag": "DB_TwoStationDemo.CellStart",
+      "value": "true"
+    },
+    {
+      "action": "hold",
+      "tag": "DB_TwoStationDemo.CompletedPieceId",
+      "notEquals": "66",
+      "durationMilliseconds": 5000
+    },
+    {
+      "action": "expect",
+      "tag": "DB_TwoStationDemo.CellError",
+      "equals": "false"
+    },
+    {
+      "action": "expect",
+      "tag": "DB_TwoStationDemo.Feeder.Step",
+      "equals": "0"
+    }
+  ]
+}

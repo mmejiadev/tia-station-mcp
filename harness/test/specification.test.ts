@@ -91,6 +91,33 @@ describe('specification', () => {
       /specs\/example\.json: acceptance\[1\]: 'value'/
     );
   });
+  it('accepts a hold step, which is how a case asserts that nothing happened', () => {
+    const specification = validateSpecification(
+      {
+        ...minimal(),
+        acceptance: [
+          { action: 'hold', tag: 'DB_Cell.CompletedPieceId', notEquals: '55', durationMilliseconds: 5000 }
+        ]
+      },
+      'test'
+    );
+
+    assert.equal(specification.acceptance[0]?.action, 'hold');
+  });
+
+  it('refuses a hold step with no duration', () => {
+    // A hold of no length asserts nothing while looking like an assertion, which is the failure
+    // mode this whole validation exists to prevent.
+    assert.throws(
+      () =>
+        validateSpecification(
+          { ...minimal(), acceptance: [{ action: 'hold', tag: 'DB_Cell.X', notEquals: '1' }] },
+          'test'
+        ),
+      /durationMilliseconds/
+    );
+  });
+
 });
 
 /** The smallest thing that is a specification, for tests that vary one part of it. */

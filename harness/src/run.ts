@@ -1,28 +1,15 @@
-import { readdirSync } from 'node:fs';
-import { join, resolve } from 'node:path';
-import { createStubGenerator } from './generator.ts';
+import { readdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { createStubGenerator, type Generator } from './generator.ts';
+import { createApiSender, createModelGenerator } from './modelGenerator.ts';
 import { runSpecification, type SpecificationResult } from './loop.ts';
 import { McpServerConnection } from './mcpClient.ts';
+import { parseOptions, type Options } from './options.ts';
+import { passedEverySpecification, report, type Repetition } from './report.ts';
 import { repositoryRoot, resolveServerExecutable } from './serverLocation.ts';
 import { loadSpecification, type Specification } from './specification.ts';
-import { Telemetry } from './telemetry.ts';
+import { Telemetry, type RunId } from './telemetry.ts';
 import { findContractBreaches } from './toolContract.ts';
-
-/** What the CLI was asked to do. */
-type Options = {
-  /** A project to open, or an archive to retrieve one from. Exactly one of the two. */
-  readonly projectPath: string | undefined;
-  readonly archivePath: string | undefined;
-  /** Where everything a run produces goes: projects, backups, the audit trail, the measurements. */
-  readonly harnessRoot: string;
-  readonly workingRoot: string;
-  readonly specDirectory: string;
-  readonly databasePath: string;
-  readonly policyPath: string | undefined;
-  readonly iterationLimit: number;
-};
-
-const DefaultIterationLimit = 3;
 
 /**
  * How long to wait for TIA Portal to start.
@@ -65,32 +52,32 @@ async function main(): Promise<number> {
     // repository root, and git offered to commit the lot. Everything a run produces belongs in one
     // place that is ignored once.
     auditPath: join(options.harnessRoot, 'audit.jsonl'),
-    backupRoot: join(options.harnessRoot, 'backups')
+    backupRoot: join(options.harnessRoot, 'backups'),
+
+    // On, and written out at the end of every run. The protocol carries almost nothing about
+    // why a tool failed, so with this off a failing download is one sentence with no state
+    // behind it - which is what five runs of 'Connect to module failed' cost.
+    serverLogging: 'stderr'
   });
 
-  const runId = telemetry.startRun({
-    specSet: options.specDirectory,
-    serverExecutable: executable,
-    iterationLimit: options.iterationLimit,
-    generator: 'stub'
-  });
+  const session: Session = { connection, telemetry, executable, specifications, options };
 
   try {
-    const results = await runEverything(connection, telemetry, runId, specifications, options);
-    const passed = results.filter((result) => result.outcome === 'passed').length;
+    await prepare(session);
 
-    telemetry.finishRun(runId, passed === results.length ? 'passed' : 'failed');
+    const repetitions = await runRepetitions(session);
 
-    report(results, telemetry.summarise(runId).iterations);
+    report(repetitions, { repetitions: options.repetitions });
 
-    return passed === results.length ? 0 : 1;
+    return repetitions.every(passedEverySpecification) ? 0 : 1;
   } catch (error) {
-    telemetry.finishRun(runId, 'failed');
     console.error(`The run stopped: ${(error as Error).message}`);
     console.error(connection.serverDiagnostics());
 
     return 1;
   } finally {
+    writeFileSync(join(options.harnessRoot, 'server.log'), connection.serverDiagnostics(), 'utf8');
+
     // Disconnect before closing the transport, so TIA Portal is shut down by the thing that started
     // it. Killing the server process with a portal still open is what leaves the two-gigabyte
     // orphan holding the licence.
@@ -103,21 +90,27 @@ async function main(): Promise<number> {
   }
 }
 
+/** Everything one invocation carries from end to end, so no function needs five parameters. */
+type Session = {
+  readonly connection: McpServerConnection;
+  readonly telemetry: Telemetry;
+  /** Recorded with every run, so a number is attributable to a build of the server. */
+  readonly executable: string;
+  readonly specifications: readonly Specification[];
+  readonly options: Options;
+};
+
 /**
- * Opens the project once, then runs each specification on its own controller.
+ * Everything that is done once, however many repetitions follow.
  *
  * @remarks
- * The project is opened once and the controller is created per specification. A controller is tied
- * to an address that has to match the CPU in the project, so two of them alive at once would be two
- * machines claiming one address — and the download would reach whichever answered first.
+ * Connecting to TIA Portal takes about forty-five seconds and the network mode may only be set
+ * while no instance exists, so both belong outside the repetition loop. Doing them per repetition
+ * would add a minute to each and measure the harness's startup instead of the loop.
  */
-async function runEverything(
-  connection: McpServerConnection,
-  telemetry: Telemetry,
-  runId: ReturnType<Telemetry['startRun']>,
-  specifications: readonly Specification[],
-  options: Options
-): Promise<SpecificationResult[]> {
+async function prepare(session: Session): Promise<void> {
+  const { connection } = session;
+
   // Before anything is started, because it costs a second and the alternative costs a run: every
   // argument name the harness sends is checked against the server's own schemas. Two of them were
   // wrong the first time and both surfaced as "An error occurred", a minute and a half in.
@@ -128,7 +121,7 @@ async function runEverything(
   }
 
   // Then connect: every project tool refuses until the server holds a portal, with "Connect to TIA
-  // Portal before retrieving a project". A minute of startup, once per run.
+  // Portal before retrieving a project". A minute of startup, once per invocation.
   const connected = await connection.callTool('Connect', {}, ConnectTimeoutMilliseconds);
 
   if (connected.isError) {
@@ -138,12 +131,18 @@ async function runEverything(
     );
   }
 
-  await openTheProject(connection, options);
+  await useTcpIpNetworkMode(connection);
+}
 
-  // Before any instance exists, which is the whole constraint on this call.
-  // Before any instance exists, which is the whole constraint on this call. The mode it reports is
-  // checked and not just the fact that it answered: over Softbus a controller is reachable only by
-  // PLCSIM itself, and the download then fails with "Connect to module failed" several minutes later.
+/**
+ * Puts the PLCSIM runtime in TCP/IP mode, and checks the mode rather than the answer.
+ *
+ * @remarks
+ * Before any instance exists, which is the whole constraint on this call. The mode it reports is
+ * checked and not just the fact that it answered: over Softbus a controller is reachable only by
+ * PLCSIM itself, and the download then fails with "Connect to module failed" several minutes later.
+ */
+async function useTcpIpNetworkMode(connection: McpServerConnection): Promise<void> {
   const networked = await connection.callTool('UseTcpIpNetworkMode');
 
   requireApplied(networked, 'UseTcpIpNetworkMode');
@@ -153,15 +152,105 @@ async function runEverything(
   if (typeof mode !== 'string' || !mode.startsWith('TCPIP')) {
     throw new Error(`The PLCSIM runtime is in ${String(mode)} mode, not TCP/IP. A download cannot reach a controller.`);
   }
+}
 
-  const generator = createStubGenerator(connection, repositoryRoot());
+/**
+ * Runs the specification set as many times as was asked for.
+ *
+ * @remarks
+ * Each repetition is a separate run in the store and starts from a project nothing has written to,
+ * because that is what makes repetitions comparable with each other: a second pass over a project
+ * the first one already filled with blocks is measuring something else entirely.
+ */
+async function runRepetitions(session: Session): Promise<Repetition[]> {
+  const generator = createGenerator(session);
+  const repetitions: Repetition[] = [];
+
+  for (let index = 1; index <= session.options.repetitions; index += 1) {
+    if (session.options.repetitions > 1) {
+      console.error(`=== repetition ${index} of ${session.options.repetitions}`);
+    }
+
+    repetitions.push(await runOneRepetition(session, generator, index));
+  }
+
+  return repetitions;
+}
+
+/**
+ * Builds the generator the run was asked for.
+ *
+ * @remarks
+ * The API key is read here, at the start, rather than at the first generation: a batch of ten
+ * repetitions that dies forty minutes in because a key was never set is a batch nobody gets back.
+ */
+function createGenerator(session: Session): Generator {
+  if (session.options.generator === 'model') {
+    return createModelGenerator(createApiSender());
+  }
+
+  return createStubGenerator(session.connection, repositoryRoot());
+}
+
+/** One pass over the set, recorded as its own run. */
+async function runOneRepetition(
+  session: Session,
+  generator: Generator,
+  index: number
+): Promise<Repetition> {
+  const { telemetry, options } = session;
+
+  const runId = telemetry.startRun({
+    specSet: options.specDirectory,
+    serverExecutable: session.executable,
+    iterationLimit: options.iterationLimit,
+    generator: generator.name
+  });
+
+  try {
+    const results = await runTheSet(session, generator, runId);
+
+    telemetry.finishRun(runId, results.every((result) => result.outcome === 'passed') ? 'passed' : 'failed');
+
+    return { index, results };
+  } catch (error) {
+    // Marked before rethrowing, so a repetition killed by a broken transport is a failed run in the
+    // store rather than one that never ended. The gate counts complete runs, and an unfinished one
+    // it could not see would make the count wrong in the direction that opens a workshop door.
+    telemetry.finishRun(runId, 'failed');
+
+    throw error;
+  }
+}
+
+/** Opens a project nothing has written to, then runs every specification against it. */
+async function runTheSet(
+  session: Session,
+  generator: Generator,
+  runId: RunId
+): Promise<SpecificationResult[]> {
+  await closeAnyOpenProject(session.connection);
+  await openTheProject(session.connection, session.options);
+
   const results: SpecificationResult[] = [];
 
-  for (const specification of specifications) {
-    results.push(await runOne(connection, telemetry, runId, specification, generator, options));
+  for (const specification of session.specifications) {
+    results.push(await runOne(session, runId, specification, generator));
   }
 
   return results;
+}
+
+/**
+ * Closes whatever is open, and treats "nothing was open" as success.
+ *
+ * @remarks
+ * The first repetition has nothing to close and every later one does, and asking which is which is
+ * how an off-by-one becomes a run that dies on "Another project is already open" forty minutes into
+ * an unattended batch. Refusing to close a project that is not there is not an error worth having.
+ */
+async function closeAnyOpenProject(connection: McpServerConnection): Promise<void> {
+  await connection.callTool('CloseProject').catch(() => undefined);
 }
 
 /**
@@ -195,29 +284,17 @@ async function openTheProject(connection: McpServerConnection, options: Options)
 }
 
 async function runOne(
-  connection: McpServerConnection,
-  telemetry: Telemetry,
-  runId: ReturnType<Telemetry['startRun']>,
+  session: Session,
+  runId: RunId,
   specification: Specification,
-  generator: ReturnType<typeof createStubGenerator>,
-  options: Options
+  generator: Generator
 ): Promise<SpecificationResult> {
+  const { connection, telemetry, options } = session;
   const { controller } = specification;
 
   console.error(`--- ${specification.name}`);
 
-  requireApplied(
-    await connection.callTool('CreateSimulationInstance', {
-      instanceName: controller.name,
-      ipAddress: controller.address,
-      subnetMask: controller.subnetMask,
-      // Not optional in practice. Without it the controller is an unspecified one, the hardware
-      // download still succeeds, and then the text libraries fail with 'InvalidAID' — which is how
-      // the first run that got this far died.
-      cpuType: controller.cpuType
-    }),
-    'CreateSimulationInstance'
-  );
+  await createTheController(connection, controller);
 
   try {
     return await runSpecification({
@@ -226,7 +303,8 @@ async function runOne(
       runId,
       specification,
       generator,
-      iterationLimit: options.iterationLimit
+      iterationLimit: options.iterationLimit,
+      resetSession: () => resetSession(session, controller)
     });
   } finally {
     // Reported rather than thrown: losing the result of the specification behind a cleanup error
@@ -240,22 +318,47 @@ async function runOne(
   }
 }
 
-/** Prints the result, with the sample size attached. */
-function report(results: readonly SpecificationResult[], iterations: number): void {
-  console.log('');
+/** Creates the virtual controller one specification runs on. */
+async function createTheController(
+  connection: McpServerConnection,
+  controller: Specification['controller']
+): Promise<void> {
+  requireApplied(
+    await connection.callTool('CreateSimulationInstance', {
+      instanceName: controller.name,
+      ipAddress: controller.address,
+      subnetMask: controller.subnetMask,
+      // Not optional in practice. Without it the controller is an unspecified one, the hardware
+      // download still succeeds, and then the text libraries fail with 'InvalidAID' — which is how
+      // the first run that got this far died.
+      cpuType: controller.cpuType
+    }),
+    'CreateSimulationInstance'
+  );
+}
 
-  for (const result of results) {
-    const detail = result.detail.length > 0 ? ` — ${result.detail}` : '';
+/**
+ * Reopens the project and the controller, so the next attempt can download at all.
+ *
+ * @remarks
+ * Both halves are needed and neither is enough: a controller recreated inside the same open
+ * project fails in the text libraries, and a project reopened around a controller that already
+ * holds a program fails to connect to it. Measured, not reasoned - see `LoopOptions.resetSession`.
+ */
+async function resetSession(session: Session, controller: Specification['controller']): Promise<void> {
+  const { connection } = session;
 
-    console.log(`${result.outcome === 'passed' ? 'PASS' : 'FAIL'}  ${result.specification}  ` +
-      `(${result.attempts} attempt(s), ${result.outcome})${detail}`);
+  console.error('  the attempt downloaded, so the next one starts from a fresh project and controller');
+
+  const removed = await connection.callTool('DeleteSimulationInstance', { instanceName: controller.name });
+
+  if (removed.isError) {
+    throw new Error(`The controller could not be removed before retrying: ${removed.text}`);
   }
 
-  const passed = results.filter((result) => result.outcome === 'passed').length;
-
-  console.log('');
-  console.log(`${passed} of ${results.length} specification(s) passed on a simulated CPU, ` +
-    `n=${results.length}, ${iterations} iteration(s) in total.`);
+  await closeAnyOpenProject(connection);
+  await openTheProject(connection, session.options);
+  await createTheController(connection, controller);
 }
 
 /** Throws unless a tool actually did what was asked, refusals included. */
@@ -276,62 +379,6 @@ function loadAll(directory: string): Specification[] {
     .filter((name) => name.endsWith('.json'))
     .sort()
     .map((name) => loadSpecification(join(directory, name)));
-}
-
-/**
- * Reads the command line.
- *
- * @remarks
- * Neither `--project` nor `--archive` has a default and neither can have one: a TIA project is a
- * machine's file, and the whole repository refuses hardcoded paths. `--archive` is the one to reach
- * for, since it gives every run a project nothing has written to yet.
- */
-function parseOptions(args: readonly string[]): Options {
-  const values = new Map<string, string>();
-
-  for (let index = 0; index < args.length; index += 2) {
-    const flag = args[index];
-    const value = args[index + 1];
-
-    if (flag === undefined || value === undefined || !flag.startsWith('--')) {
-      throw new Error(`Bad arguments near '${flag ?? ''}'. Every flag takes a value.`);
-    }
-
-    values.set(flag, value);
-  }
-
-  const projectPath = values.get('--project');
-  const archivePath = values.get('--archive');
-
-  if ((projectPath === undefined) === (archivePath === undefined)) {
-    throw new Error(
-      'Usage: node src/run.ts (--archive <path to a .zap20> | --project <path to a .ap20>) ' +
-        '[--specs <dir>] [--database <file>] [--policy <file>] [--limit <n>] [--out <dir>]. ' +
-        'Give exactly one of --archive and --project: retrieving gives each run a project nothing ' +
-        'has written to yet, which is what makes a first attempt a first attempt.'
-    );
-  }
-
-  // Every path is made absolute here, once. Openness refuses a relative one outright — "The
-  // argument 'sourcePath' cannot be a relative path" is how the first real run died — and the
-  // server is a separate process anyway, so a path relative to this one's working directory would
-  // mean something else on the other side even where it was accepted.
-  const harnessRoot = resolve(values.get('--out') ?? join(repositoryRoot(), '.tia-mcp', 'harness'));
-
-  return {
-    projectPath: absoluteOrUndefined(projectPath),
-    archivePath: absoluteOrUndefined(archivePath),
-    harnessRoot,
-    workingRoot: resolve(values.get('--work') ?? join(harnessRoot, 'projects')),
-    specDirectory: resolve(values.get('--specs') ?? join(repositoryRoot(), 'harness', 'specs')),
-    databasePath: resolve(values.get('--database') ?? join(harnessRoot, 'metrics.db')),
-    policyPath: absoluteOrUndefined(values.get('--policy')),
-    iterationLimit: Number(values.get('--limit') ?? DefaultIterationLimit)
-  };
-}
-
-function absoluteOrUndefined(path: string | undefined): string | undefined {
-  return path === undefined ? undefined : resolve(path);
 }
 
 process.exitCode = await main();

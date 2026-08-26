@@ -609,6 +609,33 @@ namespace TiaMcpServer.ModelContextProtocol
             }
         }
 
+        [McpServerTool(Name = "DescribeSimulationConnection"), Description("Explain the connection a download to PLCSIM would use: the PC interface, its subnets and addresses, whether the connection could be applied, and which devices answered. Call this when a download fails with 'Connect to module failed', which names neither the cause nor the layer it happened in. It establishes the connection in order to report it, so call it after a failed download rather than before one: within a single open project, only the first download to an address succeeds.")]
+        public static ResponseMessage DescribeSimulationConnection(
+            [Description("softwarePath: full path to the CPU in the project, e.g. 'PLC_0'")] string softwarePath)
+        {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
+            try
+            {
+                var report = Portal.DescribeSimulationConnection(softwarePath);
+
+                return new ResponseMessage
+                {
+                    Message = report,
+                    Meta = new JsonObject
+                    {
+                        ["timestamp"] = DateTime.Now,
+                        ["success"] = true
+                    }
+                };
+            }
+            catch (TiaMcpServer.Siemens.PortalException pex)
+            {
+                throw ToMcpException(pex, $"Failed to describe the download connection for '{softwarePath}'");
+            }
+        }
+
         [McpServerTool(Name = "GetSimulationTargetName"), Description("Report which PC interface a download would go through, without downloading. It is always a PLCSIM interface: this server refuses to download through a real network adapter.")]
         public static ResponseMessage GetSimulationTargetName(
             [Description("softwarePath: full path to the CPU in the project, e.g. 'PLC_0'")] string softwarePath)

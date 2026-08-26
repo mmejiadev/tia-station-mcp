@@ -1,9 +1,23 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-08-21**
+> Last updated: **2026-08-26**
 
 ## ▶ RESUME HERE
+
+**2026-08-26 — the download is fixed and phase 3 is all but closed.**
+
+Two things happened, in this order. The download that had failed six runs in a row turned out to be
+ours: a virtual controller keeps a storage directory named after the instance, `UnregisterInstance`
+leaves it behind, and the next controller of that name inherits it. `DeleteInstance` now calls
+`IInstance.CleanupStoragePath()`. Then everything phase 3 still owed was built on top of that.
+
+- **The loop passes 2 of 2** on a simulated CPU again, and the fix is covered by a test that would
+  have failed before it.
+- **Harness: 50 cases, 50 passing**, no TIA Portal needed. **Six specifications**, up from two.
+- **`npm run gate`** answers the five workshop criteria from recorded data, and answers *no*.
+- **59 tools**, counted from the source: `DescribeSimulationConnection` is the one this session added.
+- **0 warnings** across the solution, `TreatWarningsAsErrors` on.
 
 **2026-08-21 — the cell runs. A numbered piece goes through both stations on a virtual CPU.**
 
@@ -79,10 +93,27 @@ production code rather than in the test:
 
 **Phase 2 and the tag work were merged as pull request #7 on 2026-08-21.**
 
-**Next action:** the loop closed end to end once — 2 of 2 specifications on a simulated CPU — and
-then the download stopped working, five runs in a row, for a reason not yet found. **Read "OPEN: the
-download stopped working" under Phase 3 first**; it lists what has been ruled out by measurement and
-what to try, cheapest first. `generator.ts` against the Anthropic API is what remains after that.
+**2026-08-26 — the download is fixed, and the cause was ours. The loop passes 2 of 2 again.**
+
+A virtual controller keeps a storage directory named after the instance, under
+`Documents\Siemens\Simatic\Simulation\Runtime\Persistence\`. `UnregisterInstance` does not remove
+it, so `DeleteSimulationInstance` was leaving half a megabyte of state behind, and the next
+controller created with the same name **adopted it** — its first download then failed with
+`Connect to module failed`. `DeleteInstance` now calls `IInstance.CleanupStoragePath()`, and so does
+the rollback path when creating one fails. See "The download, and the state a name inherits" below.
+
+**Phase 3 is complete except for two things that need something this machine does not have:** an
+unattended batch to turn the loop into a rate, and an `ANTHROPIC_API_KEY` so the model generator
+can run against the real API. Everything else the roadmap named for the phase exists and is
+tested — repetitions, the workshop gate, six specifications, the model generator behind a seam.
+See "2026-08-26 — what phase 3 still owed" under Phase 3.
+
+**Next action:** commit what is here — 25 files, two sessions' worth — on a branch, and open the
+pull request. Then **phase 4, the dashboard**, which is the next phase in order and the one the
+WebSocket telemetry was deferred into.
+
+**Standing debt, deliberate and dated:** the model generator has never run against the API. See
+"Deferred on purpose" under Phase 3. Nothing depends on it.
 
 One decision is waiting and is the user's: **the mode selector**, see "The mode may only be changed
 with the cell empty" under phase 2. It blocks nothing.
@@ -173,6 +204,145 @@ The plan for what comes next is in `ROADMAP.md`.
 and the loop rather than the generator, on the user's decision: a generator wired in on day one
 means a failure could be the loop, the MCP server or the prompt, and separating those afterwards
 costs more than building them in order.
+
+### 2026-08-26 — what phase 3 still owed, and the four loose ends
+
+Everything the roadmap named for this phase now exists except the WebSocket telemetry, which was
+deferred on the user's decision: its only consumer is the phase 4 dashboard, and an event stream
+nobody reads is exactly the untested code this repository has been bitten by three times. SQLite
+already holds everything that stream will carry.
+
+**`--repeat <n>`, and a report that carries its sample size.** One run of a set answers "did it
+pass"; a rate needs repetitions. Each repetition is its own run in the store, opens a project
+nothing has written to, and the report ends with `n=12 (6 repetitions of 2 specifications)` rather
+than a percentage. Connecting to TIA Portal and setting the network mode stay outside the loop:
+they cost a minute and would otherwise be measured instead of the work.
+
+**The workshop gate exists and answers no.** `harness/src/gate.ts` evaluates the five criteria the
+roadmap fixed "in the cold", `npm run gate` prints them with the numbers behind each. It reads the
+metrics store, the audit trail and the backups on disk, and touches neither TIA Portal nor a
+controller — anyone can check the claim rather than take it. Two decisions inside it are judgements
+and are written down as constants rather than buried: what "stable" means arithmetically (a fall of
+no more than ten points between the two halves of the twenty-run window), and that an iteration
+outcome the harness does not recognise counts as unknown rather than as probably fine.
+
+Criterion 5 cannot be answered by data — a person has to have reviewed the design in the room — so
+it is read from a file that does not exist yet, and the gate therefore says no. That is the correct
+answer, arrived at without anything failing.
+
+**Six specifications, up from two**, which is inside the 5–10 the roadmap asks for. The four new
+ones assert things the pattern actually does: the four-station cell, two pieces in order, manual
+mode not running the line, and no piece admitted without Enable. The last two needed a fourth
+acceptance action, **`hold`**: `expect` reads one instant, and "no piece completed" checked a
+millisecond after the cell started passes whether or not it was about to complete one.
+
+**`generator.ts` against the Anthropic API.** `createModelGenerator` takes a sender, so the prompt,
+the answer and the rules for turning one into the other are tested without a network; `createApiSender`
+is the half that calls the Messages API, streamed because a request this size is minutes of
+generation. The compiler's errors go into the next attempt unedited — summarising them would throw
+away the line numbers, which are the part that makes a fix possible. `--generator model` selects it,
+and it has not yet been run against the real API: there is no key on this machine.
+
+### Deferred on purpose: the model generator is written and unexecuted
+
+`--generator model` has never run against the real API, and that is a decision of the user's taken
+on 2026-08-26, not an unfinished task. The Anthropic API is billed separately from a Claude
+subscription, so measuring it means opening a billing account, and the roadmap's own cut list
+already names this as the third thing to drop if something has to go: *"the harness uses
+pre-generated specifications instead of calling the model."*
+
+**The pattern expander is the main path, and not as a consolation.** It is deterministic — the same
+cell specification produces the same SCL, every time, with the same diff — and it has 48 passing
+specification runs behind it. A model is non-deterministic by construction, which is the right
+property for drafting and the wrong one for the program that will eventually command a station.
+
+What is owed when somebody picks this up: nothing but a key and a command. The generator, its prompt
+building, its extraction rules and its error propagation are written and covered by tests against a
+double; `createApiSender` is the only part that has never executed. Roughly $0.20 per attempt at
+current Opus 5 pricing, so one specification at `--repeat 1` answers "what does the SCL look like"
+for about twenty cents before anybody commits to a batch.
+
+It is worth doing when there is a reason — the phase 5 pitch wants the number, or the supervising
+teacher asks for it, or the school has API access of its own. It is not worth doing to tick a box:
+it answers "can a model close the loop unaided", which is a different question from "does this cell
+run", and only the second one is on the way to a machine.
+
+### The first rate, with its sample size
+
+Three repetitions of the six specifications, unattended, on the pinned server:
+
+```
+18 of 18 specification run(s) passed on a simulated CPU, n=18 (3 repetitions of 6 specifications).
+30 of 30 specification run(s) passed on a simulated CPU, n=30 (5 repetitions of 6 specifications).
+```
+
+**48 specification runs on 2026-08-26, all of them passing**, across two unattended batches. The
+store now holds **39 complete runs and zero iterations without an outcome**, which is criterion 2
+of the workshop gate met by construction rather than by tidying.
+
+Every specification passed all three times. `two-station-recovers-from-a-broken-first-attempt`
+averages exactly 2.0 iterations, which is the number it should have: it breaks its first attempt on
+purpose and recovers on the second, every time.
+
+Time per phase over the five-repetition batch, n as shown:
+
+| phase | n | mean | share of the cost |
+|---|---|---|---|
+| download | 30 | 12.2 s | 65.0% |
+| write | 35 | 1.9 s | 12.1% |
+| verify | 30 | 2.9 s | 15.3% |
+| compile | 35 | 1.2 s | 7.6% |
+| generate | 35 | ~0 s | 0.0% |
+
+**This supersedes the earlier figure of "46 s and 91% of the cost".** The download is still the
+expensive phase and the loop's order still exploits it — an attempt that does not compile never
+downloads — but it is three times cheaper than it was on 2026-08-21, and a stale number is worse
+than none. `generate` is ~0 because the pattern expander is not a model; it is the one row that will
+change completely when `--generator model` runs.
+
+**The gate answers no, on two criteria and for good reasons.** 39 complete runs of the 50 it asks
+for, and no in-person review recorded. The other three are met: zero silent failures, 113 recorded
+backups all present on disk, and a clean-compilation rate of 100% against 100% across the two halves
+of the twenty-run window.
+
+### One download per session, which closes the last loose end
+
+Chasing why the four-station specification failed on its second attempt produced the rule the whole
+day had been circling. Measured, four downloads in a row against one open project:
+
+| download | controller | result |
+|---|---|---|
+| first | freshly created | succeeds |
+| second | same one, in RUN | `Connect to module failed` |
+| third | same one, stopped | `Connect to module failed` — so it was never the RUN |
+| fourth | deleted and recreated | fails later, in the text libraries, `InvalidVersion` |
+
+**Within one open project, only the first download to an address succeeds**, and recreating the
+controller alone does not undo it. What does is what a repetition already did: reopen the project
+from the archive *and* create the controller fresh. `LoopOptions.resetSession` now does exactly that
+between attempts, and only after an attempt that reached the download — a compile failure costs the
+controller nothing, and resetting after one would spend a retrieval per compiler error.
+
+It also explains **the controller found in RUN before a download**, which had survived two
+eliminations: the attempt before it had downloaded and started the controller. Nothing was drifting
+into RUN; the loop had put it there and then tried to download again. That loose end is closed by
+cause rather than by elimination.
+
+### The four loose ends, and what happened to each
+
+1. **Repeatability** — the instrument now exists; the measurement is the next thing to run.
+2. **The controller in RUN before a download** — closed, and by cause: a previous attempt had
+   downloaded and started it. Two other explanations were eliminated by measurement first — a
+   controller left alone stays in `Stop` for ninety seconds, and one created on inherited storage
+   is created in `Stop` and stays there. See "One download per session" above.
+3. **The PLCSIM runtime reporting itself unavailable** — happened once, cleared on retry, and left
+   **no trace in the Windows event log**: the Siemens entries that day are the boot at 18:20 and
+   nothing else. So it was not a process crash. No mitigation was added: a retry around a symptom
+   nobody can reproduce would hide the next one.
+4. **The whitelist dialog on every rebuild** — unchanged, and it is TIA Portal's behaviour rather
+   than ours. The working practice is the pinned copy in `.tia-mcp/harness/server/` and
+   `TIA_MCP_SERVER` pointing at it; rebuild it deliberately, accept once, and an unattended batch
+   then runs without anybody at the screen.
 
 **Done: the harness talks to the server, and records what happens.** `npm run check` — type-check
 plus **9 tests, 9/9**, no TIA Portal needed.
@@ -357,9 +527,45 @@ measurements.
 `Connect` should also get a timeout of its own, shorter than the ten-minute default: it takes a known
 forty-five seconds, so waiting ten minutes protects nothing and only delays the news.
 
-#### OPEN: the download stopped working after the run that passed, and I do not know why
+#### RESOLVED 2026-08-26: the download, and the state a name inherits
 
-**This is the first thing to look at when picking the work up.** The loop passed 2 of 2 on run 10.
+**The cause was in this repository, not in the environment.** A PLCSIM Advanced controller keeps a
+storage directory named after the instance, and `UnregisterInstance` leaves it behind. The next
+controller created with that name inherits it, and its first download fails with `Connect to module
+failed`. `SimulationRuntime.DeleteInstance` now calls `IInstance.CleanupStoragePath()` before
+unregistering, and the failed-creation rollback does the same.
+
+Proved twice, in both directions, before anything was changed:
+
+- A probe that downloaded successfully was made to fail by **changing nothing but the instance
+  name** to the harness's `HarnessTwoStation`. `HarnessTwoStationX`, one character apart and never
+  used before, downloaded fine.
+- The harness passed 2 of 2 with **no code change at all**, by moving the two stale directories
+  aside.
+
+Why no test caught it: every instance name in the suite carries a GUID, so no run had ever reused
+one. `Test10Simulation.DeleteInstance_CreatedInstance_LeavesNoStorageBehind` now asserts the rule,
+and would have failed before the fix. The harness takes its controller name from the specification,
+which is what made it the first thing to reuse a name — and therefore the first to be poisoned.
+
+Two things were built while chasing it and both stay:
+
+- **`DescribeSimulationConnection` is an MCP tool.** The diagnostic existed in the portal layer and
+  only the test suite could reach it, which is why six harness runs reported one sentence with no
+  state behind it. The harness now calls it whenever a download fails, and never otherwise.
+- **The harness runs the server with logging on** and writes `server.log` beside its other output.
+
+What was ruled out along the way, each by measurement, and all of it wrong: a degraded environment
+(the machine was restarted and failed identically), the controller being in RUN before the download
+(stopping it first changed nothing), the network (the controller answered ping and ARP throughout),
+the MCP path itself, and the generated program. Five probes reproducing the harness step by step all
+downloaded successfully; what finally separated them was the one argument nobody had varied.
+
+The record of the search is below, kept because what it eliminated is worth as much as the answer.
+
+#### The search, as it stood before the cause was found
+
+The loop passed 2 of 2 on run 10.
 Runs 11 to 15 all failed at the download with `Connect to module PLC_0 failed` — the single symptom
 this project has spent the most time on, and whose known cause (a controller unregistering itself
 because no handle was held) was fixed on 2026-08-17.
@@ -404,7 +610,7 @@ Found by accident, worth knowing before anyone tries to parallelise measurements
 
 **Next in this phase:** `generator.ts` against the Anthropic API. It is the only piece missing, and
 the one whose failures can finally be attributed to it, because everything around it has been
-measured.
+measured. The download included, as of 2026-08-26.
 
 ## Phase 2 — FB_Station and multi-station (2026-08-18)
 

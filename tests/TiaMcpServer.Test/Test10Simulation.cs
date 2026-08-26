@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using System.Linq;
 using TiaMcpServer.Siemens;
 
@@ -83,6 +84,38 @@ namespace TiaMcpServer.Test
             Assert.IsFalse(
                 runtime.ListInstances().Any(instance => instance.Name == instanceName),
                 "The instance is still registered after being deleted");
+        }
+
+        [TestMethod]
+        public void DeleteInstance_CreatedInstance_LeavesNoStorageBehind()
+        {
+            // A controller's storage directory is named after the instance and outlives
+            // UnregisterInstance, so the next controller created with that name inherits it — and
+            // its first download then fails with 'Connect to module failed'. That cost six runs of
+            // the phase 3 harness on 2026-08-26, and no test could have caught it before this one:
+            // every instance name in this suite carries a GUID, so no run had ever reused a name.
+            using var runtime = new SimulationRuntime();
+            var instanceName = "TiaMcpServerTest_" + Guid.NewGuid().ToString("N").Substring(0, 8);
+            string storagePath;
+
+            try
+            {
+                runtime.CreateInstance(instanceName);
+
+                storagePath = runtime.GetStoragePath(instanceName);
+
+                Assert.IsTrue(
+                    Directory.Exists(storagePath) && Directory.EnumerateFileSystemEntries(storagePath).Any(),
+                    $"The controller wrote nothing to '{storagePath}', so this test would pass without testing anything");
+            }
+            finally
+            {
+                TryDelete(runtime, instanceName);
+            }
+
+            Assert.IsFalse(
+                Directory.Exists(storagePath) && Directory.EnumerateFileSystemEntries(storagePath).Any(),
+                $"Deleting the controller left its state in '{storagePath}', where the next controller of the same name will adopt it");
         }
 
         [TestMethod]

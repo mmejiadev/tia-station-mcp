@@ -2,7 +2,7 @@
   "name": "tia-station-harness",
   "version": "0.1.0",
   "private": true,
-  "description": "Runs the generate-compile-fix loop against the TIA MCP server and measures it.",
+  "description": "Runs the generate-compile-fix loop against the TIA MCP server, measures it, and answers the workshop gate.",
   "type": "module",
   "engines": {
     "node": ">=22.6.0"
@@ -10,9 +10,11 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "node --test \"test/**/*.test.ts\"",
-    "check": "npm run typecheck && npm run test"
+    "check": "npm run typecheck && npm run test",
+    "gate": "node src/gateReport.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.121.0",
     "@modelcontextprotocol/sdk": "^1.0.0"
   },
   "devDependencies": {

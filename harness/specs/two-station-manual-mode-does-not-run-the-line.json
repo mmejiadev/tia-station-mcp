@@ -1,0 +1,51 @@
+{
+  "name": "two-station-manual-mode-does-not-run-the-line",
+  "goal": "In manual mode a station advances one step per rising edge of Start and nothing else, so a piece admitted in manual must not travel the line on its own.",
+  "cellPath": "spec/cells/two-station-demo.json",
+  "softwarePath": "PLC_0",
+  "breakFirstAttempt": false,
+  "controller": {
+    "name": "HarnessManualMode",
+    "address": "192.168.0.1",
+    "subnetMask": "255.255.255.0",
+    "cpuType": "CPU1511"
+  },
+  "acceptance": [
+    {
+      "action": "write",
+      "tag": "DB_TwoStationDemo.Enable",
+      "value": "true"
+    },
+    {
+      "action": "write",
+      "tag": "DB_TwoStationDemo.ModeAuto",
+      "value": "false"
+    },
+    {
+      "action": "write",
+      "tag": "DB_TwoStationDemo.ModeManual",
+      "value": "true"
+    },
+    {
+      "action": "write",
+      "tag": "DB_TwoStationDemo.NextPieceId",
+      "value": "55"
+    },
+    {
+      "action": "write",
+      "tag": "DB_TwoStationDemo.CellStart",
+      "value": "true"
+    },
+    {
+      "action": "hold",
+      "tag": "DB_TwoStationDemo.CompletedPieceId",
+      "notEquals": "55",
+      "durationMilliseconds": 5000
+    },
+    {
+      "action": "expect",
+      "tag": "DB_TwoStationDemo.Feeder.Step",
+      "notEquals": "90"
+    }
+  ]
+}

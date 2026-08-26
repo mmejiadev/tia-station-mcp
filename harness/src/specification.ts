@@ -25,8 +25,25 @@ export type ExpectStep = {
   readonly notEquals?: string;
 };
 
+/**
+ * Asserts that something does **not** happen, for long enough to mean it.
+ *
+ * @remarks
+ * `expect` reads one instant, which is the wrong shape for a negative claim: "no piece completed"
+ * checked one millisecond after the cell was started passes whether or not the cell is about to
+ * move one. The cases that need this are the ones about a cell staying put - no Enable, manual
+ * mode - and those are exactly the claims worth making precisely.
+ */
+export type HoldStep = {
+  readonly action: 'hold';
+  readonly tag: string;
+  /** The value the tag must not reach while the window lasts. */
+  readonly notEquals: string;
+  readonly durationMilliseconds: number;
+};
+
 /** One step of an acceptance check. */
-export type AcceptanceStep = WriteStep | WaitStep | ExpectStep;
+export type AcceptanceStep = WriteStep | WaitStep | ExpectStep | HoldStep;
 
 /** Which virtual controller the specification runs on. */
 export type ControllerSpecification = {
@@ -61,7 +78,7 @@ export type Specification = {
   readonly acceptance: readonly AcceptanceStep[];
 };
 
-const KnownActions = ['write', 'waitFor', 'expect'] as const;
+const KnownActions = ['write', 'waitFor', 'expect', 'hold'] as const;
 
 /**
  * Reads a specification from a file.
@@ -164,6 +181,15 @@ function validateStep(candidate: unknown, source: string): AcceptanceStep {
 
   if (action === 'expect') {
     return validateExpect(raw, source);
+  }
+
+  if (action === 'hold') {
+    return {
+      action,
+      tag: requireString(raw, 'tag', source),
+      notEquals: requireString(raw, 'notEquals', source),
+      durationMilliseconds: requirePositiveNumber(raw, 'durationMilliseconds', source)
+    };
   }
 
   throw new Error(`${source}: '${action}' is not an action. Use one of: ${KnownActions.join(', ')}.`);
