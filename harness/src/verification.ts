@@ -56,6 +56,10 @@ async function runStep(
     return await waitForTag(connection, instanceName, step.tag, step.equals, step.timeoutMilliseconds);
   }
 
+  if (step.action === 'hold') {
+    return await holdTag(connection, instanceName, step.tag, step.notEquals, step.durationMilliseconds);
+  }
+
   const actual = await readTag(connection, instanceName, step.tag);
 
   if (step.equals !== undefined) {
@@ -63,6 +67,37 @@ async function runStep(
   }
 
   return actual === step.notEquals ? `expected anything but ${step.notEquals}` : undefined;
+}
+
+/**
+ * Watches a tag for a while and fails the moment it reaches a value it must not.
+ *
+ * @remarks
+ * The opposite of {@link waitForTag} in what it does with time: waiting succeeds early and fails
+ * at the deadline, holding fails early and succeeds at the deadline. Failing on the first sighting
+ * rather than sampling once at the end is what makes it an assertion about the whole window - a
+ * cell that completes a piece and then resets it would otherwise pass.
+ */
+async function holdTag(
+  connection: McpServerConnection,
+  instanceName: string,
+  tag: string,
+  forbidden: string,
+  durationMilliseconds: number
+): Promise<string | undefined> {
+  const deadline = Date.now() + durationMilliseconds;
+
+  while (Date.now() < deadline) {
+    const actual = await readTag(connection, instanceName, tag);
+
+    if (actual === forbidden) {
+      return `reached ${forbidden} after ${durationMilliseconds - (deadline - Date.now())} ms, and had to stay away from it for ${durationMilliseconds} ms`;
+    }
+
+    await sleep(PollIntervalMilliseconds);
+  }
+
+  return undefined;
 }
 
 async function writeTag(

@@ -271,7 +271,10 @@ namespace TiaMcpServer.Siemens
                 }
                 catch (Exception)
                 {
-                    // Do not leave a half-created controller behind for the next run.
+                    // Do not leave a half-created controller behind for the next run, nor the
+                    // storage directory it already owns: see DeleteInstance for what adopting
+                    // one costs.
+                    instance.CleanupStoragePath();
                     instance.UnregisterInstance();
                     instance.Dispose();
                     throw;
@@ -372,6 +375,34 @@ namespace TiaMcpServer.Siemens
             });
         }
 
+        /// <summary>Where a virtual controller keeps its state on disk.</summary>
+        /// <param name="instanceName">The instance name.</param>
+        /// <returns>The full path to the controller's storage directory.</returns>
+        /// <remarks>
+        /// Exposed so that <see cref="DeleteInstance"/> leaving nothing behind can be asserted.
+        /// The directory is named after the instance and is not removed by unregistering it, so one
+        /// left in place is inherited by the next controller created with the same name.
+        /// </remarks>
+        /// <exception cref="PortalException">The runtime is unavailable or the instance is unknown.</exception>
+        public string GetStoragePath(string instanceName)
+        {
+            RequireRuntime();
+            RequireName(instanceName);
+
+#if PLCSIM_AVAILABLE
+            return Execute("GetStoragePath", instanceName, () =>
+            {
+                var path = string.Empty;
+
+                UseInstance(instanceName, instance => path = instance.StoragePath);
+
+                return path;
+            });
+#else
+            throw new PortalException(PortalErrorCode.InvalidState, UnavailableMessage);
+#endif
+        }
+
         /// <summary>Powers off a virtual controller and removes it from the runtime.</summary>
         /// <param name="instanceName">The instance name.</param>
         /// <exception cref="PortalException">The runtime is unavailable or the instance is unknown.</exception>
@@ -392,6 +423,17 @@ namespace TiaMcpServer.Siemens
                     {
                         instance.PowerOff(TransitionTimeoutMilliseconds);
                     }
+
+                    // Before unregistering, because the handle is what addresses it. A virtual
+                    // controller keeps a storage directory named after the instance, and
+                    // UnregisterInstance leaves it behind: the next controller created with the
+                    // same name adopts that half megabyte of state, and its first download fails
+                    // with 'Connect to module failed', which names neither the cause nor the layer.
+                    // Measured on 2026-08-26 — the harness had failed six runs in a row, and moving
+                    // the directory aside made it pass 2/2 with no code change. Nothing in the test
+                    // suite had ever hit it, because its instance names carry a GUID and so every
+                    // run starts on storage nothing has written to.
+                    instance.CleanupStoragePath();
 
                     instance.UnregisterInstance();
                 });

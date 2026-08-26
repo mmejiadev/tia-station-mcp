@@ -221,6 +221,10 @@ namespace TiaMcpServer.Siemens
         /// "Connect to module failed" names neither the cause nor the layer it happened in. This
         /// applies the connection exactly as <see cref="Download"/> does and then reports what
         /// answered, which is the difference between a measurement and a guess.
+        ///
+        /// It is therefore not free of side effects: applying a connection is a real operation on
+        /// the session, and measured on 2026-08-26 only the first download to an address succeeds
+        /// within one open project. Ask this after a download has failed, not before one.
         /// </remarks>
         /// <returns>A multi-line report.</returns>
         /// <exception cref="PortalException">

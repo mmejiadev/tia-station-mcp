@@ -75,6 +75,24 @@ export type RunSummary = {
   readonly counts: Readonly<Record<string, number>>;
 };
 
+/**
+ * What one run added up to, in the terms the workshop gate is written in.
+ *
+ * @remarks
+ * Declared here rather than with the gate because it describes what this store holds. The gate is
+ * one reader of it; the dashboard of phase 4 will be another.
+ */
+export type RunStatistics = {
+  readonly runId: number;
+  /** Undefined when the run never ended, which is a fact the gate is required to notice. */
+  readonly outcome: string | undefined;
+  readonly startedAt: number;
+  /** How many specifications the run attempted. */
+  readonly specifications: number;
+  /** How many of them reached a clean compilation at least once. */
+  readonly cleanCompilations: number;
+};
+
 const SchemaVersion = 1;
 
 /**
@@ -254,6 +272,45 @@ export class Telemetry {
       durationMilliseconds: row.duration,
       outcome: row.outcome
     }));
+  }
+
+  /**
+   * Every run, oldest first, with what it attempted and how much of it compiled.
+   *
+   * @remarks
+   * Which iteration outcomes mean "compiled" is listed in the SQL rather than inferred from what is
+   * not a compiler error, and the difference matters: a refused write and a broken transport never
+   * reached the compiler either, and counting them as clean compilations would report a rate that
+   * rises as the harness breaks.
+   */
+  runStatistics(): RunStatistics[] {
+    const rows = this.database
+      .prepare(
+        `SELECT r.id AS runId, r.outcome AS outcome, r.started_at AS startedAt,
+                COUNT(DISTINCT i.specification) AS specifications,
+                COUNT(DISTINCT CASE WHEN i.outcome IN ('passed', 'download-failed', 'behaviour-failed')
+                                    THEN i.specification END) AS cleanCompilations
+         FROM runs r LEFT JOIN iterations i ON i.run_id = r.id
+         GROUP BY r.id ORDER BY r.id`
+      )
+      .all() as { runId: number; outcome: string | null; startedAt: number; specifications: number; cleanCompilations: number }[];
+
+    return rows.map((row) => ({
+      runId: row.runId,
+      outcome: row.outcome ?? undefined,
+      startedAt: row.startedAt,
+      specifications: row.specifications,
+      cleanCompilations: row.cleanCompilations
+    }));
+  }
+
+  /** How many iterations were recorded and never given an outcome. */
+  countUnfinishedIterations(): number {
+    const row = this.database
+      .prepare('SELECT COUNT(*) AS total FROM iterations WHERE outcome IS NULL')
+      .get() as { total: number };
+
+    return row.total;
   }
 
   /** Closes the store. */

@@ -22,6 +22,22 @@ export type LoopOptions = {
   readonly generator: Generator;
   /** How many attempts before giving up. */
   readonly iterationLimit: number;
+  /**
+   * Puts the session back into a state a download can succeed in.
+   *
+   * @remarks
+   * Measured on 2026-08-26, and it is a constraint of TIA Portal rather than a choice: **within
+   * one open project, only the first download to an address succeeds.** The second fails with
+   * 'Connect to module failed' whether the controller is running or stopped, and deleting and
+   * recreating the controller alone is not enough either - that one fails later, in the text
+   * libraries, with 'InvalidVersion'. What does work is what a repetition does: a project
+   * reopened from the archive and a controller created fresh.
+   *
+   * So an attempt that reached the download costs a session, and the next one has to start in a
+   * new one. Without this the loop would report the second attempt as a download failure and
+   * blame the environment for a limit it had walked into itself.
+   */
+  readonly resetSession: () => Promise<void>;
 };
 
 /**
@@ -36,8 +52,10 @@ export type LoopOptions = {
  * symmetric:
  *
  * - **Compiler errors continue.** They are the input to the next attempt; that is the loop.
- * - **Wrong behaviour continues.** The code was valid and did the wrong thing, which is exactly
- *   what a generator should be given another go at.
+ * - **Wrong behaviour continues, in a new session.** The code was valid and did the wrong thing,
+ *   which is exactly what a generator should be given another go at - but the attempt spent the
+ *   session getting there, so the next one starts from a reopened project and a fresh
+ *   controller. See `resetSession`.
  * - **A refusal stops, immediately.** The governance layer said no, and it will say no again. A
  *   loop that retried a refusal would be a loop hammering a closed door, and the door is closed on
  *   purpose.
@@ -57,6 +75,13 @@ export async function runSpecification(options: LoopOptions): Promise<Specificat
   };
 
   for (let attempt = 1; attempt <= iterationLimit; attempt += 1) {
+    // Only after an attempt that got as far as downloading. A compile failure costs nothing on
+    // the controller, and resetting after one would spend forty seconds of retrieval per
+    // compiler error - which is the majority of iterations.
+    if (last.outcome === 'behaviour-failed') {
+      await options.resetSession();
+    }
+
     const iterationId = telemetry.startIteration(runId, specification.name, attempt);
     const iteration = await runOneAttempt(options, iterationId, attempt, previousErrors);
 
@@ -229,7 +254,7 @@ async function download(options: LoopOptions): Promise<string | undefined> {
   });
 
   if (downloaded.isError || !wasApplied(downloaded.payload)) {
-    return `the download did not succeed: ${downloaded.text}`;
+    return `the download did not succeed: ${downloaded.text}${await describeTheConnection(options)}`;
   }
 
   const started = await connection.callTool('StartSimulationInstance', {
@@ -241,6 +266,31 @@ async function download(options: LoopOptions): Promise<string | undefined> {
   }
 
   return undefined;
+}
+
+/**
+ * What the connection looked like when a download failed.
+ *
+ * @remarks
+ * "Connect to module failed" names neither the cause nor the layer it happened in, and five runs of
+ * this harness reported exactly that and nothing else while the server could already answer the
+ * question. This asks it at the only moment the answer is worth having, and never otherwise: the
+ * call applies a connection, so it is not free.
+ *
+ * It never replaces the failure it is describing - the download's own message is kept whatever
+ * comes back, because losing the symptom to a broken explanation of it is the one outcome worse
+ * than having no explanation.
+ */
+async function describeTheConnection(options: LoopOptions): Promise<string> {
+  const { connection, specification } = options;
+
+  const described = await connection.callTool('DescribeSimulationConnection', {
+    softwarePath: specification.softwarePath
+  });
+
+  return `
+--- the connection, as the server sees it:
+${described.text}`;
 }
 
 /** Whether a response says the work actually happened. */

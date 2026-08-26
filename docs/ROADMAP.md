@@ -271,13 +271,18 @@ specification. No knowledge of any particular cell inside the server.
 harness/src/mcpClient.ts   MCP client over stdio against TiaMcpServer.exe
 harness/src/loop.ts        generate -> write -> compile -> read -> fix, bounded
 harness/src/generator.ts   SCL generation through the Anthropic API
-harness/src/telemetry.ts   phase events to SQLite and over WebSocket
+harness/src/telemetry.ts   phase events to SQLite (WebSocket deferred to phase 4, see below)
 harness/src/gate.ts        evaluates the five workshop criteria
 harness/src/run.ts         CLI: runs the whole specification set
 harness/specs/             5-10 cases of increasing complexity
 ```
 
 Shared SQLite schema with the audit trail: `runs`, `iterations`, `phase_timings`, `audit`.
+
+**The WebSocket half was deferred to phase 4 on 2026-08-26, on the user's decision.** Its only
+consumer is the dashboard, and this repository has now been bitten three times by code that was
+written, never executed, and believed. SQLite already records everything the stream would carry, so
+the deferral costs the dashboard nothing but a reader it has to write anyway.
 
 Outputs: mean iterations to a clean compilation per specification, percentage passing on
 PLCSIM, and time per phase. Reported with the sample size attached — `n=10, 3 repetitions`,
@@ -336,3 +341,4 @@ Agreed on 2026-08-17.
 | Workshop Mode is written last, after every other phase | Pressure to finish and new code commanding physical machinery must not coincide. Originally phrased as "not before October"; the date went with the calendar on 2026-08-18, the order did not. |
 | Phase 0 timeboxed to two sessions with an automatic fallback | Authorised in advance so the decision is not taken while inside the problem. |
 | `harness/` and `dashboard/` in this repository | The MCP tool surface and the SQLite schema are shared contracts that must change in one commit. |
+| The pattern expander is the main generator; the model one is written and deferred (2026-08-26) | The API is billed separately from a Claude subscription, and cut 3 below already allowed pre-generated specifications. It is also the better engineering: the expander is deterministic — same cell, same SCL, same diff — and a model is not, which is the wrong property for code that may one day command a station. `--generator model` is written and tested against a double, and costs a key and a command whenever there is a reason. |

@@ -1,0 +1,61 @@
+{
+  "name": "four-station-runs",
+  "goal": "The four-station cell of the coursework: a numbered piece is admitted, worked at each of the four stations in turn, and reported as completed when it leaves the line. BlockedAtStation is deliberately not asserted - with CellStart held the line keeps admitting pieces, so a station waiting for the next one to empty is backpressure rather than a fault.",
+  "cellPath": "spec/cells/four-station-cell.json",
+  "softwarePath": "PLC_0",
+  "breakFirstAttempt": false,
+  "controller": {
+    "name": "HarnessFourStation",
+    "address": "192.168.0.1",
+    "subnetMask": "255.255.255.0",
+    "cpuType": "CPU1511"
+  },
+  "acceptance": [
+    {
+      "action": "write",
+      "tag": "DB_FourStationCell.Enable",
+      "value": "true"
+    },
+    {
+      "action": "write",
+      "tag": "DB_FourStationCell.ModeAuto",
+      "value": "true"
+    },
+    {
+      "action": "write",
+      "tag": "DB_FourStationCell.ModeManual",
+      "value": "false"
+    },
+    {
+      "action": "write",
+      "tag": "DB_FourStationCell.NextPieceId",
+      "value": "21"
+    },
+    {
+      "action": "write",
+      "tag": "DB_FourStationCell.CellStart",
+      "value": "true"
+    },
+    {
+      "action": "waitFor",
+      "tag": "DB_FourStationCell.CompletedPieceId",
+      "equals": "21",
+      "timeoutMilliseconds": 40000
+    },
+    {
+      "action": "expect",
+      "tag": "DB_FourStationCell.CellError",
+      "equals": "false"
+    },
+    {
+      "action": "expect",
+      "tag": "DB_FourStationCell.Feeder.Step",
+      "notEquals": "90"
+    },
+    {
+      "action": "expect",
+      "tag": "DB_FourStationCell.Sorter.Step",
+      "notEquals": "90"
+    }
+  ]
+}

@@ -1,0 +1,68 @@
+{
+  "name": "two-station-runs-two-pieces-in-order",
+  "goal": "Traceability is per piece, not per run: a second piece admitted after the first must leave the line carrying its own number, and the completed number must never go backwards.",
+  "cellPath": "spec/cells/two-station-demo.json",
+  "softwarePath": "PLC_0",
+  "breakFirstAttempt": false,
+  "controller": {
+    "name": "HarnessTwoPieces",
+    "address": "192.168.0.1",
+    "subnetMask": "255.255.255.0",
+    "cpuType": "CPU1511"
+  },
+  "acceptance": [
+    {
+      "action": "write",
+      "tag": "DB_TwoStationDemo.Enable",
+      "value": "true"
+    },
+    {
+      "action": "write",
+      "tag": "DB_TwoStationDemo.ModeAuto",
+      "value": "true"
+    },
+    {
+      "action": "write",
+      "tag": "DB_TwoStationDemo.ModeManual",
+      "value": "false"
+    },
+    {
+      "action": "write",
+      "tag": "DB_TwoStationDemo.NextPieceId",
+      "value": "71"
+    },
+    {
+      "action": "write",
+      "tag": "DB_TwoStationDemo.CellStart",
+      "value": "true"
+    },
+    {
+      "action": "waitFor",
+      "tag": "DB_TwoStationDemo.CompletedPieceId",
+      "equals": "71",
+      "timeoutMilliseconds": 20000
+    },
+    {
+      "action": "write",
+      "tag": "DB_TwoStationDemo.NextPieceId",
+      "value": "72"
+    },
+    {
+      "action": "waitFor",
+      "tag": "DB_TwoStationDemo.CompletedPieceId",
+      "equals": "72",
+      "timeoutMilliseconds": 20000
+    },
+    {
+      "action": "hold",
+      "tag": "DB_TwoStationDemo.CompletedPieceId",
+      "notEquals": "71",
+      "durationMilliseconds": 2000
+    },
+    {
+      "action": "expect",
+      "tag": "DB_TwoStationDemo.CellError",
+      "equals": "false"
+    }
+  ]
+}
