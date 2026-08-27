@@ -1,8 +1,9 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { GenerationRequest, Generator } from './generator.ts';
+import type { Generation, GenerationRequest, Generator } from './generator.ts';
 import { repositoryRoot } from './serverLocation.ts';
+import type { TokenUsage } from './telemetry.ts';
 
 /**
  * The model that writes the SCL.
@@ -10,8 +11,12 @@ import { repositoryRoot } from './serverLocation.ts';
  * @remarks
  * Recorded with every run as the generator's name, so a measurement is attributable to a model
  * rather than to "the LLM". Changing it changes what the numbers are about.
+ *
+ * It is the default and not the only choice: `--model` names another, and the cheaper models cost
+ * a fifth of this one per generation. The published measurement should be of a model somebody
+ * chose; the twentieth attempt at getting the loop to run should not cost what this one costs.
  */
-const DefaultModel = 'claude-opus-5';
+export const DefaultModel = 'claude-opus-5';
 
 /**
  * Room for a whole cell.
@@ -35,8 +40,21 @@ export type SclRequest = {
   readonly prompt: string;
 };
 
+/**
+ * What came back: the answer, and what it cost.
+ *
+ * @remarks
+ * The usage is not optional here, unlike on a `Generation`. Anything that answers an SCL request
+ * has been asked one, and a sender that could not say what it cost would put the harness back to
+ * estimating - which is the thing this was built to stop.
+ */
+export type SclAnswer = {
+  readonly text: string;
+  readonly usage: TokenUsage;
+};
+
 /** Something that can answer an SCL request. The real one calls the API; tests pass a double. */
-export type MessageSender = (request: SclRequest) => Promise<string>;
+export type MessageSender = (request: SclRequest) => Promise<SclAnswer>;
 
 /**
  * A generator that asks a model for the cell's SCL.
@@ -58,12 +76,42 @@ export function createModelGenerator(send: MessageSender, model: string = Defaul
   return {
     name: model,
 
-    async generate(request: GenerationRequest): Promise<string> {
+    async generate(request: GenerationRequest): Promise<Generation> {
       const answer = await send({ system: SystemPrompt, prompt: buildPrompt(request) });
 
-      return extractScl(answer);
+      // The usage travels with a source that may well not compile, and that is the point: an
+      // attempt whose SCL the compiler rejects was paid for like any other, and a cost that counted
+      // only the attempts that worked would understate the bill by the ones worth seeing. The one
+      // cost that is lost is an answer with no SCL in it at all, which throws below.
+      return { source: extractScl(answer.text), usage: answer.usage };
     }
   };
+}
+
+/**
+ * Refuses now if the key that will be needed is not there.
+ *
+ * @throws Error naming the variable, when it is unset or empty.
+ * @remarks
+ * Exported so it can be asked **before** anything expensive starts. `createApiSender` calls it too,
+ * but by then a run has already opened TIA Portal, and finding out about a missing key after a
+ * forty-five second startup is finding out late — most often after a `setx` in a terminal that was
+ * never reopened, which is exactly the case that looks like the key *is* set.
+ *
+ * An empty value counts as missing. `ANTHROPIC_API_KEY=` in a shell profile sets the variable to
+ * nothing, and a client built on it fails later with an authentication error that blames the key
+ * rather than the fact that there isn't one.
+ */
+export function requireApiKey(): void {
+  const key = process.env['ANTHROPIC_API_KEY'];
+
+  if (key === undefined || key.trim().length === 0) {
+    throw new Error(
+      'ANTHROPIC_API_KEY is not set, so --generator model has nothing to ask. Put it in ' +
+        'harness/.env, which git ignores, and start the run with `npm run run --` so that Node ' +
+        'loads it.'
+    );
+  }
 }
 
 /**
@@ -76,24 +124,22 @@ export function createModelGenerator(send: MessageSender, model: string = Defaul
  * non-streaming call of that length is what HTTP timeouts are made of. `finalMessage()` gives back
  * the whole message once it has arrived, which is all this caller wants.
  *
- * The key comes from the environment and from nowhere else. A key in a file in this repository
- * would be a key in the repository's history five minutes later.
+ * The key comes from the environment and from nowhere else — `npm run run` puts it there by
+ * loading `harness/.env`, which `.gitignore` has covered since before anything read it. A file is
+ * the lesser of two evils, and the other one was tried first: a key exported for the whole Windows
+ * account is read by every process that account starts, this editor included, and that bill lands
+ * somewhere nobody is looking. The file is ignored by git and read by one command.
  */
 export function createApiSender(model: string = DefaultModel): MessageSender {
-  if (process.env['ANTHROPIC_API_KEY'] === undefined) {
-    throw new Error(
-      'ANTHROPIC_API_KEY is not set, so there is nothing to ask. Set it in the environment; do not ' +
-        'put it in a file in this repository.'
-    );
-  }
+  requireApiKey();
 
   const client = new Anthropic();
 
-  return async (request: SclRequest): Promise<string> => {
+  return async (request: SclRequest): Promise<SclAnswer> => {
     const stream = client.messages.stream({
       model,
       max_tokens: MaxTokens,
-      thinking: { type: 'adaptive' },
+      ...thinkingFor(model),
       system: request.system,
       messages: [{ role: 'user', content: request.prompt }]
     });
@@ -102,10 +148,70 @@ export function createApiSender(model: string = DefaultModel): MessageSender {
 
     // Narrowed rather than indexed: the content is a union, and with thinking on the first block is
     // usually not the text one.
-    return message.content
+    const text = message.content
       .filter((block) => block.type === 'text')
       .map((block) => block.text)
       .join('\n');
+
+    // `message.model` and not the argument: a request can be served by a model other than the one
+    // named — a refusal fallback is the case that exists today — and pricing what actually ran is
+    // the whole reason for recording this instead of estimating it.
+    return { text, usage: readUsage(message.model, message.usage) };
+  };
+}
+
+/**
+ * The models that take adaptive thinking.
+ *
+ * @remarks
+ * Not a preference: `thinking: { type: 'adaptive' }` is **rejected with a 400** by models older than
+ * the 4.6 generation, which want a token budget instead. So the parameter cannot simply be sent to
+ * whatever `--model` names, and this is the list of what it can be sent to.
+ *
+ * Found before it cost anything, by reading the API reference rather than by watching a run die:
+ * the flag that made a cheaper model reachable made an unreachable request reachable with it.
+ */
+const AdaptiveThinkingModels: readonly string[] = ['claude-opus-5', 'claude-sonnet-5', 'claude-fable-5'];
+
+/**
+ * How to ask this model to think, as the fragment of a request that says so.
+ *
+ * @param model The model about to be asked.
+ * @returns The thinking parameter, or nothing at all.
+ * @remarks
+ * An unknown model gets no thinking parameter rather than a guessed one. Omitting it is valid on
+ * every model there has ever been; guessing wrong is a 400 that arrives after TIA Portal has been
+ * started, and it would blame the model name rather than this decision.
+ *
+ * A model generating without thinking is a weaker generator, and that is a fair thing for a run to
+ * measure - the run records which model it asked, so the number stays attributable.
+ */
+export function thinkingFor(model: string): { thinking?: { type: 'adaptive' } } {
+  if (!AdaptiveThinkingModels.includes(model)) {
+    return {};
+  }
+
+  return { thinking: { type: 'adaptive' } };
+}
+
+/**
+ * Turns the API's usage into the shape the store records.
+ *
+ * @param model The model that actually answered.
+ * @param usage What the response reported.
+ * @returns The four counts, with the cache ones defaulted to zero.
+ * @remarks
+ * The cache fields are nullable on the wire and this harness does not cache, so today they arrive as
+ * null. Defaulted to zero rather than left undefined because the column is NOT NULL and, more to the
+ * point, "no tokens were cached" is what actually happened.
+ */
+export function readUsage(model: string, usage: Anthropic.Usage): TokenUsage {
+  return {
+    model,
+    inputTokens: usage.input_tokens,
+    outputTokens: usage.output_tokens,
+    cacheCreationTokens: usage.cache_creation_input_tokens ?? 0,
+    cacheReadTokens: usage.cache_read_input_tokens ?? 0
   };
 }
 

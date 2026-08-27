@@ -1,4 +1,5 @@
 import { join, resolve } from 'node:path';
+import { DefaultModel } from './modelGenerator.ts';
 import { repositoryRoot } from './serverLocation.ts';
 
 /**
@@ -47,7 +48,48 @@ export type Options = {
   readonly repetitions: number;
   /** Which generator writes the SCL: the repository's own patterns, or a model. */
   readonly generator: GeneratorChoice;
+  /**
+   * Which model writes the SCL, when one does.
+   *
+   * @remarks
+   * A flag rather than a constant, because the two things a run is for want different answers. A
+   * published measurement should name the model somebody chose; getting the loop to run at all
+   * takes a great many attempts with nothing to learn from an expensive one, and the cheapest
+   * model costs about a fifth of the default per generation.
+   *
+   * It is recorded with the run either way, so a number never has to be traced back to a flag
+   * somebody remembers passing.
+   */
+  readonly model: string;
 };
+
+/**
+ * Reads a command line written as `--flag value` pairs.
+ *
+ * @param args The arguments, without the executable and the script.
+ * @param usage What to tell the caller when they are malformed.
+ * @returns Every flag and its value.
+ * @remarks
+ * Shared by the three entry points rather than written three times. A flag with no value is refused
+ * here instead of read as an empty string: `--database` at the end of a line would otherwise open a
+ * store at the current directory and report measurements from a file nobody meant.
+ */
+export function parseFlags(args: readonly string[], usage: string): Map<string, string> {
+  const values = new Map<string, string>();
+
+  for (let index = 0; index < args.length; index += 2) {
+    const flag = args[index];
+    const value = args[index + 1];
+
+    if (flag === undefined || value === undefined || !flag.startsWith('--')) {
+      throw new Error(`Bad arguments near '${flag ?? ''}'. ${usage}`);
+    }
+
+    values.set(flag, value);
+  }
+
+  return values;
+}
 
 /**
  * Reads the command line.
@@ -58,18 +100,7 @@ export type Options = {
  * for, since it gives every run a project nothing has written to yet.
  */
 export function parseOptions(args: readonly string[]): Options {
-  const values = new Map<string, string>();
-
-  for (let index = 0; index < args.length; index += 2) {
-    const flag = args[index];
-    const value = args[index + 1];
-
-    if (flag === undefined || value === undefined || !flag.startsWith('--')) {
-      throw new Error(`Bad arguments near '${flag ?? ''}'. Every flag takes a value.`);
-    }
-
-    values.set(flag, value);
-  }
+  const values = parseFlags(args, 'Every flag takes a value.');
 
   const projectPath = values.get('--project');
   const archivePath = values.get('--archive');
@@ -78,7 +109,7 @@ export function parseOptions(args: readonly string[]): Options {
     throw new Error(
       'Usage: node src/run.ts (--archive <path to a .zap20> | --project <path to a .ap20>) ' +
         '[--specs <dir>] [--database <file>] [--policy <file>] [--limit <n>] [--repeat <n>] ' +
-        '[--generator stub|model] [--out <dir>]. ' +
+        '[--generator stub|model] [--model <id>] [--out <dir>]. ' +
         'Give exactly one of --archive and --project: retrieving gives each run a project nothing ' +
         'has written to yet, which is what makes a first attempt a first attempt.'
     );
@@ -100,7 +131,8 @@ export function parseOptions(args: readonly string[]): Options {
     policyPath: absoluteOrUndefined(values.get('--policy')),
     iterationLimit: requirePositive(values.get('--limit'), DefaultIterationLimit, '--limit'),
     repetitions: requirePositive(values.get('--repeat'), DefaultRepetitions, '--repeat'),
-    generator: requireGeneratorChoice(values.get('--generator'))
+    generator: requireGeneratorChoice(values.get('--generator')),
+    model: requireModel(values.get('--model'), values.get('--generator'))
   };
 }
 
@@ -143,6 +175,38 @@ function requireGeneratorChoice(value: string | undefined): GeneratorChoice {
   }
 
   throw new Error(`--generator takes 'stub' or 'model', not '${value}'.`);
+}
+
+/**
+ * Reads which model was asked for, and refuses a request that names one nothing will ask.
+ *
+ * @remarks
+ * `--model` alongside the stub generator is refused rather than ignored. The flag would otherwise
+ * do nothing while looking like it had done something, and the run it produced would be a run
+ * somebody believes measured a model - the same mistake `--generator` is written to refuse, one
+ * flag further along.
+ *
+ * The name itself is not checked against a list. Models are released far more often than this file
+ * is edited, and a whitelist here would refuse a new one for no better reason than that it is new.
+ * The API rejects a name it does not know, in a sentence that says so.
+ */
+function requireModel(value: string | undefined, generator: string | undefined): string {
+  if (value === undefined) {
+    return DefaultModel;
+  }
+
+  if (generator !== 'model') {
+    throw new Error(
+      `--model ${value} was given, but the generator is the stub, which asks no model anything. ` +
+        'Pass --generator model as well, or drop --model.'
+    );
+  }
+
+  if (value.trim().length === 0) {
+    throw new Error('--model takes a model identifier, not an empty string.');
+  }
+
+  return value;
 }
 
 function absoluteOrUndefined(path: string | undefined): string | undefined {

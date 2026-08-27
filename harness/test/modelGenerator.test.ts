@@ -1,7 +1,15 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { GenerationRequest } from '../src/generator.ts';
-import { buildPrompt, createModelGenerator, extractScl, type SclRequest } from '../src/modelGenerator.ts';
+import {
+  buildPrompt,
+  createModelGenerator,
+  extractScl,
+  requireApiKey,
+  thinkingFor,
+  type MessageSender,
+  type SclRequest
+} from '../src/modelGenerator.ts';
 import type { Specification } from '../src/specification.ts';
 
 /**
@@ -51,23 +59,59 @@ describe('model generator', () => {
 
   it('sends one request per generation and returns what came back', async () => {
     const sent: SclRequest[] = [];
-    const generator = createModelGenerator(async (request) => {
-      sent.push(request);
+    const generator = createModelGenerator(answering('```scl\nFUNCTION_BLOCK FB_Station\nEND_FUNCTION_BLOCK\n```', sent), 'a-model');
 
-      return '```scl\nFUNCTION_BLOCK FB_Station\nEND_FUNCTION_BLOCK\n```';
-    }, 'a-model');
-
-    const source = await generator.generate(requestFor(1, []));
+    const generated = await generator.generate(requestFor(1, []));
 
     assert.equal(sent.length, 1);
     assert.ok((sent[0]?.system ?? '').includes('TIA Portal V20'), 'the system prompt did not reach the sender');
-    assert.match(source, /FUNCTION_BLOCK FB_Station/);
+    assert.match(generated.source, /FUNCTION_BLOCK FB_Station/);
+  });
+
+  it('carries back what the generation cost, so the run does not have to estimate it', async () => {
+    // The reason the seam returns an answer rather than a string. Phase 3 closed quoting a cost per
+    // generation inferred from token counts nobody had counted; these are the counted ones.
+    const generator = createModelGenerator(answering('FUNCTION_BLOCK FB\nEND_FUNCTION_BLOCK'), 'a-model');
+
+    const generated = await generator.generate(requestFor(1, []));
+
+    assert.deepEqual(generated.usage, {
+      model: 'a-model',
+      inputTokens: 1200,
+      outputTokens: 3400,
+      cacheCreationTokens: 0,
+      cacheReadTokens: 0
+    });
+  });
+
+  it('reports the cost of an answer the compiler will reject, because it was paid for too', async () => {
+    // A cost that counted only the attempts that compiled would understate the bill by exactly the
+    // attempts worth looking at - the ones a second iteration had to be spent fixing.
+    const generator = createModelGenerator(answering('THIS IS NOT SCL AT ALL'), 'a-model');
+
+    const generated = await generator.generate(requestFor(1, []));
+
+    assert.equal(generated.usage?.outputTokens, 3400);
   });
 
   it('is named after the model, because that is what a measurement is attributable to', () => {
-    const generator = createModelGenerator(async () => 'FUNCTION_BLOCK FB\nEND_FUNCTION_BLOCK', 'claude-opus-5');
+    const generator = createModelGenerator(answering('FUNCTION_BLOCK FB\nEND_FUNCTION_BLOCK'), 'claude-opus-5');
 
     assert.equal(generator.name, 'claude-opus-5');
+  });
+
+  it('asks for adaptive thinking only where the API accepts it', () => {
+    // The parameter is a 400 on anything older than the 4.6 generation, and --model made those
+    // reachable. A run that died on it would do so a minute in, with TIA Portal already open, and
+    // would read as though the model name were the problem.
+    assert.deepEqual(thinkingFor('claude-opus-5'), { thinking: { type: 'adaptive' } });
+    assert.deepEqual(thinkingFor('claude-haiku-4-5'), {});
+  });
+
+  it('sends no thinking parameter for a model it has never heard of', () => {
+    // Omitting it is valid everywhere; guessing is a request that cannot succeed. A model released
+    // after this file was written should generate, not fail.
+    assert.deepEqual(thinkingFor('claude-from-next-year'), {});
   });
 
   it('lets a failure from the sender reach the loop', async () => {
@@ -80,6 +124,27 @@ describe('model generator', () => {
     await assert.rejects(() => generator.generate(requestFor(1, [])), /the API said no/);
   });
 });
+
+/**
+ * A sender that answers with a fixed text and a fixed bill.
+ *
+ * @param text What the model is to have said.
+ * @param sent Where to record the requests, when a test wants to look at them.
+ * @remarks
+ * The token counts are invented, and they are meant to be: what this asserts is that whatever the
+ * API reported reaches the store unchanged, which is a different question from whether the API
+ * counts correctly. Two distinct values so that a transposition of input and output would fail.
+ */
+function answering(text: string, sent?: SclRequest[]): MessageSender {
+  return async (request: SclRequest) => {
+    sent?.push(request);
+
+    return {
+      text,
+      usage: { model: 'a-model', inputTokens: 1200, outputTokens: 3400, cacheCreationTokens: 0, cacheReadTokens: 0 }
+    };
+  };
+}
 
 function requestFor(attempt: number, previousErrors: readonly string[]): GenerationRequest {
   return { specification: specification(), attempt, previousErrors };
@@ -98,4 +163,63 @@ function specification(): Specification {
       { action: 'waitFor', tag: 'DB_TwoStationDemo.CompletedPieceId', equals: '17', timeoutMilliseconds: 20000 }
     ]
   };
+}
+
+/**
+ * The key is the one thing this generator needs that no test can supply.
+ *
+ * @remarks
+ * These are about *when* the absence is noticed, not about the API. A run asked for `--generator
+ * model` reads the key before it opens TIA Portal, because forty-five seconds of startup followed by
+ * "there is no key" is the shape of a mistake that gets made twice.
+ */
+describe('the API key a model run needs', () => {
+  it('refuses when it is not set, and names what to set', () => {
+    withKey(undefined, () => {
+      assert.throws(requireApiKey, /ANTHROPIC_API_KEY is not set/);
+    });
+  });
+
+  it('refuses an empty one rather than failing later as an authentication error', () => {
+    // `ANTHROPIC_API_KEY=` in a profile sets the variable to nothing. A client built on that fails
+    // much later, blaming the key rather than saying there isn't one — and this is exactly the case
+    // that looks, from the outside, as though the key *is* set.
+    withKey('   ', () => {
+      assert.throws(requireApiKey, /ANTHROPIC_API_KEY is not set/);
+    });
+  });
+
+  it('is satisfied by a key that is there', () => {
+    withKey('sk-ant-not-a-real-key', () => {
+      assert.doesNotThrow(requireApiKey);
+    });
+  });
+});
+
+/**
+ * Runs one check with the environment variable set to a given value, and puts it back afterwards.
+ *
+ * @remarks
+ * Restored in a finally block, and that matters more than it looks: these tests share a process with
+ * every other test in the suite, and one that left the variable behind would decide the outcome of a
+ * later test somewhere else in the file tree.
+ */
+function withKey(value: string | undefined, check: () => void): void {
+  const original = process.env['ANTHROPIC_API_KEY'];
+
+  if (value === undefined) {
+    delete process.env['ANTHROPIC_API_KEY'];
+  } else {
+    process.env['ANTHROPIC_API_KEY'] = value;
+  }
+
+  try {
+    check();
+  } finally {
+    if (original === undefined) {
+      delete process.env['ANTHROPIC_API_KEY'];
+    } else {
+      process.env['ANTHROPIC_API_KEY'] = original;
+    }
+  }
 }

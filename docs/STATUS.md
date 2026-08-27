@@ -1,9 +1,255 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-08-26**
+> Last updated: **2026-08-27**
 
 ## ▶ RESUME HERE
+
+**2026-08-27, last thing — the copilot's chat exists, docked in the corner of every view.**
+
+The chat was cut this morning because the machine had no API key, and the roadmap recorded the cut
+with the condition that would reverse it: *"reversible for the price of a key"*. The key and the
+credit arrived this afternoon, so the condition was met and the thing was built.
+
+**It is not a tab.** It started as one and was moved on request: a round robot button bottom right,
+on every view, opening a panel that keeps its conversation when you switch views. `CopilotDock` is
+rendered by `App` as a sibling of the whole tab strip, which is what stops the tabs unmounting it -
+and it is deliberately not in the address bar, because it is not a place, it is a thing that is
+always there. Verified by asking a question on Metrics and finding the answer still on screen after
+switching to Workshop gate.
+
+**A turn costs $0.0019 to $0.0022** on Haiku 4.5 — measured, not estimated, and about a fifth of the
+1.5 cents the roadmap guessed. Most of it is the brief, which is sent with every question.
+
+**How it is kept honest**, because a chat on this dashboard is the one page that could invent
+something about a cell a person later stands next to:
+
+- **It is given no tools.** `copilotSender.ts` passes none. There is no MCP client behind it, no
+  path to TIA Portal and no write to the store, so the dashboard's guarantee — every write goes
+  through the guard in the server — is kept by construction rather than by asking the model nicely.
+- **`/api/chat` is a POST, and the 405 was narrowed rather than removed.** Every other path still
+  refuses anything but GET, and a POST anywhere but `/api/chat` is refused by name. A second endpoint
+  taking a body would have to be added deliberately, in front of the comment that says why.
+- **The brief is its whole world.** `copilotBrief.ts` assembles it from the same reader the GET
+  endpoints serve, so a number in an answer and the same number in a table come from one query. Every
+  rate carries its sample size, because the copilot cannot quote one it was never sent.
+- **It refuses safety questions**, verified against one that insisted it already knew what it was
+  doing: it answered that safety goes to the documentation and to the supervisor who is present, and
+  stopped. That is the knowledge layer's cardinal rule holding before the knowledge layer exists.
+- **The conversation lives in the tab.** No state on the server, nothing in the audit trail. What
+  somebody typed into a box is not a measurement.
+
+**A seventh defect, found the way the other six were — by running it.** The first version of rule 1
+told the model to name the tab that *would* answer a question it could not. Asked for the PLC's IP
+address and a sensor count, it invented that these were on *Live run* and *Workshop gate*. Small, and
+on the one page whose entire purpose is not inventing. The rule now says to stop at "I do not have
+that", and states that this dashboard holds runs of the loop and no hardware facts at all. Re-asked:
+it declines and sends the question to the documentation.
+
+**Green**: harness **111/111**, dashboard **11/11**, both typechecks clean, `vite build` clean, and
+the dock rendered headless with **no console errors** — asked through the actual text box and got
+*"The download phase takes longest: mean 13.66 s over 90 sample(s)"* and *"two-station-recovers-from-
+a-broken-first-attempt passes least often: 12 passed over 27 attempts"*, both of which are what the
+store holds.
+
+**Next action is unchanged and now overdue: the branch and the pull request.** Five sessions of
+uncommitted work. After that, a full six-specification run with retries into `metrics.db`.
+
+**2026-08-27, later — the credit is in and the loop has run against a real model, end to end.**
+
+Twenty euros of API credit were added, and the whole path was exercised for the first time. It
+works: Haiku 4.5 was asked for a specification and wrote SCL, the server compiled it, and the run
+reported what it cost. **The generation cost $0.0079.**
+
+The run was deliberately the cheapest that proves anything: **one specification, one attempt, no
+retry**, into a **scratch database in the temp directory rather than `metrics.db`**. That last part
+is not tidiness. Criterion 1 of the workshop gate counts any run that has an outcome, *without
+looking at how many specifications it ran* — so a one-specification smoke run would have counted
+towards the fifty exactly as a six-specification run does, and inflated the gate with something that
+never exercised it. The thirty-nine recorded runs are untouched.
+
+- **The governance layer refused the first attempt, correctly.** `--policy` was not passed, and
+  `UseTcpIpNetworkMode` came back `Refused`: *"no policy is configured for Study mode, so nothing is
+  permitted in it"*. Fail-closed doing its job on the first real occasion it had, and it cost nothing
+  because it stopped before a token was spent. The policy the harness runs under is
+  `harness/policy.json`, which is versioned on purpose — it is part of the experiment.
+- **The specification did not pass**, which is the honest and expected outcome of a single attempt:
+  `Data type "FB_TwoStationCell" is not allowed here` in `DB_TwoStationDemo/Interface`, one error and
+  three warnings. Whether the retry closes it is the next thing to measure, not to assume.
+- **A defect found the way all six before it were found — by running code nobody had run.** The cost
+  report said *"no price on file for that model"*. `--model claude-haiku-4-5` is answered by
+  `claude-haiku-4-5-20251001`, and the resolved id is what the store records; the price table is
+  keyed by the alias. **Every real generation would have reported no price** — the feature worked
+  only for models nothing had ever asked. `modelPricing.ts` now resolves an eight-digit snapshot
+  suffix and *only* that: a lookup that trimmed until it matched would price an unknown model at a
+  known model's rate, which is the exact failure the file exists to prevent. Verified against the
+  recorded row, not a fixture: 611 in and 1450 out at the 2026-08-27 list prices is **$0.007861**.
+
+**Green**: harness **93/93** (two new, both of which fail without the fix), typecheck clean.
+
+**Next action: the branch and the pull request.** This is four sessions of uncommitted work — the
+dashboard, the read API, model generation, schema version 2, `KNOWLEDGE-LAYER.md` — and the diff is
+the review. After that, a full six-specification run with retries enabled, into `metrics.db`, which
+is the first one that legitimately counts towards the gate.
+
+**2026-08-27, end of day — the key is in, the plumbing is proven, and the account has no credit.**
+
+The key was added and the model path was run for real, which is the only reason any of the rest of
+this is worth reading. It authenticates: `models.list` answers, and `claude-opus-5`,
+`claude-sonnet-5` and `claude-haiku-4-5` are all reachable from the workspace it belongs to. A
+generation then fails, and not on anything in this repository — **`400 invalid_request_error`:
+"Your credit balance is too low to access the Anthropic API"** (request `req_011CeTfrmwFu`).
+
+**The API console and claude.ai are two separate wallets, and the balance Samreen was looking at is
+the other one.** The 81 € of usage credits belong to the Claude Code subscription; the API
+organisation has its own, at zero. So `--generator model` remains unrun against a real generation,
+and it now stops for a reason that costs nothing to fix and is written on the screen.
+
+**Where the key lives changed, on purpose.** It was set as a Windows user environment variable,
+which every process that account starts inherits — Claude Code included, which would then bill the
+API instead of the subscription, quietly. It is now `harness/.env`, which `.gitignore` has covered
+since line 56 and which nothing read until today, loaded by `node --env-file-if-exists=.env`
+through the new `npm run run` script. The user variable was deleted. The doc comment that said not
+to put a key in a file in this repository is updated rather than ignored: a gitignored file read by
+one command is the smaller of the two exposures, and the other one was live for a day.
+
+- **`--model <id>`**, so a run can be pointed at something other than Opus 5. Haiku 4.5 is a fifth
+  of the price per generation, which matters for the many attempts it will take to get the loop
+  through end to end. `--model` with `--generator stub` is **refused**, not ignored: a flag that
+  silently did nothing would produce a run somebody files as a measurement of a model.
+- **Every generation now records what it actually cost**, which `STATUS.md` asked for in as many
+  words this morning. A `token_usage` row per attempt — the counts the API returns, not an
+  estimate — and the run report prints tokens and dollars per model. **No cost is stored**: a price
+  is a fact about a day, so it is applied where the number is read, from one dated table, and
+  correcting that table corrects every run already recorded.
+- **Schema version 2**, and it *migrates* rather than refusing. Version 2 only added a table, so no
+  column of the thirty-nine recorded runs means anything different; the refusal is kept for changes
+  that do reinterpret a column, and the list of what may be migrated from is one line a reader can
+  check.
+- **A 400 that would have arrived a minute into a run, found before it did.** The sender always
+  sent `thinking: { type: 'adaptive' }`, which models older than the 4.6 generation reject — and
+  `--model` is exactly what made those reachable. It is sent only where it is accepted now, and an
+  unknown model gets no thinking parameter rather than a guessed one, because omitting it is valid
+  everywhere and guessing is a request that cannot succeed.
+
+**Green**: harness 91/91, typecheck clean. The estimates from this morning survive contact with the
+price list — Opus 5 at $5/$25 per million against Haiku 4.5 at $1/$5 is the factor of five that was
+quoted — but they are still estimates until a generation runs, and now the harness will record the
+real number the first time one does.
+
+**Next action: buy API credit in the console** (Plans & Billing, workspace `wrkspc_01B8y5kA`), set a
+monthly spend limit there while doing it, then `npm run run -- --archive <zap20> --generator model
+--model claude-haiku-4-5` for the first real generation. Then the branch and the pull request: this
+is four sessions of work now.
+
+**2026-08-27 — phase 4 is closed. The chat is cut, and the half that could be built is built.**
+
+The roadmap named four views and one of them was *the plant copilot: chat plus live loop phase*. The
+chat needs a model and this machine has no key, so building it would have meant shipping code nobody
+had run — which this repository has paid for five times and written down as a lesson. **The chat is
+cut, today, deliberately**; it was already cut number 1 on the roadmap's own list. The other half
+exists as the **Live run** view, and it is named that rather than "Copilot" so the tab does not
+promise something that is not behind it.
+
+- **`/api/iterations/{id}/phases`** — what one attempt has got through, per iteration rather than
+  averaged over a run.
+- **The view never claims to know which phase is running.** A phase reaches the store when it *ends*,
+  in a finally block — which is what makes a phase that threw get recorded at all. So the one in
+  flight shows as "not reported yet", and the unaccounted time is stated as unaccounted. Inventing a
+  current phase from elapsed time would be a guess dressed as a measurement, on the one screen
+  somebody watches to know whether a controller is being written to.
+- **Watched updating itself, not assumed**: with the page open, a phase written into the store
+  appeared on screen without a reload — 3 finished phases became 4, 156 ms became 276 ms, and the
+  indicator counted the update. Done against a **copy** of the store; the real one still holds 39
+  runs and 0 iterations without an outcome.
+- One duplication removed: the phase chart was on both Overview and Metrics, drawn from the same
+  endpoint. Metrics is about specifications now.
+
+**The model generator's seam was sharpened while it is still cold.** Samreen's decision of
+2026-08-27: the API key waits until the product is further along, and the work is built on the
+understanding that it *will* be integrated. So the one thing that would have gone wrong on the day
+it is, was fixed today — a run asked for `--generator model` read the key **after** opening TIA
+Portal, so a forgotten variable cost a forty-five second startup before saying so. It is read first
+now, before the executable, the store or the portal, and an empty value counts as missing: a profile
+that sets `ANTHROPIC_API_KEY=` to nothing otherwise fails much later as an authentication error that
+blames the key rather than saying there is not one. Three tests name the rule.
+
+Cost, so the decision can be revisited on numbers rather than nerves: **around 5-10 $ a month** at
+two sessions a week — a generation is roughly 4.5 cents on Haiku and 22 on Opus 5, a chat turn about
+1.5 cents on Haiku. There is no subscription; an unused month costs nothing. **These are estimates
+from inferred token counts, not measurements.** The API returns real usage on every response and the
+store already has a row per attempt, so the first thing to do with a key is record what it actually
+costs and stop guessing.
+
+**Everything green before the branch**: harness 76/76, dashboard 11/11, `vite build` clean, and the
+C# solution builds with **0 warnings**.
+
+**Next action: the branch and the pull request.** Three sessions of work. Then the knowledge layer's
+stage 1, whose first file was written and then moved back out — it does not belong in this commit.
+
+**2026-08-27, later — the scope grew, on purpose and in writing.**
+
+`KNOWLEDGE-LAYER.md` is a new work brief: hardware documentation retrieval and a cited pre-flight
+review, delivered as Claude Code skills. It is not numbered as a roadmap phase — it runs alongside
+and is cut from the bottom up. **Only stage 1 is authorised**; nothing of it is built yet.
+
+Read back against the request that produced it, the brief was missing two things, and both were
+added as stages rather than folded into others: **stage 0**, a read-only review of a project the
+server has just been pointed at, and **stage 2b**, showing the plan for a whole job before the first
+write instead of only recording it. Three places where the brief deliberately differs from what was
+asked are now written down as such, the first being that it will not tell you how to connect a
+cable — it shows you the page of the manual that does.
+
+`ROADMAP.md` also gained **phase 5b, deployment**, which carries the user guide with it: a *Guide*
+view in the dashboard that renders `INSTALL.md` itself rather than a second copy of it, plus a live
+check of what the machine it is running on actually has. The file is what somebody reads on GitHub
+before any of this runs; the view is what they keep open once it does. The constraint that shapes it: the server cannot
+run anywhere except a Windows machine that already has TIA Portal licensed, so this is a desktop
+tool to distribute, not a service to host. Its blocking criterion is that the smoke path runs from
+the release artefact on a machine that has never built the project.
+
+**2026-08-27 — the dashboard is live, and it is built to be understood rather than only correct.**
+
+Two things landed today. The API now **streams**: a run in progress moves on screen instead of
+needing to be reopened. And the interface was rebuilt on Tailwind, shadcn/ui and Chart.js, on
+Samreen's instruction — a dashboard that explains itself, not a set of tables that happen to be
+accurate.
+
+- **Server-sent events on `/api/live`**, and the event carries *no data*: it says the store changed,
+  and the page re-reads the endpoints that already serve the numbers. One path produces a number, so
+  the stream cannot disagree with the table.
+- **Five views**: Overview (new), Runs, Metrics, Audit trail, Workshop gate. Every panel carries one
+  sentence saying what it is claiming — and that sentence is a required parameter of the panel, not
+  an optional one.
+- **Charts chosen by the job the data does**: stacked bars for part-to-whole, single-hue bars for
+  magnitude, a line for the trend, a meter for 39-of-50, stat tiles where the data is one number.
+  The palette is a validated colour-blind-safe ordering, and nothing on the page says anything by
+  colour alone.
+- **A dark theme**, whose steps are chosen for a dark surface rather than flipped.
+- **Harness: 72 cases, 72 passing. Dashboard: 11, 11 passing.** Neither needs TIA Portal.
+- **Running it found five more defects that compiling and testing had not.** All five below.
+
+**Next action: this is still uncommitted.** Two sessions of work sit in the working tree on `main`;
+it needs a branch and a pull request before anything else.
+
+**2026-08-26 — phase 4 begins: the dashboard exists and shows the real 39 runs.**
+
+Built in two halves, data first. An HTTP API in `harness/` over the store the runs already write —
+six endpoints, read-only by construction, loopback only — and then `dashboard/`, React and Vite
+against it. Three views draw recorded data and one draws the gate; the fourth the roadmap names, the
+copilot's chat, is not there and is the roadmap's own first thing to cut.
+
+- **Harness: 66 cases, 66 passing**, up from 50. **Dashboard: 11 cases, 11 passing.** Neither suite
+  needs TIA Portal.
+- **`npm run api`** in `harness/`, then **`npm run dev`** in `dashboard/`, and the page is on
+  `http://127.0.0.1:5173`.
+- The workshop gate gives the same verdict in the browser as `npm run gate` does in a terminal,
+  because both go through one gathering rather than two copies of it. Both were run: 39 of 50, shut.
+- **Running it found three defects that reading it had not.** All three below, all fixed.
+- Nothing in the C# solution was touched.
+
+**Next action: the live loop.** A run in progress is only visible by reopening it, which is where the
+WebSocket half deferred out of phase 3 belongs. Then the copilot's chat, if it is not cut.
 
 **2026-08-26 — the download is fixed and phase 3 is all but closed.**
 
@@ -30,8 +276,8 @@ controller in RUN.
 - **55 tools**, up from 52: `ListSimulationTags`, `ReadSimulationTags`, `WriteSimulationTag`.
 - **0 warnings**, `TreatWarningsAsErrors` on, across the whole solution.
 
-Phase 1 was merged as pull request #6. **Everything since is in the working tree, unmerged** —
-phase 2 and today's work both. That is two sessions uncommitted and it is the first thing to fix.
+Phase 1 was merged as pull request #6, phase 2 and the tag work as #7, the phase 3 harness as #8,
+and **the download fix and the rest of phase 3 as #9 on 2026-08-26**. Nothing is left unmerged.
 
 What closed it was tag access, which the server did not have. Note 14 of 2026-08-13 had measured
 that reading tags was not independent of the download; the download works since 2026-08-17, so it
@@ -108,9 +354,7 @@ can run against the real API. Everything else the roadmap named for the phase ex
 tested — repetitions, the workshop gate, six specifications, the model generator behind a seam.
 See "2026-08-26 — what phase 3 still owed" under Phase 3.
 
-**Next action:** commit what is here — 25 files, two sessions' worth — on a branch, and open the
-pull request. Then **phase 4, the dashboard**, which is the next phase in order and the one the
-WebSocket telemetry was deferred into.
+**Phase 4 is where the WebSocket telemetry was deferred to.** Everything before it is merged.
 
 **Standing debt, deliberate and dated:** the model generator has never run against the API. See
 "Deferred on purpose" under Phase 3. Nothing depends on it.
@@ -197,6 +441,207 @@ State during the session of 2026-08-12 (afternoon):
 
 Required reading at startup: this file, `../CLAUDE.md` and `REFERENCE-REPOS.md`.
 The plan for what comes next is in `ROADMAP.md`.
+
+## Phase 4 — the dashboard (started 2026-08-26)
+
+`dashboard/` does not exist yet. What exists is the half it reads from, built first on the user's
+decision: an API over the data the harness already records, so the front end is written against
+endpoints that return real numbers rather than against a shape somebody imagined.
+
+`npm run api` in `harness/` serves it. It is **read-only, and that is a property rather than a
+setting**: there is no endpoint here that changes anything and there will not be one. Every write in
+this project goes through the guard in the MCP server, and a second door into the same project that
+did not would be exactly the untested branch the governance rules forbid. When the dashboard needs
+to confirm a change it will call the server's own `ApplyChange`.
+
+### What it serves
+
+| Endpoint | Answers |
+|---|---|
+| `/api/runs` | every run, newest first, with what it attempted and how much of it compiled |
+| `/api/runs/{id}` | one run, its iterations, and what each phase cost inside it |
+| `/api/metrics` | per specification: attempts, clean compilations, passes, mean iterations to a clean compilation — each with its sample size |
+| `/api/audit` | the audit trail, filtered by `mode`, `tool`, `outcome` or `target` |
+| `/api/gate` | the five workshop criteria and the verdict |
+| `/api/mode` | what the permanent banner shows |
+
+It was run against the real store of the 39 recorded runs, not only against tests. The numbers it
+returns for run 39 are download 11.2 s and verify 2.8 s mean over six samples each, compile 611 ms
+over seven — which is the first time the shape of where the minute goes has been visible at all.
+
+### Four decisions, and the reason for each
+
+1. **The interface is `127.0.0.1` and is not a flag.** What this serves is a record of everything
+   the server has changed and where every backup of it lives. Making the interface configurable
+   would put exposing it to a classroom network one typo away.
+2. **The mode banner never guesses.** `/api/mode` reports what the audit trail was *observed* in.
+   An empty trail answers `unknown`, a mode the harness does not recognise answers `unknown`, and
+   Workshop wins over Study when both appear. It never answers `Study` because it does not know: a
+   safety notice that assumes the safe answer is worse than no notice. The authority on a live
+   session stays `GetOperationMode` on the server, and the endpoint says so in its own payload.
+3. **An unknown filter is a refusal, not an empty filter.** `?tol=CreateBlock` answers 400 and lists
+   the filters that exist. Answering it with the whole trail would show an audit that looks as
+   though it recorded no such restriction, which is the one thing an audit view may never do.
+4. **The gate is gathered in one place.** `gateEvidence.ts` assembles what `evaluateGate` judges,
+   and both `npm run gate` and `/api/gate` go through it. Two callers that each assembled the
+   evidence themselves would agree until one was changed, and a gate that says *shut* in a terminal
+   and *open* in a browser is worse than no gate. Both were run: both answer 39 complete runs of 50,
+   and shut.
+
+### What the reader is, and one thing it would have got backwards
+
+`MetricsReader` opens its own connection to the store the harness writes, which is what the WAL
+journal mode set a week ago was for: the dashboard can read while a run is still going.
+
+Two rules in it are worth naming, because both are the kind that a test catches and reading does
+not. **A missing store is refused, not created** — a mistyped path would otherwise read as a run
+that measured nothing, which looks exactly like a run that measured nothing. And **the list handed
+to the gate is reversed**: runs are listed newest first for a screen, but criterion 4 slices the end
+of its list to get the last twenty, so handing it that order would compare the two halves of the
+window backwards and call a falling rate a rising one. There is a test on each.
+
+**Harness: 64 cases, 64 passing**, up from 50, none of them needing TIA Portal.
+
+### 2026-08-27 — the live stream, and what it refuses to carry
+
+`/api/live` is server-sent events, which is what the roadmap deferred into this phase as "the
+WebSocket half". SSE rather than a WebSocket because the traffic goes one way — a browser has
+nothing to tell this server that a GET does not already say — and because it is plain HTTP that
+reconnects on its own, which matters when the API is restarted as often as it is while being
+written.
+
+**The event carries the token and nothing else.** Not the new run, not the row that changed. What is
+on screen is re-read from the endpoints that already serve it, so there is exactly one path that
+produces a number. A stream carrying its own copy of a measurement would be a second way to produce
+it, and two ways to produce a number become two different numbers the day one of them is changed.
+
+The token is `r39:39/i123:123/p520`: the highest identifier in each table, and the count of rows
+that have an outcome. Both halves are needed and the second is the subtle one — an iteration *ends*
+by having `outcome` written into a row that already exists, and no identifier moves when that
+happens. A token built from identifiers alone would show a run advancing through its phases and
+then never notice it finish. Both events were watched arriving while a run was written.
+
+`ChangeWatcher` owns no clock — `poll` is called by whoever does — which is what let every rule it
+has be tested without waiting for a real second: that it says nothing while unchanged, that a
+listener joining is told nothing until something happens, that one dead socket does not silence the
+other four, and that a store which breaks mid-watch is reported rather than read as "nothing is
+happening".
+
+### 2026-08-27 — the interface, rebuilt to be understood
+
+On Samreen's instruction: Tailwind, shadcn/ui and Chart.js, and a dashboard that explains itself.
+The rebuild follows a documented data-visualisation method rather than taste, and the parts of it
+that became rules in the code are these:
+
+- **The form is picked by the job the data does.** Part-to-whole is a stacked bar (how every attempt
+  at each specification ended); magnitude is a single-hue bar (where an iteration spends its time);
+  a trend is a line (the last twenty runs); one number is a stat tile, never a one-bar chart; a
+  ratio against a limit is a meter (39 of 50 complete runs).
+- **Colour is assigned by job, in a fixed order, and never cycled.** `seriesColour` throws past the
+  last slot rather than wrapping, because wrapping is how a chart ends up drawing two different
+  things in the same colour while looking perfectly fine.
+- **Nothing says anything by colour alone.** Every series has a legend entry in HTML — not on the
+  canvas, where a screen reader cannot reach it — and every status carries its word.
+- **The rate axis is fixed at 0-100%, never fitted.** An axis that rescales itself turns a wobble
+  between 98% and 100% into a mountain range.
+- **A panel's explanation is a required parameter.** A chart with a title and no sentence saying
+  what it is claiming gets misread, and the cheapest place to prevent that is where the panel is
+  declared.
+
+The one genuinely new view is **Overview**, because the roadmap's "metrics and charts" was doing two
+jobs: *how is it going* at a glance, and *what did each specification cost*. Those want different
+forms, and on one page neither was readable.
+
+### 2026-08-27 — five defects that only running it could find
+
+Compiling was clean, both suites were green, and `vite build` was happy. None of that saw any of
+these.
+
+1. **Charts drew nothing in a screenshot.** Chart.js animates by default and a resize restarts the
+   animation, so every capture caught the bars at width zero. Animation is off now — and that is
+   right independently: these charts redraw whenever the live stream fires, and a bar that regrows
+   from zero every second turns a dashboard into a fidget.
+2. **The dark theme drew every chart in the light palette.** Charts read their colours out of the
+   document with `getComputedStyle`, and the theme class was applied in an effect — which runs
+   *after* the render that read them. Dark grey labels on a near-black surface, invisible, and a
+   grid meant to recede at 12% opacity glaring at full strength. The class is now applied before the
+   first render and synchronously inside the toggle. Everything else on the page looked fine, which
+   is exactly why it took a screenshot to see.
+3. **The trend chart was a flat line at 100% and said nothing.** True, and useless alone. It now
+   carries a second line, the pass rate, which is the one that varies — and the flatness of the
+   first became the point rather than an empty chart. That needed a number the API did not have, so
+   `/api/runs` now counts passes per run: derived in the browser it could only have been a coarse
+   0 or 1.
+4. **The audit view stretched the page to eight thousand pixels.** Two hundred rows, and the filters
+   scrolled off the top the moment you started reading. The log scrolls inside its own box now.
+5. **An occupied port arrived as a stack trace.** A copy of the API left running from an earlier
+   session made the next one die with `EADDRINUSE` buried in an unhandled event. It says so in a
+   sentence now, and names the fix.
+
+A sixth thing was not in the code. The test that watched the live stream wrote a real run into the
+real measurement store; it was removed the same minute. A fabricated run in a store whose whole
+point is honest measurement would have made the gate's count of complete runs a lie.
+
+### The front end
+
+`dashboard/`, React and TypeScript with Vite, written by hand rather than scaffolded — the template
+would have arrived with a logo, a counter and a README to delete. It is 205 kB of JavaScript and one
+stylesheet, and its only dependency beyond React is Vite itself. The bar chart is inline SVG: five
+bars do not justify a charting library, and the whole claim of phase 3 is that these numbers were
+measured, so the arithmetic that draws them should be readable.
+
+Four views — Runs, Metrics, Audit trail, Workshop gate — plus the permanent mode banner. The
+copilot's chat is **not** among them: it needs the live loop rather than recorded data, and the
+roadmap's own list of what gets cut first puts it first. The data views are the ones that cannot be
+faked, and they are the ones that exist.
+
+Three things in it are rules rather than styling, and each has a test:
+
+- **A failed read is its own state.** Every panel goes through `WhenLoaded`, which shows the reason
+  the API gave, verbatim. A view that could not tell "the API is down" from "nothing is recorded"
+  would show an empty audit table for both, and one of those is a lie about whether anything was
+  changed.
+- **No bare percentage, and no mean without its sample size.** `format.ts` is a module of pure
+  functions for exactly this reason: a rule that lives inside a component is checked by looking at a
+  browser, and this one is checked by `npm test`. `9 of 11 (82%)`, `1.0 over 11`, and
+  `none attempted` where zero of zero would otherwise print as 0%.
+- **The types come from `harness/src/`, not from a copy.** The dashboard imports the response
+  contracts the API exports. A front end with its own description of the same payload keeps
+  compiling long after the API stopped sending it, and then renders `undefined` into a number
+  somebody is about to decide something on.
+
+### What running it found that reading it had not
+
+The rule of this repository, earned five times over: execute before believing. Three defects, none
+of which any test would have caught, because all three are about what the thing looks like when it
+meets real data.
+
+1. **The audit view rendered the entire trail — 2291 rows, no limit.** The API now takes `limit`,
+   defaults to 200, sends the *most recent* of what matched, and reports how many matched so a
+   truncated answer can never read as a complete one. A limit that is not a count is refused rather
+   than falling back to the default: `?limit=all` quietly becoming 200 would answer a request for
+   everything with a fifth of it.
+2. **The chart shouted.** The SVG was scaled to the width of the window, which scales its text too,
+   so the phase labels came out at twice the size of the table above them. It now draws at its own
+   size and is allowed to shrink, never to stretch.
+3. **The audit timestamps wrapped onto two lines**, being raw ISO 8601 from the C# side. They are
+   formatted local now — and a timestamp that cannot be parsed is shown exactly as recorded rather
+   than as "Invalid Date", because an audit line rendered as an error message is a line whose
+   evidence was destroyed by the thing displaying it.
+
+A fourth thing was not a defect but a gap: the views had no address. They are on the fragment now,
+`#/workshop-gate`, which makes a view something you can send somebody a link to — and, not
+incidentally, something that can be checked without a browser to click in. All four were verified by
+rendering them headless against the real store.
+
+### Next in phase 4
+
+The plant copilot's chat, which is the one view the roadmap names and this does not have — and which
+is also cut 1 on the roadmap's own list of what goes first. It needs the live loop rather than
+recorded data.
+
+Before that: the work of two sessions is still uncommitted on `main`, and needs a branch and a pull
+request.
 
 ## Phase 3 — the harness (started 2026-08-21)
 

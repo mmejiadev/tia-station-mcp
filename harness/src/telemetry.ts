@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { verifySchemaVersion } from './schemaVersion.ts';
 
 /**
  * The phases of one iteration of the loop.
@@ -32,6 +33,17 @@ export type IterationOutcome =
   /** Something broke that the loop cannot act on. */
   | 'failed';
 
+/**
+ * The outcomes that mean the compiler accepted the SCL.
+ *
+ * @remarks
+ * Listed rather than inferred from what is not a compiler error, and the difference matters: a
+ * refused write and a broken transport never reached the compiler either, and counting them as
+ * clean compilations would report a rate that rises as the harness breaks. Exported because the
+ * dashboard API answers the same question about a specification and must answer it the same way.
+ */
+export const CleanCompilationOutcomes: readonly IterationOutcome[] = ['passed', 'download-failed', 'behaviour-failed'];
+
 /** How a whole run of a specification ended. */
 export type RunOutcome = 'passed' | 'exhausted' | 'failed';
 
@@ -44,6 +56,30 @@ export type RunOutcome = 'passed' | 'exhausted' | 'failed';
  * impossible for nothing. The brand is a type, so it vanishes when Node strips the types.
  */
 export type RunId = number & { readonly brand: 'RunId' };
+
+/**
+ * What one generation actually cost, as the API reported it.
+ *
+ * @remarks
+ * Measured, not inferred. Phase 3 closed with a cost per generation estimated from token counts
+ * nobody had counted, and `STATUS.md` says plainly that the first thing to do with a key is record
+ * what it really costs and stop guessing. Every response carries these four numbers; this is where
+ * they land.
+ *
+ * There is no cost field, here or in the store. A price is a fact about a day, and one written into
+ * a row is wrong from the next price change onward with nothing to reveal it. Tokens are a fact
+ * about the request, so the cost is computed where it is read - see `estimateCost`.
+ */
+export type TokenUsage = {
+  /** Which model was asked, so a cost is attributable to one rather than to an average. */
+  readonly model: string;
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  /** Tokens written into the prompt cache, billed above the input rate. Zero until caching is used. */
+  readonly cacheCreationTokens: number;
+  /** Tokens served from the prompt cache, billed far below it. Zero until caching is used. */
+  readonly cacheReadTokens: number;
+};
 
 /** Identifies one iteration within a run. */
 export type IterationId = number & { readonly brand: 'IterationId' };
@@ -92,8 +128,6 @@ export type RunStatistics = {
   /** How many of them reached a clean compilation at least once. */
   readonly cleanCompilations: number;
 };
-
-const SchemaVersion = 1;
 
 /**
  * Where the harness records what happened, so the phase's deliverable is a measurement rather than
@@ -210,6 +244,56 @@ export class Telemetry {
   }
 
   /**
+   * Records what one generation cost the account.
+   *
+   * @param iterationId The iteration whose generate phase this was.
+   * @param usage What the API reported.
+   * @remarks
+   * A row per generation rather than a running total on the run, because the question that gets
+   * asked of it is a per-attempt one: a specification that passes on the third try paid for three
+   * generations, and a single total would hide which of the three was the expensive one.
+   *
+   * Only a model generator has anything to record. A stub run writes no rows here, which is honest:
+   * it did not cost anything, rather than costing something nobody measured.
+   */
+  recordUsage(iterationId: IterationId, usage: TokenUsage, recordedAt: number = Date.now()): void {
+    this.database
+      .prepare(
+        `INSERT INTO token_usage (iteration_id, model, input_tokens, output_tokens,
+                                  cache_creation_tokens, cache_read_tokens, recorded_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        iterationId,
+        usage.model,
+        usage.inputTokens,
+        usage.outputTokens,
+        usage.cacheCreationTokens,
+        usage.cacheReadTokens,
+        recordedAt
+      );
+  }
+
+  /**
+   * Every generation a run paid for, one row per attempt, oldest first.
+   *
+   * @remarks
+   * The rows, not a sum. Tokens of two different models added together produce a number that cannot
+   * be priced at all, and comparing two models is exactly what `--model` exists for.
+   */
+  usageOfRun(runId: RunId): TokenUsage[] {
+    return this.database
+      .prepare(
+        `SELECT u.model AS model, u.input_tokens AS inputTokens, u.output_tokens AS outputTokens,
+                u.cache_creation_tokens AS cacheCreationTokens,
+                u.cache_read_tokens AS cacheReadTokens
+         FROM token_usage u JOIN iterations i ON i.id = u.iteration_id
+         WHERE i.run_id = ? ORDER BY u.id`
+      )
+      .all(runId) as TokenUsage[];
+  }
+
+  /**
    * Times one phase and records it, whether it succeeded or threw.
    *
    * @param iterationId The iteration the phase belongs to.
@@ -278,22 +362,28 @@ export class Telemetry {
    * Every run, oldest first, with what it attempted and how much of it compiled.
    *
    * @remarks
-   * Which iteration outcomes mean "compiled" is listed in the SQL rather than inferred from what is
-   * not a compiler error, and the difference matters: a refused write and a broken transport never
-   * reached the compiler either, and counting them as clean compilations would report a rate that
-   * rises as the harness breaks.
+   * Which iteration outcomes mean "compiled" comes from {@link CleanCompilationOutcomes} and goes
+   * into the query as parameters, so the one place that decides what counts as a clean compilation
+   * is a list a reader can find rather than a literal buried in SQL.
    */
   runStatistics(): RunStatistics[] {
+    const placeholders = CleanCompilationOutcomes.map(() => '?').join(', ');
     const rows = this.database
       .prepare(
         `SELECT r.id AS runId, r.outcome AS outcome, r.started_at AS startedAt,
                 COUNT(DISTINCT i.specification) AS specifications,
-                COUNT(DISTINCT CASE WHEN i.outcome IN ('passed', 'download-failed', 'behaviour-failed')
+                COUNT(DISTINCT CASE WHEN i.outcome IN (${placeholders})
                                     THEN i.specification END) AS cleanCompilations
          FROM runs r LEFT JOIN iterations i ON i.run_id = r.id
          GROUP BY r.id ORDER BY r.id`
       )
-      .all() as { runId: number; outcome: string | null; startedAt: number; specifications: number; cleanCompilations: number }[];
+      .all(...CleanCompilationOutcomes) as {
+      runId: number;
+      outcome: string | null;
+      startedAt: number;
+      specifications: number;
+      cleanCompilations: number;
+    }[];
 
     return rows.map((row) => ({
       runId: row.runId,
@@ -337,9 +427,8 @@ export class Telemetry {
    * Creates the schema, or refuses to open a store written by a different version of it.
    *
    * @remarks
-   * The version check is the point. A store from an older schema opened by newer code either fails
-   * on a missing column, which is survivable, or silently reports numbers computed from columns
-   * that mean something else, which is not. Refusing is the only answer that cannot mislead.
+   * The tables are created if they are absent, and the version is then checked by the one function
+   * that both writers and readers of this store go through. See {@link verifySchemaVersion}.
    */
   private createSchema(): void {
     this.database.exec(`
@@ -377,25 +466,21 @@ export class Telemetry {
       );
 
       CREATE INDEX IF NOT EXISTS iterations_by_run ON iterations (run_id);
+      CREATE TABLE IF NOT EXISTS token_usage (
+        id                    INTEGER PRIMARY KEY,
+        iteration_id          INTEGER NOT NULL REFERENCES iterations (id),
+        model                 TEXT    NOT NULL,
+        input_tokens          INTEGER NOT NULL,
+        output_tokens         INTEGER NOT NULL,
+        cache_creation_tokens INTEGER NOT NULL,
+        cache_read_tokens     INTEGER NOT NULL,
+        recorded_at           INTEGER NOT NULL
+      );
+
       CREATE INDEX IF NOT EXISTS phase_timings_by_iteration ON phase_timings (iteration_id);
+      CREATE INDEX IF NOT EXISTS token_usage_by_iteration ON token_usage (iteration_id);
     `);
 
-    const existing = this.database.prepare('SELECT version FROM schema_version').get() as
-      | { version: number }
-      | undefined;
-
-    if (existing === undefined) {
-      this.database.prepare('INSERT INTO schema_version (version) VALUES (?)').run(SchemaVersion);
-
-      return;
-    }
-
-    if (existing.version !== SchemaVersion) {
-      throw new Error(
-        `This store was written with schema version ${existing.version} and this harness expects ` +
-          `${SchemaVersion}. Point --database at a new file rather than mixing them: the columns of ` +
-          'one version do not mean the same thing in another.'
-      );
-    }
+    verifySchemaVersion(this.database);
   }
 }

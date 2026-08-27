@@ -148,6 +148,74 @@ describe('Telemetry', () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it('records what a generation cost, per attempt rather than per run', () => {
+    // A specification that passes on the third try paid for three generations. Summed on the way in,
+    // the expensive one would be invisible.
+    const telemetry = Telemetry.open(':memory:');
+
+    try {
+      const runId = telemetry.startRun(context());
+
+      telemetry.recordUsage(telemetry.startIteration(runId, 'two-station', 1), usage(1000, 2000));
+      telemetry.recordUsage(telemetry.startIteration(runId, 'two-station', 2), usage(3000, 4000));
+
+      const recorded = telemetry.usageOfRun(runId);
+
+      assert.equal(recorded.length, 2);
+      assert.deepEqual(
+        recorded.map((entry) => [entry.inputTokens, entry.outputTokens]),
+        [
+          [1000, 2000],
+          [3000, 4000]
+        ]
+      );
+    } finally {
+      telemetry.close();
+    }
+  });
+
+  it('reports no usage for a run that asked no model anything, rather than a zero', () => {
+    // The stub costs nothing, and a run with no rows here is a run that spent nothing - which is a
+    // different statement from a run whose cost was never measured.
+    const telemetry = Telemetry.open(':memory:');
+
+    try {
+      const runId = telemetry.startRun(context());
+
+      telemetry.startIteration(runId, 'two-station', 1);
+
+      assert.deepEqual(telemetry.usageOfRun(runId), []);
+    } finally {
+      telemetry.close();
+    }
+  });
+
+  it('carries a store forward from the schema that had no costs in it, keeping its runs', () => {
+    // Version 2 only added a table. Refusing here would strand the thirty-nine runs already recorded
+    // for no better reason than that they predate a column none of them uses.
+    const directory = mkdtempSync(join(tmpdir(), 'tia-harness-'));
+    const path = join(directory, 'metrics.db');
+
+    try {
+      const first = Telemetry.open(path);
+
+      first.startRun(context());
+      first.close();
+
+      setSchemaVersion(path, 1);
+
+      const migrated = Telemetry.open(path);
+
+      try {
+        assert.equal(migrated.runStatistics().length, 1);
+      } finally {
+        migrated.close();
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });
 
 function finishOne(
@@ -160,6 +228,29 @@ function finishOne(
   const iterationId = telemetry.startIteration(runId, specification, 1);
 
   telemetry.finishIteration(iterationId, outcome, errorCount);
+}
+
+/** A run context, since none of these tests is about what is in one. */
+function context(): Parameters<Telemetry['startRun']>[0] {
+  return {
+    specSet: 'specs',
+    serverExecutable: 'TiaMcpServer.exe',
+    iterationLimit: 3,
+    generator: 'a-model'
+  };
+}
+
+/** Token counts distinct enough that a transposed input and output would fail the assertion. */
+function usage(inputTokens: number, outputTokens: number): Parameters<Telemetry['recordUsage']>[1] {
+  return { model: 'a-model', inputTokens, outputTokens, cacheCreationTokens: 0, cacheReadTokens: 0 };
+}
+
+/** Stamps a store with a version, standing in for a build that wrote it. */
+function setSchemaVersion(path: string, version: number): void {
+  const database = new DatabaseSync(path);
+
+  database.prepare('UPDATE schema_version SET version = ?').run(version);
+  database.close();
 }
 
 /** Writes a version this harness does not know, the way an older build would have left one. */

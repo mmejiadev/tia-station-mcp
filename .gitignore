@@ -48,6 +48,8 @@ Desktop.ini
 # The harness (phase 3) is Node and TypeScript. Dependencies and build output are not history.
 harness/node_modules/
 harness/dist/
+dashboard/node_modules/
+dashboard/dist/
 
 # The Anthropic API key the generator uses. Never history, on any machine.
 .env

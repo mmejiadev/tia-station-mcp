@@ -292,9 +292,49 @@ never a bare percentage.
 
 `dashboard/`, React, TypeScript and Vite, against the harness API.
 
+The API is `harness/src/apiServer.ts`, `npm run api`, and it was built first: it reads the SQLite
+store the runs already write and serves runs, per-run detail, metrics, the filtered audit trail, the
+gate and the mode banner. Read-only by construction and on loopback only — every write stays behind
+the guard in the MCP server, and the dashboard confirms a change through `ApplyChange` like any
+other client.
+
 Four views: the plant copilot (chat plus live loop phase), metrics and charts, the
 filterable audit log, and the state of the workshop gate with its five criteria shown green
 or red. Plus the permanent mode banner described above.
+
+**Closed 2026-08-27.** Six views shipped — Overview, Live run, Runs, Metrics, Audit trail, Workshop
+gate — plus the banner, a dark theme, and a live stream that moves the page as a run records.
+
+**The copilot's chat was cut on 2026-08-27 and shipped later the same day.** The cut is left here
+rather than edited away: it needed a model and an API key the machine did not have, so it would have
+been written and never run, and it was already cut number 1 on the list below. Its other half, the
+live loop phase, shipped as *Live run*.
+
+**The condition the cut named was met.** Twenty euros of API credit went into the account, and the
+chat exists. It is **not a tab**: it is docked in the corner of every view at once, behind a round
+robot button, because a copilot you have to navigate away from the numbers to reach is one you stop
+asking - and the question somebody wants to ask is nearly always about the view in front of them.
+The conversation survives moving between views, which is the property the dock is for. The estimate of about 1.5 cents a turn was pessimistic by an order of
+magnitude: measured turns against the real store cost **$0.0019 to $0.0022** on Haiku 4.5, most of
+it the brief that is sent with every question.
+
+It is given the same numbers the views are drawn from and **no tools**, so there is no path from
+anything typed into it to anything that changes a project. It declines safety questions outright -
+verified against a question that insisted - and says when a fact was not given to it rather than
+filling the gap. Still six views, plus the dock.
+
+A sixth view, *Guide*, arrives with phase 5b rather than here: it renders `INSTALL.md` and reports
+what this machine meets. It is listed there because a guide to installing something is worth
+nothing until there is something to install.
+
+Built on 2026-08-26 and 2026-08-27. What exists: Overview, Live run, Runs, Metrics, Audit trail,
+Workshop gate, the permanent mode banner, the docked copilot, and a dark theme. React, TypeScript, Vite, Tailwind,
+shadcn/ui and Chart.js. `npm run api` in `harness/`, `npm run dev` in `dashboard/`.
+
+A run in progress moves on screen: `/api/live` streams server-sent events, which is where the
+WebSocket half deferred out of phase 3 landed. The event says only *that* the store changed, never
+what — the page re-reads the endpoints that already serve the numbers, so one path produces a number
+and the stream cannot disagree with the table.
 
 ### Phase 5 — The pitch
 
@@ -302,9 +342,78 @@ README rewritten with the business pitch first, an end-to-end recording of the l
 real numbers from phase 3, the security model, and Workshop Mode documented as roadmap with
 its entry conditions. Anything the repository does not actually do comes out of the README.
 
+### Phase 5b — Deployment: somebody else's machine
+
+Added 2026-08-27. Numbered 5b rather than 7 so that Workshop Mode stays last, which is a rule rather
+than a position in a list.
+
+**The constraint that decides everything here: the server cannot be deployed anywhere except a
+Windows machine that already has TIA Portal V20 installed and licensed.** Openness is an in-process
+API against an installed Portal, so there is no container, no Linux host and no cloud. This is not a
+service to host; it is a desktop tool to distribute. The unit of deployment is one person, one
+Windows PC, and everything — server, harness, API, dashboard, knowledge index — runs on it.
+
+That is also a property worth keeping rather than a limitation to engineer around: no audit trail
+leaves the machine that produced it, and nothing phones home.
+
+| Piece | Where it runs | What that machine must already have |
+|---|---|---|
+| `TiaMcpServer.exe` | The same PC as TIA Portal | TIA V20 licensed, .NET Framework 4.8, membership of `Siemens TIA Openness` with a re-login done |
+| PLCSIM Advanced | The same PC | Its own licence, the virtual adapter configured on the project's subnet |
+| `harness/` | The same PC, driving the server over stdio | Node 22.6 or newer |
+| API and dashboard | The same PC, loopback only | Node. It serves the audit trail, which is why the interface is not a flag |
+| Knowledge index | The same PC | Built locally from the recipe and the user's own documents |
+
+What the phase delivers:
+
+- **A versioned release artefact** — the built server, zipped, with its SHA-256 published. Byte
+  identity matters more here than usual: TIA binds its Openness whitelist to the exact executable, so
+  a rebuild costs every user a confirmation dialog. Releases are few and versioned for that reason.
+- **A precondition check that fails closed.** A PowerShell bootstrap that verifies TIA at the
+  configured location, the group membership, .NET, Node and PLCSIM, and **refuses with a sentence
+  naming the fix** rather than letting the failure surface an hour later as something unrelated.
+- **`INSTALL.md`, written for somebody who has never seen this repository**, including the first-run
+  trap that is guaranteed to bite: TIA asks for whitelist confirmation the first time a given
+  executable connects, and while that dialog is open `Connect` blocks and reports `Request timed
+  out` — which points at the server when the cause is on the screen.
+- **Host wiring** for Claude Code and for Claude Desktop: stdio, logs to stderr, one snippet each.
+- **The user guide, in the dashboard and in the repository — one file, rendered twice.** A sixth
+  view, *Guide*, renders `INSTALL.md` itself rather than a hand-written copy of it. The rule is the
+  one the knowledge brief states about checklists and applies here for the same reason: a document
+  that exists twice diverges, and the divergent copy is the one that gets shown. The file is what a
+  new user reads on GitHub before anything of this is running; the view is what they keep open once
+  it is, which is why neither can be dropped in favour of the other.
+- **What this machine actually has, checked rather than described.** The one thing the Guide view can
+  do that a Markdown file cannot: run the same precondition check as the bootstrap script and show,
+  item by item, what this machine meets and what it does not — TIA at the configured location, the
+  group membership, .NET, Node, PLCSIM, and whether an index and a metrics store exist. It reports;
+  it never installs anything and never changes a setting. That keeps the API read-only in the sense
+  that matters: it inspects, it does not act.
+- **Configuration, never paths.** `TiaPortalLocation`, project locations and `policy.json` are
+  per-machine, and the shipped policy denies by default.
+- **A version the numbers can be attributed to.** The server reports its version; the harness already
+  records the executable it measured through.
+
+**Blocking criterion**: installed from the release artefact alone, on a machine that has never built
+this project, the smoke path runs — connect, compile, download to PLCSIM, read a tag — **following
+`INSTALL.md` and nothing else**. A virtual machine counts; a second copy of the developer's own
+working tree does not. Until that has been done once, the install instructions are a guess, and a
+guide nobody has followed from the top is a guide that is wrong in the place it matters most.
+
+Explicitly out of scope: a central server, remote access to the dashboard, and any shared store.
+Exposing the API beyond loopback publishes a record of everything the server changed and where every
+backup lives, and that is a decision with consequences, not a deployment convenience.
+
 ### Phase 6 — Workshop Mode, supervised and last
 
 Last, and only under supervision. Deliberately.
+
+### The knowledge layer
+
+`KNOWLEDGE-LAYER.md` holds a separate work brief — hardware documentation retrieval and a cited
+pre-flight review, delivered as Claude Code skills. It is **deliberately not numbered as a phase
+here**: it runs alongside this order and is cut from the bottom up, and every one of its seven
+stages delivers something on its own.
 
 ## Order, not dates
 
@@ -321,8 +430,9 @@ must not be the newest code in the repository.
 
 ### What gets cut if something has to be, in this order
 
-1. The live chat in the dashboard. The data views remain, which are the ones that cannot be
-   faked.
+1. ~~The live chat in the dashboard.~~ **Cut on 2026-08-27 and built on 2026-08-27**, once there
+   was a key to build it against. The data views remain, which are the ones that cannot be
+   faked. **Taken, 2026-08-27** — see phase 4.
 2. The cell drops from four stations to two.
 3. The harness uses pre-generated specifications instead of calling the model.
 
