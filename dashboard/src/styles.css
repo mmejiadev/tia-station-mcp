@@ -1,0 +1,146 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Two palettes live here and they do different jobs.
+ *
+ * The interface tokens are shadcn's, so the components look like themselves. The `--series-*` and
+ * `--status-*` tokens are the data-visualisation palette, whose ordering is a colour-blindness
+ * safety mechanism rather than a preference: the slots are assigned in order and never cycled, and
+ * the dark column is the same hues re-stepped for a dark surface, not an automatic flip.
+ *
+ * Nothing in a chart may say something with colour alone. Every series is also named in a legend or
+ * a direct label, and every status also carries its word.
+ */
+
+:root {
+  --radius: 0.625rem;
+
+  --background: oklch(0.995 0.002 100);
+  --foreground: oklch(0.21 0.006 285.9);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.21 0.006 285.9);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.21 0.006 285.9);
+  --primary: oklch(0.55 0.15 254);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.967 0.001 286.4);
+  --secondary-foreground: oklch(0.21 0.006 285.9);
+  --muted: oklch(0.967 0.001 286.4);
+  --muted-foreground: oklch(0.552 0.014 285.9);
+  --accent: oklch(0.967 0.001 286.4);
+  --accent-foreground: oklch(0.21 0.006 285.9);
+  --destructive: oklch(0.577 0.245 27.3);
+  --border: oklch(0.92 0.004 286.3);
+  --input: oklch(0.92 0.004 286.3);
+  --ring: oklch(0.55 0.15 254);
+
+  /* Categorical slots, in the order they must be assigned. Light steps. */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+
+  /* Sequential blue, light to dark. Magnitude, one hue. */
+  --sequential-250: #86b6ef;
+  --sequential-400: #3987e5;
+  --sequential-450: #2a78d6;
+  --sequential-550: #1c5cab;
+
+  /* Reserved for state. Never used as a series colour. */
+  --status-good: #1baf7a;
+  --status-warning: #eda100;
+  --status-critical: #e34948;
+
+  --grid: oklch(0.92 0.004 286.3);
+}
+
+.dark {
+  --background: oklch(0.16 0.004 285.8);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.21 0.006 285.9);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.21 0.006 285.9);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.62 0.15 254);
+  --primary-foreground: oklch(0.21 0.006 285.9);
+  --secondary: oklch(0.274 0.006 286);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.274 0.006 286);
+  --muted-foreground: oklch(0.705 0.015 286);
+  --accent: oklch(0.274 0.006 286);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.2);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.62 0.15 254);
+
+  /* The same hues, stepped for the dark surface. Not an automatic flip. */
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+
+  --sequential-250: #184f95;
+  --sequential-400: #2a78d6;
+  --sequential-450: #3987e5;
+  --sequential-550: #86b6ef;
+
+  --status-good: #199e70;
+  --status-warning: #c98500;
+  --status-critical: #e66767;
+
+  --grid: oklch(1 0 0 / 12%);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-series-1: var(--series-1);
+  --color-series-2: var(--series-2);
+  --color-series-3: var(--series-3);
+  --color-status-good: var(--status-good);
+  --color-status-warning: var(--status-warning);
+  --color-status-critical: var(--status-critical);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  /* Figures line up in a column when they are tabular, and only then. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}

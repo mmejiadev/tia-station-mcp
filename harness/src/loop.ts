@@ -126,9 +126,19 @@ async function runOneAttempt(
   const { connection, telemetry, specification, generator } = options;
 
   try {
-    const source = await telemetry.time(iterationId, 'generate', () =>
+    const generated = await telemetry.time(iterationId, 'generate', () =>
       generator.generate({ specification, attempt, previousErrors })
     );
+
+    // Recorded here, before anything can go wrong with the source, and only when there is one to
+    // record: the stub costs nothing and says so by reporting nothing. Recording it after the
+    // compile would lose the cost of every attempt that failed to compile, which is the half of
+    // the bill worth looking at.
+    if (generated.usage !== undefined) {
+      telemetry.recordUsage(iterationId, generated.usage);
+    }
+
+    const source = generated.source;
 
     const written = await telemetry.time(iterationId, 'write', () =>
       connection.callTool('WriteScl', { softwarePath: specification.softwarePath, sclCode: source })

@@ -5,13 +5,15 @@
   "description": "Runs the generate-compile-fix loop against the TIA MCP server, measures it, and answers the workshop gate.",
   "type": "module",
   "engines": {
-    "node": ">=22.6.0"
+    "node": ">=22.9.0"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "node --test \"test/**/*.test.ts\"",
     "check": "npm run typecheck && npm run test",
-    "gate": "node src/gateReport.ts"
+    "run": "node --env-file-if-exists=.env src/run.ts",
+    "gate": "node src/gateReport.ts",
+    "api": "node --env-file-if-exists=.env src/apiServer.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.121.0",

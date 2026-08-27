@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import type { McpServerConnection } from './mcpClient.ts';
 import type { Specification } from './specification.ts';
+import type { TokenUsage } from './telemetry.ts';
 
 /** What the loop tells a generator before it produces a source. */
 export type GenerationRequest = {
@@ -11,11 +12,26 @@ export type GenerationRequest = {
   readonly previousErrors: readonly string[];
 };
 
+/**
+ * One generation, and what it cost.
+ *
+ * @remarks
+ * The cost travels with the source rather than being read off the generator afterwards. A
+ * generator that remembered its last usage would be a generator with state, and the loop calls it
+ * once per attempt inside a timed phase - so "the last one" is a question with a right answer only
+ * as long as nothing runs two attempts at once.
+ */
+export type Generation = {
+  readonly source: string;
+  /** What the API reported, when a model was asked. Absent for a generator that costs nothing. */
+  readonly usage?: TokenUsage;
+};
+
 /** Something that produces SCL for a specification. */
 export type Generator = {
   /** Recorded with the run, so a number can be attributed to what produced the code. */
   readonly name: string;
-  generate(request: GenerationRequest): Promise<string>;
+  generate(request: GenerationRequest): Promise<Generation>;
 };
 
 /**
@@ -44,7 +60,7 @@ export function createStubGenerator(connection: McpServerConnection, repositoryR
   return {
     name: 'stub',
 
-    async generate(request: GenerationRequest): Promise<string> {
+    async generate(request: GenerationRequest): Promise<Generation> {
       const result = await connection.callTool('ExpandCellScl', {
         cellPath: join(repositoryRoot, request.specification.cellPath),
         patternDirectory: join(repositoryRoot, 'spec', 'patterns'),
@@ -58,10 +74,10 @@ export function createStubGenerator(connection: McpServerConnection, repositoryR
       const source = readScl(result.payload, result.text);
 
       if (request.specification.breakFirstAttempt && request.attempt === 1) {
-        return breakTheEntryPoint(source);
+        return { source: breakTheEntryPoint(source) };
       }
 
-      return source;
+      return { source };
     }
   };
 }

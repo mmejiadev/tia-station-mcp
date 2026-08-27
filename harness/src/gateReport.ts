@@ -1,10 +1,9 @@
-import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { readAuditTrail } from './auditTrail.ts';
 import { evaluateGate, type GateVerdict } from './gate.ts';
+import { gatherEvidence } from './gateEvidence.ts';
+import { parseFlags } from './options.ts';
 import { repositoryRoot } from './serverLocation.ts';
 import { Telemetry } from './telemetry.ts';
-import { readReviewRecord } from './workshopReview.ts';
 
 /** Where the evidence is. */
 type Options = {
@@ -29,13 +28,7 @@ function main(): number {
   const telemetry = Telemetry.open(options.databasePath);
 
   try {
-    const verdict = evaluateGate({
-      runs: telemetry.runStatistics(),
-      unfinishedIterations: telemetry.countUnfinishedIterations(),
-      audit: readAuditTrail(options.auditPath),
-      backupExists: existsSync,
-      review: readReviewRecord(options.reviewPath)
-    });
+    const verdict = evaluateGate(gatherEvidence(telemetry, options));
 
     report(verdict);
 
@@ -64,21 +57,11 @@ function report(verdict: GateVerdict): void {
 }
 
 function parseOptions(args: readonly string[]): Options {
-  const values = new Map<string, string>();
-
-  for (let index = 0; index < args.length; index += 2) {
-    const flag = args[index];
-    const value = args[index + 1];
-
-    if (flag === undefined || value === undefined || !flag.startsWith('--')) {
-      throw new Error(
-        `Bad arguments near '${flag ?? ''}'. Usage: node src/gateReport.ts [--database <file>] ` +
-          '[--audit <file>] [--review <file>]. Every flag takes a value.'
-      );
-    }
-
-    values.set(flag, value);
-  }
+  const values = parseFlags(
+    args,
+    'Usage: node src/gateReport.ts [--database <file>] [--audit <file>] [--review <file>]. ' +
+      'Every flag takes a value.'
+  );
 
   // The same defaults a run writes to, so asking the question needs no arguments on the machine
   // that produced the evidence.

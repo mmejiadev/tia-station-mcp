@@ -1,7 +1,7 @@
 import { readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createStubGenerator, type Generator } from './generator.ts';
-import { createApiSender, createModelGenerator } from './modelGenerator.ts';
+import { createApiSender, createModelGenerator, requireApiKey } from './modelGenerator.ts';
 import { runSpecification, type SpecificationResult } from './loop.ts';
 import { McpServerConnection } from './mcpClient.ts';
 import { parseOptions, type Options } from './options.ts';
@@ -38,6 +38,12 @@ async function main(): Promise<number> {
     console.error(`No specifications in ${options.specDirectory}.`);
 
     return 1;
+  }
+
+  // Before the executable, the store or TIA Portal: a run that is going to need a key should say so
+  // in a second rather than after a forty-five second startup.
+  if (options.generator === 'model') {
+    requireApiKey();
   }
 
   const executable = resolveServerExecutable();
@@ -186,7 +192,7 @@ async function runRepetitions(session: Session): Promise<Repetition[]> {
  */
 function createGenerator(session: Session): Generator {
   if (session.options.generator === 'model') {
-    return createModelGenerator(createApiSender());
+    return createModelGenerator(createApiSender(session.options.model), session.options.model);
   }
 
   return createStubGenerator(session.connection, repositoryRoot());
@@ -212,7 +218,10 @@ async function runOneRepetition(
 
     telemetry.finishRun(runId, results.every((result) => result.outcome === 'passed') ? 'passed' : 'failed');
 
-    return { index, results };
+    // Read back from the store rather than accumulated on the way through: the store is where the
+    // cost of a run is going to be read from afterwards, so the report and the dashboard answer the
+    // same question from the same rows instead of from two additions that can drift apart.
+    return { index, results, usage: telemetry.usageOfRun(runId) };
   } catch (error) {
     // Marked before rethrowing, so a repetition killed by a broken transport is a failed run in the
     // store rather than one that never ended. The gate counts complete runs, and an unfinished one
