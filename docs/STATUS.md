@@ -1,9 +1,80 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-08-27**
+> Last updated: **2026-08-28**
 
 ## ▶ RESUME HERE
+
+**2026-08-28, later — stage 1 of the knowledge layer is built, and it cites three real manuals.**
+
+The only authorised stage of `docs/KNOWLEDGE-LAYER.md` is done. There is a local index in
+`harness/src/knowledge/`, a `hardware-lookup` skill in `.claude/skills/` — the repository's first —
+and a corpus of **three documents, 538 pages, 1 124 chunks**, indexed in eleven seconds: the UR5e
+user manual (SW 5.16), the SICK C4000 operating instructions and the Festo DSBC documentation.
+
+**No manual is in the repository.** `harness/corpus/recipe.json` holds each document's URL, version
+and SHA-256, and everything else under `harness/corpus/` is ignored. Ingestion refuses a file whose
+hash is not the hash in the recipe, and it fetches nothing itself — that is stage 4, with a
+whitelist and a quarantine. The S7-1200 system manual is absent because Siemens Industry Online
+Support answers **403** without a login; the other three manufacturers serve theirs directly.
+
+**One thing is deliberately not what the brief said, and it is in the README-honesty category.** The
+vector half of the "hybrid" search is a hashed character-trigram vector computed locally — a lexical
+signal, **not a semantic embedding**. Anthropic publishes no embeddings API and the alternative was a
+second provider and a second key. It catches `6ES7214-1AG40` against `6ES7 214-1AG40-0XB0`, which is
+where BM25 scores zero; it does not understand a paraphrase, and a test asserts that it does not.
+
+**The first version did not abstain**, and it was found by running it: *what is the capital of
+France* returned three excerpts from a robot manual, because `capital` is rare enough to rank well
+in five hundred pages. A ranking says which chunk is least bad, never whether any is good. Coverage
+of the question's meaningful words is now a precondition of quoting anything, and that question is a
+test by name.
+
+**Green**: harness **146/146** (111 before, 35 new), typecheck clean, index builds with no warnings.
+Everything in this stage runs without TIA Portal and without the corpus — the tests build their own
+index from text they write themselves.
+
+**Next action.** Nothing further in the knowledge layer is authorised: stage 2 (cited hardware
+context in the `ChangePlan`) is the cheapest and most visible, stage 0 (project review on connect)
+depends on nothing, and both need a decision. Otherwise the options from this morning still stand:
+ten more runs closes criterion 1, phase 5b is deployment, and criterion 5 is the in-person review.
+
+**2026-08-28 — phase 5 is done, and run 40 is on the board.**
+
+PR #10 is merged, so the dashboard, the read API, model generation, schema version 2 and the docked
+copilot are all on `main`. Phase 5 was the next thing chosen and it is finished: the README leads
+with the pitch, carries the measured numbers, shows a real run end to end, states the security
+model, and documents Workshop Mode as a roadmap item with its five entry conditions and their
+current state.
+
+**The recording is a real run, and it counted.** A full six-specification run went into `metrics.db`
+while the README was being written, with the `stub` generator so the sample stays homogeneous.
+**6 of 6 passed.** That makes it **run 40 of the 50** criterion 1 wants, and every number in the
+README moved when it finished — 98 attempts, 94 clean compilations (96%), 66 passed (67%), one
+iteration 22.0 s.
+
+**What this phase actually caught was three false claims**, which is what "anything the repository
+does not do comes out of the README" is for:
+
+- **Tag table export/import was advertised and does not exist.** No tool, no import, and `TagTable`
+  appears only inside `SourceSnapshotExporter`. It had been in the README for a long time.
+- **My own draft put "an LLM writes PLC code" above the 96%/67% table**, which is the pattern
+  expander's. A reader would have taken those as a model's numbers. Fixed before the table, not
+  after.
+- **A generation was priced at "$0.008 on Opus-class models".** The measured $0.0079 was Haiku 4.5.
+  The Opus number is an estimate and now says so.
+
+`McpServerWrites.cs` had a matching problem and was corrected: its doc comment claimed *everything*
+in the file calls `GuardedTool.Run`, and `ApplyChange` does not — rightly, being the confirmation
+half of the guard. The exception is now named, because the file exists to be checkable by eye.
+
+**Green**: server builds with **0 warnings**, harness 111/111, dashboard 11/11, both typechecks
+clean. `dashboard/.vite/` is now ignored.
+
+**Next action — pick one.** Ten more runs closes criterion 1 and is roughly 40 minutes of machine
+time; criterion 5, the in-person review with the teacher, is the one nothing here can move. Or
+phase 5b, deployment, whose blocking criterion needs a machine that has never built this project.
+Or stage 1 of the knowledge layer, the only stage authorised.
 
 **2026-08-27, last thing — the copilot's chat exists, docked in the corner of every view.**
 

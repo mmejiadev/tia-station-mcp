@@ -50,6 +50,7 @@ harness/node_modules/
 harness/dist/
 dashboard/node_modules/
 dashboard/dist/
+dashboard/.vite/
 
 # The Anthropic API key the generator uses. Never history, on any machine.
 .env
@@ -59,3 +60,9 @@ harness/.env
 # an asset already in the repository, and the measurement store. The numbers get reported, with
 # their sample size, in docs/STATUS.md; the database itself is a machine's record.
 **/.tia-mcp/harness/
+
+# The knowledge corpus (stage 1): manuals from Siemens, Universal Robots, SICK and Festo are
+# copyrighted and are not redistributed here. What is versioned is the recipe — URL, hash, version —
+# so each machine builds its own index from documents its owner is entitled to have.
+harness/corpus/*
+!harness/corpus/recipe.json

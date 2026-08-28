@@ -1,0 +1,28 @@
+{
+  "documents": [
+    {
+      "device": "UR5e",
+      "title": "Universal Robots e-Series User Manual UR5e",
+      "version": "SW 5.16, en Global, 710-965-00",
+      "sourceUrl": "https://s3-eu-west-1.amazonaws.com/ur-support-site/219824/710-965-00_UR5e_User_Manual_en_Global.pdf",
+      "sha256": "c1689d2760601b5b8559176221aa8c7bdebc4ff346fb70cda2bff2eef48faa4e",
+      "file": "ur5e-user-manual-sw516.pdf"
+    },
+    {
+      "device": "C4000",
+      "title": "SICK C4000 Standard and C4000 Advanced safety light curtains, operating instructions",
+      "version": "im0011945, English",
+      "sourceUrl": "https://www.sick.com/media/docs/5/45/945/operating_instructions_c4000_standard_and_c4000_advanced_safety_light_curtains_en_im0011945.pdf",
+      "sha256": "b461202527373eedfe9e0ec7ae04f93f1eb51db0bfeacef537fdbbb46f935eeb",
+      "file": "sick-c4000-standard-advanced.pdf"
+    },
+    {
+      "device": "DSBC",
+      "title": "Festo standards-based cylinders DSBC to ISO 15552",
+      "version": "2018, English",
+      "sourceUrl": "https://ftp.festo.com/Public/PNEUMATIC/SOFTWARE_SERVICE/Documentation/2018/EN/DSBC_EN.PDF",
+      "sha256": "622f277b24fb71c298e10164d15beaecb90dfb5e8d374fad331091a07fa62821",
+      "file": "festo-dsbc-cylinder.pdf"
+    }
+  ]
+}

@@ -22,10 +22,16 @@ namespace TiaMcpServer.ModelContextProtocol
     /// is the complete list of things this server can change, and that list was previously scattered
     /// through two and a half thousand lines of read tools.
     ///
-    /// **Everything here calls <c>GuardedTool.Run</c>.** That is the property the file exists to make
-    /// checkable by eye: a tool in this file that does not name a <c>ChangeTarget</c> and pass it to
-    /// the guard is a bug, and now it is a visible one. A new write tool belongs here, and in
-    /// <c>Test16GuardedWrites</c>.
+    /// **Everything here calls <c>GuardedTool.Run</c>, with one exception named below.** That is the
+    /// property the file exists to make checkable by eye: a tool in this file that does not name a
+    /// <c>ChangeTarget</c> and pass it to the guard is a bug, and now it is a visible one. A new
+    /// write tool belongs here, and in <c>Test16GuardedWrites</c>.
+    ///
+    /// The exception is <c>ApplyChange</c>, and it is the other half of the guard rather than a way
+    /// around it: it confirms a plan the guard already produced and recorded. Making it take the
+    /// guard as well would mean planning the confirmation of a plan. It is stated here because an
+    /// "everything" that has an unstated exception stops being checkable by eye, which is the whole
+    /// value of this file.
     ///
     /// A partial class rather than a separate type because the MCP SDK discovers tools by attribute
     /// on a type marked <c>[McpServerToolType]</c>, and because these methods share the private
