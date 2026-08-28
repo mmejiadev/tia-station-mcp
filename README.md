@@ -1,13 +1,22 @@
 ﻿# tia-station-mcp
 
-An MCP server for Siemens TIA Portal aimed at verified PLC code generation and at
-coordinating multi-station cells.
+**"It compiles" is the wrong thing to measure about generated PLC code. This measures whether the
+program actually runs the cell — on a simulated CPU, driven through its own tags, against a
+specification that says what should happen.**
+
+Reliability does not come from whatever wrote the code. It comes from the compiler and the tests.
+So the product here is the closed loop and the evidence it produces, and **the generator is a
+replaceable part**: the same loop runs with the repository's own pattern expander or with a language
+model, and records which one it was asked. That is the point of building it this way. A number about
+generated code is worth nothing unless you can say what generated it, and unless something other
+than the generator decided whether it was right.
 
 Final project for the CFGS in Industrial Automation and Robotics.
 
-## What it is for
+## What it is
 
-Closing the whole loop, not just generating code:
+An MCP server exposing the Siemens TIA Portal Openness API, plus a harness that drives it in a
+closed loop and records what happened.
 
 ```
 specification → generate SCL → import into TIA → compile → read errors
@@ -15,46 +24,183 @@ specification → generate SCL → import into TIA → compile → read errors
                       └──────────────── fix ←──────────────────┘
                                           │
                                           ▼
-                              test on PLCSIM Advanced
+                          download to PLCSIM Advanced, run it,
+                          drive the inputs, assert the outputs
                                           │
                                           ▼
                                     export to Git
 ```
 
-An LLM generating PLC code does not get it right 100 % of the time. Reliability does not
-come from the model: it comes from **the compiler and the tests**. That is why the closed
-loop is the core of the design and not an add-on.
+Every stage of that diagram runs. The dotted line that used to sit after "compile" is gone: the
+loop reaches a running virtual CPU, drives its tags and reads them back, and a specification either
+passes or does not.
 
-## Status
+## What it actually does, in numbers
 
-See [`docs/STATUS.md`](docs/STATUS.md).
+Measured over **40 recorded runs, 98 specification attempts** on this machine, against TIA Portal
+V20 and PLCSIM Advanced. Every rate below carries the sample it came from, because a percentage
+without one is not a measurement.
 
-## Base and attribution
+**These are the pattern expander, not a model.** Said before the table rather than after it: the
+loop was measured with a deterministic generator first, on purpose, so that the loop's own failures
+could be separated from a generator's. Read them as what the harness and the cell pattern do, and as
+the baseline a model gets compared against — not as what an LLM scores.
 
-Built on [heilingbrunner/tiaportal-mcp](https://github.com/heilingbrunner/tiaportal-mcp)
-(MIT), from which we inherit the architecture, code conventions and error model.
+| | Result | Sample |
+|---|---|---|
+| Compiled cleanly | **94 of 98 (96%)** | 98 attempts across 40 runs |
+| Ran on a simulated CPU and behaved as specified | **66 of 98 (67%)** | the same 98 |
+| One iteration, end to end | **22.0 s** | the five phases, each a mean over its own sample |
 
-Analysis of the seven reference repositories in
-[`docs/REFERENCE-REPOS.md`](docs/REFERENCE-REPOS.md).
+**The gap between those two rows is the whole point of the project.** A program the compiler accepts
+and the cell does not run is the normal failure of generated PLC code, and it is invisible to
+anything that stops at "it compiles".
+
+Per specification:
+
+| Specification | Attempts | Compiled | Passed | Mean iterations to a clean compile |
+|---|---|---|---|---|
+| `two-station-runs` | 28 | 26 | 13 | 1 |
+| `two-station-recovers-from-a-broken-first-attempt` | 28 | 26 | 13 | 2 |
+| `four-station-runs` | 12 | 12 | 10 | 1 |
+| `two-station-manual-mode-does-not-run-the-line` | 10 | 10 | 10 | 1 |
+| `two-station-runs-two-pieces-in-order` | 10 | 10 | 10 | 1 |
+| `two-station-without-enable-admits-nothing` | 10 | 10 | 10 | 1 |
+
+Where the time goes, per phase, with the number of times each was timed:
+
+| Phase | Mean | Samples |
+|---|---|---|
+| download to PLCSIM | 13.73 s | 96 |
+| write into the project | 3.97 s | 130 |
+| verify on the running CPU | 2.59 s | 69 |
+| compile | 1.71 s | 128 |
+| generate | 9 ms | 130 |
+
+**The download dominates, and the generation is free.** That is worth stating plainly because it is
+the opposite of what a reader expects from a project about generating code with a model: the model
+is not the bottleneck, TIA Portal is.
+
+These numbers are produced by `npm run gate` and served by the dashboard from the same store, from
+the same functions. There is one definition of each of them and no second place they could disagree.
+
+### Generated by a model, too
+
+The loop runs with two generators: the repository's own pattern expander (`stub`), and a model
+(`model`). The 40 runs above are the pattern expander, deliberately — the loop had to be measured
+before a model was involved, so that a failure could be attributed to the generation rather than
+argued about. Mixing the two in one sample would produce a number about neither.
+
+**One generation on Haiku 4.5 cost $0.0079** — 611 tokens in, 1450 out — and a question to the
+dashboard's copilot costs about $0.002. Both are measured from the token counts the API returns,
+not estimated. Opus 5 is five times the price per token, so a comparable generation there would be
+in the order of four cents; that one *is* an estimate and is marked as such. The harness records
+the counts and prices them at read time, so correcting the price table corrects every run already
+recorded, and no cost is ever written into the store.
+
+## One run, end to end
+
+Not a description of the loop: the output of a run of the whole specification set, on 2026-08-28.
+It is run 40 of the 40 above, and the numbers in this README moved when it finished.
+
+```
+$ npm run run -- --archive TestProject1.zap20 --policy policy.json --generator stub
+
+Retrieved a fresh project into .tia-mcp\harness\projects\run-1787867870154
+--- four-station-runs
+--- two-station-manual-mode-does-not-run-the-line
+--- two-station-recovers-from-a-broken-first-attempt
+--- two-station-runs-two-pieces-in-order
+--- two-station-runs
+--- two-station-without-enable-admits-nothing
+
+PASS  four-station-runs  (1 attempt(s), passed)
+PASS  two-station-manual-mode-does-not-run-the-line  (1 attempt(s), passed)
+PASS  two-station-recovers-from-a-broken-first-attempt  (2 attempt(s), passed)
+PASS  two-station-runs-two-pieces-in-order  (1 attempt(s), passed)
+PASS  two-station-runs  (1 attempt(s), passed)
+PASS  two-station-without-enable-admits-nothing  (1 attempt(s), passed)
+
+four-station-runs: passed 1 of 1, 1.0 iteration(s) on average over the 1 that passed
+two-station-manual-mode-does-not-run-the-line: passed 1 of 1, 1.0 iteration(s) on average over the 1 that passed
+two-station-recovers-from-a-broken-first-attempt: passed 1 of 1, 2.0 iteration(s) on average over the 1 that passed
+two-station-runs-two-pieces-in-order: passed 1 of 1, 1.0 iteration(s) on average over the 1 that passed
+two-station-runs: passed 1 of 1, 1.0 iteration(s) on average over the 1 that passed
+two-station-without-enable-admits-nothing: passed 1 of 1, 1.0 iteration(s) on average over the 1 that passed
+
+6 of 6 specification run(s) passed on a simulated CPU, n=6 (1 repetition(s) of 6 specification(s)).
+```
+
+Four things in there are worth pointing at.
+
+**Every run starts from a fresh project**, retrieved from the archive into its own directory, so no
+run inherits the state another one left. **`two-station-recovers-from-a-broken-first-attempt` took
+two attempts and that is the specification working** — it exists to make the loop fail once and fix
+itself, and a run where it passed first time would mean it had stopped testing anything. **The word
+is `passed`, not `compiled`:** each of these was written into TIA, compiled, downloaded to a
+simulated CPU, started, driven through its tags and asserted. And **six of six is one run**, not a
+rate; the rate is the table above, over 98 attempts.
+
+## Running it
+
+Two commands, and neither of them needs the other to have finished.
+
+```powershell
+cd harness
+npm run run -- --archive path\to\project.zap20 --policy policy.json --generator stub
+npm run gate
+```
+
+The first opens TIA Portal, retrieves a fresh project from the archive so no run inherits another's
+state, and works through the specification set. The second answers whether the evidence is good
+enough to consider Workshop Mode at all.
+
+The dashboard reads the same store, on loopback only:
+
+```powershell
+cd harness    && npm run api      # 127.0.0.1:4317
+cd dashboard  && npm run dev      # 127.0.0.1:5173
+```
+
+Six views — Overview, Live run, Runs, Metrics, Audit trail, Workshop gate — a permanent banner
+saying which mode the recorded work was done in, and a docked copilot that answers questions about
+the recorded numbers. The copilot is given those numbers and **no tools**: there is no path from
+anything typed into it to anything that changes a project.
 
 ## Requirements
 
 - Windows x64
 - TIA Portal V20 with the Openness component
-- User in the `Siemens TIA Openness` Windows group
+- User in the `Siemens TIA Openness` Windows group — needs a re-login for the token
 - .NET Framework 4.8
-- PLCSIM Advanced (for the test phase)
+- PLCSIM Advanced, for the test phase
+- Node 22.9 or newer, for the harness and dashboard
+
+This cannot be deployed anywhere else. Openness is an in-process API against an installed Portal,
+so there is no container, no Linux host and no cloud: the unit of deployment is one person and one
+Windows PC. That is also a property rather than only a limitation — no audit trail leaves the
+machine that produced it, and nothing phones home.
 
 ## What this adds on top of the base
 
-What `tiaportal-mcp` does not cover and we add here:
+Built on [heilingbrunner/tiaportal-mcp](https://github.com/heilingbrunner/tiaportal-mcp) (MIT), from
+which we inherit the architecture, code conventions and error model. **61 tools**, 39 that read and 22 in
+the file that changes things — 21 of which go through the guard, the twenty-second being the
+confirmation step of the guard itself.
 
-- Tag tables (`PlcTagTable`) — export/import
-- Writing SCL directly through an external source
-- PLCSIM Advanced integration for automated tests
-- Full project snapshot to text for Git
-- An instantiable "station" pattern generator
-- Reading and driving a running controller's tags, so generated code can be observed
+What the base does not cover and this adds:
+
+- Writing SCL directly through an external source (`WriteScl`)
+- PLCSIM Advanced integration: create an instance, download, start, and run automated tests
+- Reading and driving a running controller's tags, so generated code can be observed rather than
+  only compiled
+- A full project snapshot to text for Git (`ExportSourceSnapshot`), tag tables included
+- An instantiable "station" pattern generator (`ExpandCellScl`)
+- A governance layer: policy, plan, audit trail, backup — on every write, with no path around it
+- A harness that closes the loop and measures it, and a dashboard that reads what it recorded
+
+There is **no standalone tag-table export or import tool**. Tag tables reach Git through the
+snapshot and no other way.
 
 ## The cell pattern
 
@@ -92,10 +238,6 @@ work it, and a piece in no station is exactly the state a traceability number ca
 The station steps do nothing, deliberately. What a station physically does is cylinders, sensors
 and interlocks, and none of that can be inferred from a JSON file — so the steps are where that
 work goes, and the handshake around it already works without it.
-
-Both cells that ship are written into a real project and compiled in TIA Portal V20 by the test
-suite. SCL that looks right and does not compile is the normal outcome of writing it from memory,
-so "it compiles" was for a while the only claim made about it here.
 
 ### And it runs
 
@@ -135,8 +277,8 @@ Three tools read and drive a virtual controller's tags:
 
 ## Safety
 
-By default, **every deployment targets PLCSIM Advanced**. Downloading to a physical PLC
-requires explicit confirmation. See [`CLAUDE.md`](CLAUDE.md).
+By default, **every deployment targets PLCSIM Advanced**. Downloading to a physical PLC requires
+explicit confirmation. See [`CLAUDE.md`](CLAUDE.md).
 
 ### Nothing is written without a policy
 
@@ -199,18 +341,49 @@ perfectly until the day a job happened to be running at the same time.
 Polling tools — `GetJobStatus`, `ListJobs`, `CancelJob`, `ListBackups` — deliberately do not take it.
 If asking how a compile is going had to wait for that compile, jobs would be pointless.
 
-### Study Mode and Workshop Mode
+## Workshop Mode is a roadmap item, not a feature
 
 The session always starts in **Study Mode**, which reaches PLCSIM Advanced and nothing else, and
-where a whitelisted change confirms itself. **Workshop Mode**, which commands physical hardware
-and requires a person to confirm every change one at a time, is **compiled out** of the ordinary
-build: it exists only in a binary built with `-p:WorkshopMode=true`. No configuration mistake can
-reach a machine with the everyday build, because the capability is not in it.
+where a whitelisted change confirms itself. `GetOperationMode` reports which mode a session is in,
+and `ApplyChange` confirms a plan by id.
 
-`GetOperationMode` reports which mode a session is in, and `ApplyChange` confirms a plan by id.
+**Workshop Mode — physical hardware — is compiled out of the ordinary build.** It exists only in a
+binary built with `-p:WorkshopMode=true`. No configuration mistake can reach a machine with the
+everyday build, because the capability is not in it. There is no `DownloadToHardware` and no
+selection of a physical adapter: the path to real machinery does not exist in the code, and keeping
+it that way while everything else was built has been a design constraint rather than an outcome.
+
+It is not enabled by a decision. It is enabled by evidence, and the evidence is checked by
+`npm run gate`. **Five criteria, all of which must be met:**
+
+| | Criterion | Now |
+|---|---|---|
+| 1 | 50 complete loop runs in Study Mode | **not met** — 40 of 50 |
+| 2 | zero silent failures | met — 0 iterations without an outcome, 0 unreadable audit lines |
+| 3 | complete audit: every recorded backup is on disk | met — 121 backups, all present |
+| 4 | a stable clean-compilation rate across the last 20 runs | met — 100% over both halves of the window |
+| 5 | an in-person design review with the supervising teacher | **not met** — and no measurement can stand in for one |
+
+The gate is shut. That is the honest state of it, printed by the same function the dashboard draws,
+and it is in this README because a gate nobody can see the state of is a gate that gets talked
+around.
 
 **Workshop Mode may only be used with a teacher or workshop supervisor physically present, with
 access to the emergency stop.** No software enforces that and none can — a whitelist, an audit
 trail and a confirmation phrase are all bypassed by a person in a hurry who is alone in a room
 with a machine. It is stated here because the rules that depend on people keeping them are the
 ones that have to be written where people read them.
+
+## Documentation
+
+| File | What it holds |
+|---|---|
+| [`docs/STATUS.md`](docs/STATUS.md) | Where the work stopped, what is blocked, the next action |
+| [`docs/ROADMAP.md`](docs/ROADMAP.md) | Where it is going and why, with the phases in order |
+| [`docs/KNOWLEDGE-LAYER.md`](docs/KNOWLEDGE-LAYER.md) | A separate brief: cited hardware lookup and pre-flight review |
+| [`docs/REFERENCE-REPOS.md`](docs/REFERENCE-REPOS.md) | Analysis of the seven reference repositories |
+| [`CLAUDE.md`](CLAUDE.md) | The working rules, binding on anything that edits this repository |
+
+240 test methods across three projects. The governance tests run **without TIA Portal installed**,
+deliberately: a safety rule that can only be checked on a licensed machine is a safety rule that
+stops being checked.

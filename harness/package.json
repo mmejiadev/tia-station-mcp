@@ -13,11 +13,14 @@
     "check": "npm run typecheck && npm run test",
     "run": "node --env-file-if-exists=.env src/run.ts",
     "gate": "node src/gateReport.ts",
-    "api": "node --env-file-if-exists=.env src/apiServer.ts"
+    "api": "node --env-file-if-exists=.env src/apiServer.ts",
+    "knowledge:index": "node src/knowledge/knowledgeIndex.ts",
+    "knowledge:lookup": "node src/knowledge/hardwareLookup.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.121.0",
-    "@modelcontextprotocol/sdk": "^1.0.0"
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "pdfjs-dist": "^5.7.284"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

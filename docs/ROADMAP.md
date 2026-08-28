@@ -336,11 +336,30 @@ WebSocket half deferred out of phase 3 landed. The event says only *that* the st
 what — the page re-reads the endpoints that already serve the numbers, so one path produces a number
 and the stream cannot disagree with the table.
 
-### Phase 5 — The pitch
+### Phase 5 — The pitch — **done, 2026-08-28**
 
 README rewritten with the business pitch first, an end-to-end recording of the loop, the
 real numbers from phase 3, the security model, and Workshop Mode documented as roadmap with
 its entry conditions. Anything the repository does not actually do comes out of the README.
+
+All five delivered. The recording is a real one: run 40 of the specification set, printed as it ran,
+rather than a description of what a run would look like. The numbers are read from the store the
+runs write and are the same ones `npm run gate` and the dashboard produce.
+
+**Three claims came out because they were not true**, which was the part of this phase with teeth:
+
+- *"Tag tables (`PlcTagTable`) — export/import"* was listed as something this adds. **There is no
+  such tool and never was.** Tag tables reach Git inside `ExportSourceSnapshot` and nowhere else,
+  and there is no import at all. The README now says that.
+- A draft of the pitch put "an LLM writes PLC code" directly above the 96% and 67% figures, which
+  are the **pattern expander's**. Read together they would have been taken as a model's score. The
+  README now says which generator produced them before the table rather than after it.
+- A draft priced a generation at *"$0.008 on Opus-class models"*. The $0.0079 measured was
+  **Haiku 4.5**. The Opus figure is an estimate from the price ratio and is now marked as one.
+
+One code comment was corrected with them: `McpServerWrites.cs` said *"everything here calls
+`GuardedTool.Run`"*, and `ApplyChange` does not — correctly, since it is the confirmation half of
+the guard. A file that exists to be checkable by eye cannot have an unstated exception.
 
 ### Phase 5b — Deployment: somebody else's machine
 

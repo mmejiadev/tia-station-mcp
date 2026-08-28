@@ -258,8 +258,10 @@ this way so that no existing stage number moves.
    genuinely cannot be read today. Without an index it still gives the inventory and says plainly
    that the hardware context is unavailable.
 
-1. **Local index with citations.** Three to five devices, PDFs supplied by hand. No ingestion from
-   the web. Hybrid search, answers carry page numbers.
+1. **Local index with citations — done, 2026-08-28.** Three devices, PDFs supplied by hand. No
+   ingestion from the web. Hybrid search, answers carry page numbers. Built as
+   `harness/src/knowledge/`, surfaced as the `hardware-lookup` skill, and described under "Stage 1
+   as built" below — including the one place it differs from this brief.
 2. **Cited hardware context in the `ChangePlan`.** Cheap, and the most visible.
 
 2b. **The work plan is shown before the first write, not only recorded.** Half of this exists
@@ -280,6 +282,51 @@ this way so that no existing stage number moves.
 4. **On-demand ingestion**, with whitelist, quarantine and audit.
 5. **The cited safety checklist**, universal and class tiers static, specific tier cited. Only if
    stage 3 cleared.
+
+## Stage 1 as built — 2026-08-28
+
+Three documents, 538 pages, 1 124 chunks, indexed in eleven seconds on this machine. The corpus is
+the UR5e user manual (SW 5.16), the SICK C4000 Standard and Advanced operating instructions and the
+Festo DSBC cylinder documentation. None of them is in the repository; `harness/corpus/recipe.json`
+holds their URLs, versions and hashes, and `harness/corpus/*` is ignored apart from the recipe.
+
+**The S7-1200 system manual is not in the corpus, and the reason is worth recording.** Siemens
+Industry Online Support answers **HTTP 403** to an unauthenticated request for the PDF. The other
+three manufacturers serve theirs directly. Nothing in the recipe pretends otherwise: a document
+nobody can fetch does not get an entry that will fail for the next person.
+
+### The divergence: there are no semantic embeddings, and the word "hybrid" is doing less than it looks
+
+The brief says hybrid search, BM25 plus embeddings, and that is what shipped — but the vector half is
+**a hashed character-trigram vector computed locally, not a semantic embedding**. Anthropic publishes
+no embeddings API, and the alternative was a second provider, a second key and a per-document cost,
+against a non-negotiable that this index is built on the user's machine with what is already there.
+
+What that buys and what it does not:
+
+- It catches the same reference written two ways — `6ES7214-1AG40` against `6ES7 214-1AG40-0XB0` —
+  which is precisely where BM25 scores zero and where technical queries live.
+- It does **not** understand a paraphrase. A question asked in words the manual does not use will
+  come back empty, and that is a real limitation rather than a tuning problem.
+
+`lexicalVector.test.ts` asserts both halves of that, the second one deliberately: if a real embedding
+model ever replaces this one, the test that says a paraphrase does not clear the threshold is the one
+that should fail. Swapping it is one class — implement `EmbeddingModel`, rebuild the index — and the
+model name stamped beside the vectors makes an index built by the old one refuse to be read as new.
+
+### The defect that was found by running it
+
+The first version **did not abstain**. Asked *what is the capital of France*, it returned three
+excerpts from a robot manual: `capital` occurs somewhere in five hundred pages, it is rare, and the
+BM25 threshold let it through. A ranking answers "which of these is least bad" and never "is any of
+these good". The fix is `queryCoverage` — two thirds of the question's meaningful words must actually
+appear in the chunk — and `hybridSearch.test.ts` pins that question by name.
+
+### What stage 1 does not include
+
+`preflight-safety`, `cell-review`, `hardware-ingest` and the MCP prompts are later stages and are not
+written. The `ChangePlan` is untouched: no cited hardware context reaches it yet, and no C# code
+changed for this stage. The knowledge layer is still a sibling that the server does not call.
 
 ## Definition of done
 
