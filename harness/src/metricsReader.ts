@@ -308,7 +308,8 @@ export class MetricsReader {
         outcome: run.outcome,
         startedAt: run.startedAt,
         specifications: run.specifications,
-        cleanCompilations: run.cleanCompilations
+        cleanCompilations: run.cleanCompilations,
+        generator: run.generator
       }))
       .reverse();
   }

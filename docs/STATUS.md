@@ -1,9 +1,166 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-08-28**
+> Last updated: **2026-08-29**
 
 ## ▶ RESUME HERE
+
+**2026-08-29, later — stage 2 of the knowledge layer is built: a change plan now cites the manual.**
+
+Authorised this session and done. `GuardedWrite.Propose` asks the documentation index about a change
+before it makes the plan, and the plan carries what came back — verbatim excerpts with document,
+version and page, or an honest silence.
+
+**Where the citation is attached is the whole safety argument.** Not in each write tool, where a
+citation would be attached at sixteen call sites and forgotten at fifteen, but inside the one
+execution path every write already passes through. A new write tool gets cited context by existing.
+
+**Crossing the language boundary, and why it is a subprocess.** The index and its ranking are
+TypeScript in `harness/src/knowledge/`; the plan is C#. `HarnessHardwareLookup` runs the harness
+lookup that was already there and reads its JSON. The alternative — reimplementing BM25 and the
+trigram vector in C# — would create two rankings that have to agree, and two rankings that have to
+agree eventually do not. The cost is that Node becomes an **optional** dependency of the server.
+
+**A failed lookup can never stop a write, and that has its own test.** Missing Node, missing index,
+unreadable answer, timeout at 15 s: every one produces `Unavailable` carrying the reason, and the
+change proceeds uncited. `HardwareContextOutcome` keeps `NotFound` and `Unavailable` apart on
+purpose — the first says something about the corpus, the second about this machine, and one
+sentence for both would let a broken lookup pass for a documented silence.
+
+**A refused change is never looked up.** It is not going to happen, so its plan says the lookup never
+ran rather than showing an empty result that reads like a silence.
+
+**Measured, not assumed: one lookup costs 298 ms**, so a write phase whose mean was 2.28 s grows by
+roughly 13%, and an iteration of 18.2 s by under 2%. **The phase timings published above are from
+before this change and are not comparable with what the next run will record.**
+
+**The honest limitation, and it is a large one.** The corpus is a UR5e manual, a SICK C4000 and a
+Festo cylinder. The harness's own specifications write SCL to block paths, so for *those* changes the
+index will almost always answer not-found — correctly. The S7-1200 system manual is the document that
+would make these plans cite something, and Siemens still answers 403 without a login. The machinery
+is built and verified end to end; what it has to talk about is missing.
+
+**Verified by running it, not by compiling it.** `HarnessHardwareLookupTests` spawns the real Node
+process against the real index: one question the corpus covers comes back cited with a page, and
+*"what is the capital of France"* comes back not-found through the process boundary. It reports
+**inconclusive** rather than failing on a machine with no Node or no index, so the governance suite
+still runs anywhere.
+
+**One rule was consciously not applied, and it is written down rather than hidden.** `GuardedWrite`
+now takes five constructor parameters against the repository's limit of four. A parameter object
+would move the same five arguments one level out and add a class that means nothing on its own; the
+five are distinct interface types, so a wrong order does not compile, which is the hazard the limit
+exists for. The reasoning is in the constructor's own doc comment.
+
+**Green**: solution builds with **0 warnings**, governance tests **90/90** (67 before, 23 new), and
+none skipped — the two real-lookup tests ran. Harness 159/159 and the dashboard are untouched.
+
+**Next action.** Stage 2b, 0, 3, 4 and 5 of the knowledge layer are still unauthorised, and stage 3
+— the retrieval gate, fifty questions with the correct page known in advance — is marked *do not
+proceed past this without it*. Otherwise: the API budget is roughly €3.5 and only Haiku 4.5 fits a
+publishable model sample; phase 5b is deployment; and criterion 5, the review with the teacher, is
+the only thing between this project and an answered gate.
+
+**2026-08-29 — the gate was reading two experiments as one, and it was the last place that did.**
+
+The session began by going to recover criterion 2, which this document said the interrupted Sonnet
+repetition had broken. **It had not broken it.** The store holds **0 iterations and 0 runs with no
+outcome**; run 57's eighteen iterations all carry one and the run itself closed as `failed`. The
+entry below was written from what the interruption looked like rather than from what it left, and
+this is the correction. Criterion 2 is met, and nothing had to be done to it.
+
+**What had actually failed was criterion 4**, and the reason is the one the measurement filter was
+built to make impossible:
+
+```
+NOT MET  4. a stable clean-compilation rate across the last 20 runs
+         100% over runs 1-10 of the window, 43% over runs 11-20, tolerated fall 10%
+```
+
+| half of the window | runs | generators | clean |
+|---|---|---|---|
+| first | 38–47 | 10 × `stub` | 100% |
+| second | 48–57 | 3 × `stub`, 5 × `claude-opus-5`, 2 × `claude-sonnet-5` | 43% |
+
+Nothing regressed. **The generator changed in the middle of the window**, and the criterion reported
+the distance between a pattern expander and a model as a fall within one process. That 43% describes
+neither the expander, which is still at 97%, nor the models.
+
+**Why the filter did not reach it.** Yesterday's work gave `specificationStatistics` and
+`phaseDurations` a `MeasurementFilter`, but the gate does not read either: it reads
+`runStatistics()`, and that query did not select `r.generator` at all. The gate was the one consumer
+left blending — and the most expensive one, because it is the query that decides whether Workshop
+Mode may be enabled.
+
+**What was done, and what was deliberately not done.** `RunStatistics` now carries the generator,
+through both stores. Criterion 4 checks the window before judging it and, when it spans more than
+one generator, **declines to produce a rate** and says so by name. It returns *unmet*, not *skipped*:
+"cannot be judged" is a reason to keep the door shut, never a reason to stop counting the criterion.
+Nothing was loosened, no threshold moved, and no generator was chosen as the one that counts —
+choosing which experiment the gate judges is choosing the answer. It becomes judgeable again after
+twenty consecutive runs of one generator, which is a run somebody has to do rather than a constant
+somebody has to argue with.
+
+Three tests name the rule: the refusal on a mixed window, a mixed window whose two halves *agree* on
+the rate and would otherwise have read as stable, and a homogeneous window still being judged
+normally. The second is the one that matters — without it the refusal could be deleted and the suite
+would stay green on a coincidence.
+
+**The gate now says the true thing:**
+
+```
+MET      1. 57 complete run(s) of 50 required
+MET      2. 0 iteration(s) with no outcome
+MET      3. 246 recorded backup(s), all present
+NOT MET  4. the last 20 runs span 3 generators (claude-opus-5, claude-sonnet-5, stub),
+            and a rate across them describes none of them
+NOT MET  5. no review recorded, and no measurement can stand in for one
+```
+
+**Green**: harness **159/159** (156 before, 3 new), dashboard 11/11, both typechecks clean.
+
+**Then the twenty runs were done, and criterion 4 is met. Only the teacher is left.**
+
+Twenty repetitions of the six specifications with the pattern expander, runs 58–77, **120 of 120
+passed**. The window is homogeneous again and the rate is judgeable:
+
+```
+MET      1. 77 complete run(s) of 50 required
+MET      2. 0 iteration(s) with no outcome
+MET      3. 386 recorded backup(s), all present
+MET      4. 100% over runs 1-10 of the window, 100% over runs 11-20
+NOT MET  5. an in-person design review with the supervising teacher
+```
+
+**Four of five met, and the fifth is the one no measurement can move.** The gate is still shut, which
+is the correct answer.
+
+**120 of 120 is not too good to be true, and it was checked rather than assumed.** The twenty runs
+recorded 140 iterations: 120 `passed` and 20 `compiler-errors`. Those twenty are the first attempt of
+`two-station-recovers-from-a-broken-first-attempt`, one per run — the specification that exists to
+fail once and be fixed, averaging exactly 2.0 attempts. Everything else passed first time. What is
+genuinely absent is **`download-failed`: zero across the twenty**, against 27 in the first fifty runs.
+That is the PLCSIM download fix holding over a second, larger sample.
+
+**The numbers moved and the README moved with them**, per generator, which is now something the store
+can answer:
+
+| `stub` | before | now |
+|---|---|---|
+| Runs | 50 | **70** |
+| Attempts | 158 | **278** |
+| Compiled cleanly | 154 (97%) | **274 (99%)** |
+| Passed on a simulated CPU | 126 (80%) | **246 (88%)** |
+| One iteration | 19.7 s | **18.2 s** |
+
+The models are untouched beside it and stay unpublishable: `claude-opus-5` 6 of 30 clean over 5 runs,
+`claude-sonnet-5` 2 of 12 over 2, and a third of Opus's generations were refusals that never happened.
+
+No TIA Portal or `TiaMcpServer` process was left behind; the licence is free.
+
+**Next action.** The API budget is roughly €3.5 and only Haiku 4.5 fits a publishable model sample;
+stage 2 of the knowledge layer still needs authorising; phase 5b is deployment; and criterion 5 is
+the review with the teacher, which is now the only thing between this project and an answered gate.
 
 **2026-08-28, night — the model generator was measured for the first time, and it cost more in
 findings than in euros.**

@@ -37,7 +37,7 @@ passes or does not.
 
 ## What it actually does, in numbers
 
-Measured over **50 recorded runs, 158 specification attempts** on this machine, against TIA Portal
+Measured over **70 recorded runs, 278 specification attempts** on this machine, against TIA Portal
 V20 and PLCSIM Advanced. Every rate below carries the sample it came from, because a percentage
 without one is not a measurement.
 
@@ -48,9 +48,9 @@ the baseline a model gets compared against — not as what an LLM scores.
 
 | | Result | Sample |
 |---|---|---|
-| Compiled cleanly | **154 of 158 (97%)** | 158 attempts across 50 runs |
-| Ran on a simulated CPU and behaved as specified | **126 of 158 (80%)** | the same 158 |
-| One iteration, end to end | **19.7 s** | the five phases, each a mean over its own sample |
+| Compiled cleanly | **274 of 278 (99%)** | 278 attempts across 70 runs |
+| Ran on a simulated CPU and behaved as specified | **246 of 278 (88%)** | the same 278 |
+| One iteration, end to end | **18.2 s** | the five phases, each a mean over its own sample |
 
 **The gap between those two rows is the whole point of the project.** A program the compiler accepts
 and the cell does not run is the normal failure of generated PLC code, and it is invisible to
@@ -140,7 +140,7 @@ two attempts and that is the specification working** — it exists to make the l
 itself, and a run where it passed first time would mean it had stopped testing anything. **The word
 is `passed`, not `compiled`:** each of these was written into TIA, compiled, downloaded to a
 simulated CPU, started, driven through its tags and asserted. And **six of six is one run**, not a
-rate; the rate is the table above, over 158 attempts.
+rate; the rate is the table above, over 278 attempts.
 
 ## Running it
 

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using TiaMcpServer.Knowledge;
 using TiaMcpServer.ModelContextProtocol;
 using TiaMcpServer.Siemens;
 
@@ -127,7 +128,8 @@ namespace TiaMcpServer.Governance.Tests
                 new StubModeGate(mode),
                 policy,
                 new RecordingAuditTrail(),
-                new ChangePlanStore(new FixedClock(Now)));
+                new ChangePlanStore(new FixedClock(Now)),
+                new UnavailableHardwareLookup());
         }
     }
 }

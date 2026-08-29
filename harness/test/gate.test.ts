@@ -11,6 +11,8 @@ import type { RunStatistics } from '../src/telemetry.ts';
  * Every test here names one way the door must stay shut. A criterion nobody asserts is a criterion
  * that quietly stops holding, and this is the last place that may happen.
  */
+const PatternExpander = 'stub';
+
 describe('workshop gate', () => {
   it('opens only when all five criteria are met', () => {
     const verdict = evaluateGate(evidenceThatMeetsEverything());
@@ -111,6 +113,38 @@ describe('workshop gate', () => {
     assert.equal(criterion(verdict, 4).met, true);
   });
 
+  it('refuses to judge a stability window that mixes generators', () => {
+    // A pattern expander and a model do not compile at the same rate. Comparing ten of one against
+    // ten of the other measures the change of generator, not the stability of anything.
+    const runs = [...passingRuns(45), ...passingRuns(5, 46, 'claude-sonnet-5')];
+
+    const verdict = evaluateGate({ ...evidenceThatMeetsEverything(), runs });
+
+    assert.equal(criterion(verdict, 4).met, false);
+    assert.match(criterion(verdict, 4).evidence, /claude-sonnet-5/);
+    assert.match(criterion(verdict, 4).evidence, /describes none of them/);
+  });
+
+  it('does not let a mixed window look stable because both halves happen to agree', () => {
+    // The danger the refusal exists for: both halves at the same rate, so the arithmetic says
+    // "stable" about a window that holds two different experiments.
+    const runs = [...passingRuns(40), ...passingRuns(5, 41), ...passingRuns(5, 46, 'claude-opus-5')];
+
+    const verdict = evaluateGate({ ...evidenceThatMeetsEverything(), runs });
+
+    assert.equal(criterion(verdict, 4).met, false);
+  });
+
+  it('judges the rate normally once the whole window shares a generator', () => {
+    // The refusal is not permanent: twenty consecutive runs of one generator make it judgeable
+    // again, which is a run that has to happen rather than a constant to be argued with.
+    const runs = [...passingRuns(30), ...passingRuns(20, 31, 'claude-sonnet-5')];
+
+    const verdict = evaluateGate({ ...evidenceThatMeetsEverything(), runs });
+
+    assert.equal(criterion(verdict, 4).met, true);
+  });
+
   it('cannot be opened by data alone, without the in-person review', () => {
     const verdict = evaluateGate({ ...evidenceThatMeetsEverything(), review: undefined });
 
@@ -146,21 +180,22 @@ function criterion(verdict: { criteria: readonly { number: number; met: boolean;
   return found;
 }
 
-function passingRuns(count: number, from = 1): RunStatistics[] {
-  return Array.from({ length: count }, (_unused, index) => passingRun(from + index));
+function passingRuns(count: number, from = 1, generator = PatternExpander): RunStatistics[] {
+  return Array.from({ length: count }, (_unused, index) => passingRun(from + index, generator));
 }
 
-function passingRun(runId: number): RunStatistics {
-  return { runId, outcome: 'passed', startedAt: runId, specifications: 2, cleanCompilations: 2 };
+function passingRun(runId: number, generator = PatternExpander): RunStatistics {
+  return { runId, outcome: 'passed', startedAt: runId, specifications: 2, cleanCompilations: 2, generator };
 }
 
-function decliningRuns(from: number, count: number): RunStatistics[] {
+function decliningRuns(from: number, count: number, generator = PatternExpander): RunStatistics[] {
   return Array.from({ length: count }, (_unused, index) => ({
     runId: from + index,
     outcome: 'failed',
     startedAt: from + index,
     specifications: 2,
-    cleanCompilations: 1
+    cleanCompilations: 1,
+    generator
   }));
 }
 

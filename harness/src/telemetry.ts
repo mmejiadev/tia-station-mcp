@@ -127,6 +127,15 @@ export type RunStatistics = {
   readonly specifications: number;
   /** How many of them reached a clean compilation at least once. */
   readonly cleanCompilations: number;
+  /**
+   * What produced the SCL in this run: a model name, or 'stub' for the pattern expander.
+   *
+   * @remarks
+   * Carried here because the gate compares runs against each other, and two runs made by different
+   * generators are not comparable. Without it, criterion 4 reads the difference between two
+   * experiments as a fall within one.
+   */
+  readonly generator: string;
 };
 
 /**
@@ -371,6 +380,7 @@ export class Telemetry {
     const rows = this.database
       .prepare(
         `SELECT r.id AS runId, r.outcome AS outcome, r.started_at AS startedAt,
+                r.generator AS generator,
                 COUNT(DISTINCT i.specification) AS specifications,
                 COUNT(DISTINCT CASE WHEN i.outcome IN (${placeholders})
                                     THEN i.specification END) AS cleanCompilations
@@ -381,6 +391,7 @@ export class Telemetry {
       runId: number;
       outcome: string | null;
       startedAt: number;
+      generator: string;
       specifications: number;
       cleanCompilations: number;
     }[];
@@ -390,7 +401,8 @@ export class Telemetry {
       outcome: row.outcome ?? undefined,
       startedAt: row.startedAt,
       specifications: row.specifications,
-      cleanCompilations: row.cleanCompilations
+      cleanCompilations: row.cleanCompilations,
+      generator: row.generator
     }));
   }
 

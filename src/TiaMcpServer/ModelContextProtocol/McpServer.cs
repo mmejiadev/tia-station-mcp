@@ -148,7 +148,12 @@ namespace TiaMcpServer.ModelContextProtocol
                 Gate,
                 Governance.WritePolicy.Load(CliOptions.DefaultPolicyPath),
                 new Governance.JsonlAuditTrail(CliOptions.DefaultAuditPath),
-                new Governance.ChangePlanStore(new Governance.SystemClock()));
+                new Governance.ChangePlanStore(new Governance.SystemClock()),
+
+                // Nothing was configured on this path — that is what makes it the fallback — so
+                // there is no index to point at and no path to guess. Plans made here say the
+                // hardware context is unavailable, which is true and is the point.
+                new Knowledge.UnavailableHardwareLookup());
 
             internal static readonly Governance.IBackupRegistry Backups = new Governance.BackupRegistry(
                 CliOptions.DefaultBackupRoot,
