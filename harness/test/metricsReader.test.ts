@@ -203,3 +203,120 @@ function finishIteration(
 ): void {
   telemetry.finishIteration(telemetry.startIteration(runId, specification, attempt), outcome, 0);
 }
+
+/**
+ * Two generators in one store, which is what the README's central claim depends on staying apart.
+ *
+ * The claim is that the loop was measured with a deterministic generator *first, on purpose*, so
+ * that the loop's own failures could be separated from a generator's — and that mixing the two in
+ * one sample would produce a number about neither. Before these tests, nothing enforced it: the
+ * statistics read every iteration in the store, and the first run with `--generator model` would
+ * have blended the two in the README, the dashboard and the copilot's brief at once.
+ */
+describe('MetricsReader, told which generator to count', () => {
+  it('counts only the runs of the generator it was asked for', () => {
+    const directory = temporaryDirectory();
+    const path = join(directory, 'metrics.db');
+
+    try {
+      write(path, (telemetry) => {
+        const stub = telemetry.startRun(context());
+        finishIteration(telemetry, stub, 'gripper', 1, 'passed');
+        finishRun(telemetry, stub);
+
+        const model = telemetry.startRun({ ...context(), generator: 'model' });
+        finishIteration(telemetry, model, 'gripper', 1, 'compiler-errors');
+        finishRun(telemetry, model);
+      });
+
+      const reader = MetricsReader.open(path);
+
+      try {
+        const stub = reader.specificationStatistics({ generator: 'stub' });
+        const model = reader.specificationStatistics({ generator: 'model' });
+
+        assert.deepEqual(stub.map((entry) => [entry.attempts, entry.passed]), [[1, 1]]);
+        assert.deepEqual(model.map((entry) => [entry.attempts, entry.passed]), [[1, 0]]);
+      } finally {
+        reader.close();
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('blends them only when no generator is named, and says which ones there were', () => {
+    const directory = temporaryDirectory();
+    const path = join(directory, 'metrics.db');
+
+    try {
+      write(path, (telemetry) => {
+        const stub = telemetry.startRun(context());
+        finishIteration(telemetry, stub, 'gripper', 1, 'passed');
+        finishRun(telemetry, stub);
+
+        const model = telemetry.startRun({ ...context(), generator: 'model' });
+        finishIteration(telemetry, model, 'gripper', 1, 'compiler-errors');
+        finishRun(telemetry, model);
+      });
+
+      const reader = MetricsReader.open(path);
+
+      try {
+        // A blend is a legitimate thing to ask for. What must never happen is one nobody can see, so
+        // the generator list is what a caller reads before quoting the number above it.
+        assert.deepEqual(
+          reader.specificationStatistics().map((entry) => [entry.attempts, entry.passed]),
+          [[2, 1]]
+        );
+        assert.deepEqual(reader.generators(), [
+          { generator: 'model', runs: 1 },
+          { generator: 'stub', runs: 1 }
+        ]);
+      } finally {
+        reader.close();
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('times the phases of one generator without the other', async () => {
+    const directory = temporaryDirectory();
+    const path = join(directory, 'metrics.db');
+    const telemetry = Telemetry.open(path);
+
+    try {
+      const stub = telemetry.startRun(context());
+      await timeOneCompile(telemetry, stub);
+      finishRun(telemetry, stub);
+
+      const model = telemetry.startRun({ ...context(), generator: 'model' });
+      await timeOneCompile(telemetry, model);
+      finishRun(telemetry, model);
+    } finally {
+      telemetry.close();
+    }
+
+    const reader = MetricsReader.open(path);
+
+    try {
+      const stub = reader.phaseDurations({ generator: 'stub' });
+
+      assert.equal(stub.length, 1);
+      assert.equal(stub[0]?.samples, 1);
+      assert.equal(reader.phaseDurations()[0]?.samples, 2);
+    } finally {
+      reader.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});
+
+/** One timed compile, so a phase exists to be filtered. */
+async function timeOneCompile(telemetry: Telemetry, runId: RunId): Promise<void> {
+  const iterationId = telemetry.startIteration(runId, 'gripper', 1);
+
+  await telemetry.time(iterationId, 'compile', async () => undefined);
+  telemetry.finishIteration(iterationId, 'passed', 0);
+}

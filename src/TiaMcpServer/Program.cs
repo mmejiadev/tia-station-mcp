@@ -12,6 +12,17 @@ namespace TiaMcpServer
 {
     public class Program
     {
+        /// <summary>
+        /// How long a documentation lookup may take before the change proceeds without citations.
+        /// </summary>
+        /// <remarks>
+        /// Generous enough for a cold Node start on a machine that is also running TIA Portal, and
+        /// bounded because the lookup sits in front of a write: a lookup that hung would turn
+        /// enrichment into a stall. When it expires the plan says so and the write goes ahead — the
+        /// citations inform the change, they do not gate it.
+        /// </remarks>
+        private static readonly TimeSpan LookupTimeout = TimeSpan.FromSeconds(15);
+
 
         /// <summary>Starts the server.</summary>
         /// <param name="args">Command line arguments. See <see cref="CliOptions"/>.</param>
@@ -192,6 +203,8 @@ namespace TiaMcpServer
             var policyPath = options?.PolicyPath ?? CliOptions.DefaultPolicyPath;
             var auditPath = options?.AuditPath ?? CliOptions.DefaultAuditPath;
             var backupRoot = options?.BackupRoot ?? CliOptions.DefaultBackupRoot;
+            var knowledgeIndex = options?.KnowledgeIndexPath ?? CliOptions.DefaultKnowledgeIndexPath;
+            var knowledgeLookup = options?.KnowledgeLookupPath ?? CliOptions.DefaultKnowledgeLookupPath;
 
             services.AddSingleton<ISystemClock, SystemClock>();
             services.AddSingleton<IModeGate>(_ => ModeGate.ForStudy());
@@ -202,6 +215,14 @@ namespace TiaMcpServer
             services.AddSingleton<IBackupRegistry>(provider =>
                 new BackupRegistry(backupRoot, provider.GetRequiredService<ISystemClock>()));
             services.AddSingleton<ChangePlanStore>();
+
+            // A machine with no index is not a special case that needs its own registration: the
+            // lookup reports the missing file as an unavailable context, and every plan says so.
+            services.AddSingleton<Knowledge.IHardwareLookup>(_ => new Knowledge.HarnessHardwareLookup(
+                knowledgeLookup,
+                knowledgeIndex,
+                LookupTimeout));
+
             services.AddSingleton<GuardedWrite>();
 
             // Long operations, so a compile or a download does not block the caller. A singleton

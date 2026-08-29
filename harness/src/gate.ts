@@ -173,6 +173,9 @@ function completeAudit(evidence: GateEvidence): Criterion {
  * Compared as two halves rather than as a trend line: ten runs against the ten before them is
  * something a person can check by hand from the same table, and a regression line over twenty
  * points would be a statistic nobody could argue with without re-deriving it.
+ *
+ * The comparison assumes the twenty runs came from one generator. When they did not, it declines to
+ * produce a number at all — see {@link mixedGenerators}.
  */
 function stableCleanCompilationRate(evidence: GateEvidence): Criterion {
   const name = `a stable clean-compilation rate across the last ${StabilityWindow} runs`;
@@ -187,6 +190,12 @@ function stableCleanCompilationRate(evidence: GateEvidence): Criterion {
     };
   }
 
+  const generators = [...new Set(window.map((run) => run.generator))].sort();
+
+  if (generators.length > 1) {
+    return mixedGenerators(name, generators);
+  }
+
   const half = StabilityWindow / 2;
   const earlier = cleanCompilationRate(window.slice(0, half));
   const later = cleanCompilationRate(window.slice(half));
@@ -198,6 +207,33 @@ function stableCleanCompilationRate(evidence: GateEvidence): Criterion {
     evidence:
       `${percentage(earlier)} over runs 1-${half} of the window, ${percentage(later)} over runs ` +
       `${half + 1}-${StabilityWindow}, tolerated fall ${percentage(StabilityToleranceRatio)}`
+  };
+}
+
+/**
+ * Criterion 4 when the window spans more than one generator: no verdict, and the door stays shut.
+ *
+ * @param name The criterion's name, so the refusal is reported under the criterion it belongs to.
+ * @param generators What produced the SCL across the window, named so the reader can see the mix.
+ * @returns The criterion, unmet, saying why no rate was computed.
+ * @remarks
+ * A pattern expander and a model do not compile at the same rate, so a window holding both compares
+ * two experiments and reports the difference between them as a fall within one. That number
+ * describes neither, and a gate that decides on it decides on nothing.
+ *
+ * Unmet rather than skipped, deliberately: the criterion has not been satisfied, and "cannot be
+ * judged" is a reason to keep the door shut, never a reason to stop counting it. It becomes
+ * judgeable again as soon as {@link StabilityWindow} consecutive runs share a generator — which is
+ * the run that has to happen, not a constant that has to be argued with.
+ */
+function mixedGenerators(name: string, generators: readonly string[]): Criterion {
+  return {
+    number: 4,
+    name,
+    met: false,
+    evidence:
+      `the last ${StabilityWindow} runs span ${generators.length} generators ` +
+      `(${generators.join(', ')}), and a rate across them describes none of them`
   };
 }
 

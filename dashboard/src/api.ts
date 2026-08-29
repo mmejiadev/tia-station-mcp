@@ -68,9 +68,19 @@ export function readIterationPhases(iterationId: number): Promise<IterationPhase
   return read<IterationPhasesResponse>(`/api/iterations/${iterationId}/phases`);
 }
 
-/** The measurements, each with the sample size behind it. */
-export function readMetrics(): Promise<MetricsResponse> {
-  return read<MetricsResponse>('/api/metrics');
+/**
+ * The measurements, each with the sample size behind it.
+ *
+ * @param generator Which generator to count, or undefined for every one in the store.
+ * @remarks
+ * The parameter is not a convenience. The stub expander and a model are two different experiments,
+ * and a rate computed over both is a number about neither — so the response always names the
+ * generator it is about, including when the answer is 'all'.
+ */
+export function readMetrics(generator?: string): Promise<MetricsResponse> {
+  const suffix = generator === undefined ? '' : `?generator=${encodeURIComponent(generator)}`;
+
+  return read<MetricsResponse>(`/api/metrics${suffix}`);
 }
 
 /** The audit trail, filtered by whichever of the filters are set. */

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using TiaMcpServer.Knowledge;
 using TiaMcpServer.Siemens;
 
 namespace TiaMcpServer.Governance.Tests
@@ -68,4 +69,40 @@ namespace TiaMcpServer.Governance.Tests
             return Array.Empty<AuditEntry>();
         }
     }
+    /// <summary>A lookup that answers whatever a test hands it, and remembers what it was asked.</summary>
+    /// <remarks>
+    /// The recorded question is the point of the class, not a convenience: one rule under test is
+    /// that a refused change is never looked up, and that can only be asserted by something that
+    /// notices being asked.
+    /// </remarks>
+    internal sealed class StubHardwareLookup : IHardwareLookup
+    {
+        private readonly HardwareContext _answer;
+
+        public StubHardwareLookup(HardwareContext answer)
+        {
+            _answer = answer;
+        }
+
+        public List<string> Questions { get; } = new List<string>();
+
+        public HardwareContext Describe(string question)
+        {
+            Questions.Add(question);
+
+            return _answer;
+        }
+    }
+
+    /// <summary>A lookup that breaks the way a real one breaks: it reports, it does not throw.</summary>
+    internal sealed class BrokenHardwareLookup : IHardwareLookup
+    {
+        internal const string Reason = "the lookup could not be started: node is not installed";
+
+        public HardwareContext Describe(string question)
+        {
+            return HardwareContext.Unavailable(Reason);
+        }
+    }
+
 }

@@ -80,6 +80,32 @@ export type SpecificationStatistics = {
 };
 
 /**
+ * How a measurement is narrowed before it is computed.
+ *
+ * @remarks
+ * `generator` exists because the README's central claim depends on it: *the loop was measured with a
+ * deterministic generator first, on purpose, so that the loop's own failures could be separated from
+ * a generator's*, and *mixing the two in one sample would produce a number about neither*. Until this
+ * type existed, `specificationStatistics` read every iteration in the store and the first run with
+ * `--generator model` would have blended the two silently — in the README's table, in the dashboard
+ * and in the copilot's brief, all three from this one function.
+ *
+ * An absent field means "every one of them", never "the usual one". A blend is a legitimate thing to
+ * ask for; a blend nobody asked for is the defect.
+ */
+export type MeasurementFilter = {
+  readonly runId?: number;
+  /** The generator as the run recorded it: `stub` or `model`. */
+  readonly generator?: string;
+};
+
+/** How many runs one generator produced. Reported so a blended rate can never hide that it is one. */
+export type GeneratorSample = {
+  readonly generator: string;
+  readonly runs: number;
+};
+
+/**
  * Reads what a run recorded, and writes nothing.
  *
  * @remarks
@@ -201,40 +227,69 @@ export class MetricsReader {
   /**
    * How long each phase took, over one run or over every run.
    *
-   * @param runId The run to restrict to, or undefined for all of them.
+   * @param filter Which run, which generator, or neither for everything.
    * @remarks
    * Failed phases are counted in the mean rather than dropped. "The compile took ninety seconds and
    * then failed" is the measurement most worth having, and a mean over successes only would report
    * the loop as faster the more of it broke. The failure count travels alongside so it can be read.
    */
-  phaseDurations(runId?: number): PhaseDuration[] {
+  phaseDurations(filter: MeasurementFilter = {}): PhaseDuration[] {
     const rows = this.database
       .prepare(
         `SELECT p.phase AS phase, COUNT(*) AS samples,
                 SUM(p.ended_at - p.started_at) AS total,
                 SUM(CASE WHEN p.outcome = 'failed' THEN 1 ELSE 0 END) AS failures
-         FROM phase_timings p JOIN iterations i ON i.id = p.iteration_id
-         WHERE (? IS NULL OR i.run_id = ?)
+         FROM phase_timings p
+              JOIN iterations i ON i.id = p.iteration_id
+              JOIN runs r ON r.id = i.run_id
+         WHERE (? IS NULL OR i.run_id = ?) AND (? IS NULL OR r.generator = ?)
          GROUP BY p.phase ORDER BY p.phase`
       )
-      .all(runId ?? null, runId ?? null) as PhaseRow[];
+      .all(...repeated(filter.runId), ...repeated(filter.generator)) as PhaseRow[];
 
     return rows.map(toPhaseDuration);
   }
 
-  /** What each specification cost, across every run that attempted it. */
-  specificationStatistics(): SpecificationStatistics[] {
+  /**
+   * What each specification cost, across every run that attempted it.
+   *
+   * @param filter Which generator to count, or nothing for all of them.
+   * @remarks
+   * Read {@link MeasurementFilter} before calling this without a generator. Doing so is correct only
+   * when the caller means "every generator in this store" and says so to whoever reads the number.
+   */
+  specificationStatistics(filter: MeasurementFilter = {}): SpecificationStatistics[] {
     const placeholders = CleanCompilationOutcomes.map(() => '?').join(', ');
     const rows = this.database
       .prepare(
-        `SELECT specification, run_id AS runId,
-                MIN(CASE WHEN outcome IN (${placeholders}) THEN attempt END) AS firstClean,
-                MAX(CASE WHEN outcome = 'passed' THEN 1 ELSE 0 END) AS passed
-         FROM iterations GROUP BY specification, run_id ORDER BY specification, run_id`
+        `SELECT i.specification AS specification, i.run_id AS runId,
+                MIN(CASE WHEN i.outcome IN (${placeholders}) THEN i.attempt END) AS firstClean,
+                MAX(CASE WHEN i.outcome = 'passed' THEN 1 ELSE 0 END) AS passed
+         FROM iterations i JOIN runs r ON r.id = i.run_id
+         WHERE (? IS NULL OR r.generator = ?)
+         GROUP BY i.specification, i.run_id ORDER BY i.specification, i.run_id`
       )
-      .all(...CleanCompilationOutcomes) as SpecificationRow[];
+      .all(...CleanCompilationOutcomes, ...repeated(filter.generator)) as SpecificationRow[];
 
     return summariseSpecifications(rows);
+  }
+
+  /**
+   * Which generators this store holds, and how many runs each produced.
+   *
+   * @remarks
+   * Exists so that no surface can present a blended rate without knowing it is one. A store with a
+   * single generator returns one row and the question does not arise; a store with two returns two,
+   * and a caller that ignores them is making a choice rather than missing a possibility.
+   */
+  generators(): GeneratorSample[] {
+    const rows = this.database
+      .prepare('SELECT generator, COUNT(*) AS runs FROM runs GROUP BY generator ORDER BY runs DESC, generator')
+      .all() as unknown as GeneratorSample[];
+
+    // Rebuilt rather than returned as they came: node:sqlite hands back null-prototype rows, and one
+    // of those crossing into a caller compares unequal to the plain object it is identical to.
+    return rows.map((row) => ({ generator: row.generator, runs: row.runs }));
   }
 
   /**
@@ -253,7 +308,8 @@ export class MetricsReader {
         outcome: run.outcome,
         startedAt: run.startedAt,
         specifications: run.specifications,
-        cleanCompilations: run.cleanCompilations
+        cleanCompilations: run.cleanCompilations,
+        generator: run.generator
       }))
       .reverse();
   }
@@ -339,6 +395,18 @@ type ChangeTokenRow = {
 };
 
 type SpecificationRow = { specification: string; runId: number; firstClean: number | null; passed: number };
+
+/**
+ * One optional filter value, as the pair of parameters `(? IS NULL OR column = ?)` needs.
+ *
+ * @remarks
+ * Written once rather than at each call site, because the failure it prevents is silent: pass the
+ * value once and every row matches, which reads as a filter that found everything rather than as a
+ * filter that was never applied.
+ */
+function repeated(value: number | string | undefined): [number | string | null, number | string | null] {
+  return [value ?? null, value ?? null];
+}
 
 function toRecordedRun(row: RunRow): RecordedRun {
   return {

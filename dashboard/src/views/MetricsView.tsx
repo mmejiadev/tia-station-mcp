@@ -1,4 +1,5 @@
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
+import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import type { SpecificationStatistics } from '../../../harness/src/metricsReader.ts';
 import { readMetrics, type MetricsResponse } from '../api.ts';
@@ -27,13 +28,71 @@ import { useLoaded } from '../useLoaded.ts';
  */
 export function MetricsView(): ReactNode {
   const { revision } = useLive();
-  const metrics = useLoaded(readMetrics, [revision]);
+  const [generator, setGenerator] = useState<string | undefined>(undefined);
+  const metrics = useLoaded(() => readMetrics(generator), [revision, generator]);
 
   return (
     <div className="space-y-6">
+      <WhenLoaded loaded={metrics}>
+        {(loaded) => <Generators metrics={loaded} selected={generator} onSelect={setGenerator} />}
+      </WhenLoaded>
       <WhenLoaded loaded={metrics}>{(loaded) => <Outcomes metrics={loaded} />}</WhenLoaded>
       <WhenLoaded loaded={metrics}>{(loaded) => <Detail metrics={loaded} />}</WhenLoaded>
     </div>
+  );
+}
+
+/**
+ * Which generator the numbers below are about.
+ *
+ * @remarks
+ * On this page rather than in a corner of it, and above the charts rather than beside them, because
+ * it changes what every figure underneath means. The stub expander and a model are two experiments,
+ * and a rate over both is a number about neither — the README says exactly that, and this control is
+ * what lets the dashboard keep the promise.
+ *
+ * When the store holds one generator there is nothing to choose, so the row states which one it is
+ * and offers no buttons. A picker with a single option invites a decision that does not exist.
+ */
+function Generators({
+  metrics,
+  selected,
+  onSelect
+}: {
+  metrics: MetricsResponse;
+  selected: string | undefined;
+  onSelect: (generator: string | undefined) => void;
+}): ReactNode {
+  const only = metrics.generators.length <= 1;
+  const summary = metrics.generators.map((entry) => `${entry.generator} (${entry.runs})`).join(', ');
+
+  return (
+    <Panel
+      title="Generator"
+      explanation={
+        only
+          ? `Every number on this page is over ${summary || 'no run at all'}.`
+          : `This store holds ${summary}. The stub expander and a model are two experiments, and a rate over both is a number about neither — so the page states which one it is showing, and lets you pick.`
+      }
+    >
+      {only ? undefined : (
+        <div className="flex flex-wrap gap-2">
+          <Button variant={selected === undefined ? 'default' : 'outline'} size="sm" onClick={() => onSelect(undefined)}>
+            All ({metrics.sampleSize.runs} runs, blended)
+          </Button>
+          {metrics.generators.map((entry) => (
+            <Button
+              key={entry.generator}
+              variant={selected === entry.generator ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => onSelect(entry.generator)}
+            >
+              {entry.generator} ({entry.runs} runs)
+            </Button>
+          ))}
+        </div>
+      )}
+    </Panel>
   );
 }
 

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using TiaMcpServer.Knowledge;
 using TiaMcpServer.Siemens;
 
 namespace TiaMcpServer.Governance.Tests
@@ -153,7 +154,11 @@ namespace TiaMcpServer.Governance.Tests
             return new ChangeRequest("WriteScl", target, "FUNCTION_BLOCK ...", "test");
         }
 
-        private static GuardedWrite GuardFor(OperationMode mode, IAuditTrail audit, FixedClock? clock = null)
+        private static GuardedWrite GuardFor(
+            OperationMode mode,
+            IAuditTrail audit,
+            FixedClock? clock = null,
+            IHardwareLookup? lookup = null)
         {
             var policy = new WritePolicy(new Dictionary<OperationMode, ModeRules>
             {
@@ -161,7 +166,12 @@ namespace TiaMcpServer.Governance.Tests
                 [OperationMode.Workshop] = new ModeRules(OperationMode.Workshop, new[] { AllowedTarget }, Array.Empty<string>())
             });
 
-            return new GuardedWrite(new StubModeGate(mode), policy, audit, new ChangePlanStore(clock ?? new FixedClock(Now)));
+            return new GuardedWrite(
+                new StubModeGate(mode),
+                policy,
+                audit,
+                new ChangePlanStore(clock ?? new FixedClock(Now)),
+                lookup ?? new UnavailableHardwareLookup());
         }
     }
 }

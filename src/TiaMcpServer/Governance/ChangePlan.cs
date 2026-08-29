@@ -1,4 +1,5 @@
 ﻿using System;
+using TiaMcpServer.Knowledge;
 
 namespace TiaMcpServer.Governance
 {
@@ -36,6 +37,7 @@ namespace TiaMcpServer.Governance
             Value = request.Value;
             Origin = request.Origin;
             BackupPath = request.BackupPath;
+            Documentation = request.Documentation;
         }
 
         /// <summary>Identifier a person can read and type back.</summary>
@@ -68,6 +70,21 @@ namespace TiaMcpServer.Governance
         /// <summary>Where the previous state was saved, or empty when nothing was overwritten.</summary>
         public string BackupPath { get; }
 
+        /// <summary>
+        /// What the manufacturer's documentation says about the equipment this change touches.
+        /// </summary>
+        /// <remarks>
+        /// The point of the stage that added this: a plan says **what** will change, and a student
+        /// reading *"per the UR5e manual, page 47, configurable I/O can be set as safety-related"*
+        /// learns something a plan that only named a block path cannot teach.
+        ///
+        /// It is evidence, never a condition. A plan whose documentation is
+        /// <see cref="HardwareContextOutcome.NotFound"/> or
+        /// <see cref="HardwareContextOutcome.Unavailable"/> is confirmable exactly as any other; the
+        /// citations inform the person deciding, they do not decide.
+        /// </remarks>
+        public HardwareContext Documentation { get; }
+
         /// <summary>Whether this plan can still be confirmed.</summary>
         /// <param name="now">The current moment, in UTC.</param>
         /// <returns>True while the plan is still within its expiry.</returns>
@@ -82,7 +99,7 @@ namespace TiaMcpServer.Governance
         {
             var value = string.IsNullOrEmpty(Value) ? string.Empty : $" = {Value}";
 
-            return $"[{Id}] {Mode}: {Tool} on '{Target}'{value}";
+            return $"[{Id}] {Mode}: {Tool} on '{Target}'{value} | {Documentation.Summarise()}";
         }
     }
 }

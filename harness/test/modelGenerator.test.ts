@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import type { GenerationRequest } from '../src/generator.ts';
+import { UnusableGeneration, type GenerationRequest } from '../src/generator.ts';
 import {
   buildPrompt,
   createModelGenerator,
@@ -18,6 +18,31 @@ import type { Specification } from '../src/specification.ts';
  * problem, and what this harness sends and accepts is this repository's.
  */
 describe('model generator', () => {
+  it('carries the cost out of an answer it cannot use', () => {
+    // The defect this pins cost real money and hid it: an answer with no SCL threw a plain error,
+    // the usage went with it, and the store recorded the attempt as free. On 2026-08-28 that meant
+    // 46 generations run and 31 costs recorded — understated by exactly the failures.
+    const generator = createModelGenerator(answering('   \n  '), 'a-model');
+
+    return assert.rejects(
+      () => generator.generate(requestFor(1, [])),
+      (failure: unknown) => {
+        assert.ok(failure instanceof UnusableGeneration);
+        assert.equal(failure.usage?.outputTokens, 3400);
+
+        return true;
+      }
+    );
+  });
+
+  it('says why the answer was empty, so the next unexplained sample is not paid for twice', () => {
+    const generator = createModelGenerator(answeringWith('', 'max_tokens', ['thinking']), 'a-model');
+
+    return assert.rejects(
+      () => generator.generate(requestFor(1, [])),
+      /Stop reason: max_tokens\. Blocks: thinking\. Text: 0 character\(s\)\./
+    );
+  });
   it('asks for the cell specification and the tags the check will read', () => {
     const prompt = buildPrompt(requestFor(1, []));
 
@@ -144,6 +169,16 @@ function answering(text: string, sent?: SclRequest[]): MessageSender {
       usage: { model: 'a-model', inputTokens: 1200, outputTokens: 3400, cacheCreationTokens: 0, cacheReadTokens: 0 }
     };
   };
+}
+
+/** The same double, plus the two diagnostics a real answer carries. */
+function answeringWith(text: string, stopReason: string, blocks: readonly string[]): MessageSender {
+  return async () => ({
+    text,
+    usage: { model: 'a-model', inputTokens: 1200, outputTokens: 3400, cacheCreationTokens: 0, cacheReadTokens: 0 },
+    stopReason,
+    blocks
+  });
 }
 
 function requestFor(attempt: number, previousErrors: readonly string[]): GenerationRequest {

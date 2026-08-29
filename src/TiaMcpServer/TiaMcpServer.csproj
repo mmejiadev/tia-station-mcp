@@ -47,6 +47,14 @@
   -->
   <ItemGroup>
     <InternalsVisibleTo Include="TiaMcpServer.Spec.Test" />
+
+    <!--
+      HardwareContext.WithOutcome exists only so the governance tests can build an outcome no
+      factory can produce, and assert that the exhaustive switch throws on it. Making the type's
+      constructor public to reach that one rule would open the very hole the factories close: a
+      context claiming to be "cited" with nothing to cite.
+    -->
+    <InternalsVisibleTo Include="TiaMcpServer.Governance.Test" />
   </ItemGroup>
 
   <ItemGroup>

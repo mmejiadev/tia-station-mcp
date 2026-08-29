@@ -1,7 +1,9 @@
 import type { AuditEntry, AuditReadResult } from './auditTrail.ts';
 import type { GateVerdict } from './gate.ts';
 import type {
+  GeneratorSample,
   IterationPhase,
+  MeasurementFilter,
   PhaseDuration,
   RecordedIteration,
   RecordedRun,
@@ -20,9 +22,10 @@ export type DashboardStore = {
   runs(): RecordedRun[];
   run(runId: number): RecordedRun | undefined;
   iterationsOf(runId: number): RecordedIteration[];
-  phaseDurations(runId?: number): PhaseDuration[];
+  phaseDurations(filter?: MeasurementFilter): PhaseDuration[];
   phasesOfIteration(iterationId: number): IterationPhase[];
-  specificationStatistics(): SpecificationStatistics[];
+  specificationStatistics(filter?: MeasurementFilter): SpecificationStatistics[];
+  generators(): GeneratorSample[];
 };
 
 /** What an endpoint answered, before anything has been written to a socket. */
@@ -72,6 +75,17 @@ export type MetricsResponse = {
     readonly runs: number;
     readonly specificationAttempts: number;
   };
+  /**
+   * Which generator these numbers are about: one of them, or `all` when they are a blend.
+   *
+   * @remarks
+   * Never absent, and `all` is spelled out rather than left as an empty field, because the caller
+   * that forgets to look at it is the one this exists to protect. A rate whose generator is unstated
+   * is the third false claim of phase 5 in a different suit.
+   */
+  readonly generator: string;
+  /** Every generator in the store with its run count, whether or not one was asked for. */
+  readonly generators: readonly GeneratorSample[];
 };
 
 /** The audit trail, filtered, and how much of it there was before and after filtering. */
@@ -198,7 +212,7 @@ function runDetail(rawId: string, sources: ApiSources): ApiResponse {
   const body: RunDetailResponse = {
     run,
     iterations: sources.reader.iterationsOf(runId),
-    phases: sources.reader.phaseDurations(runId)
+    phases: sources.reader.phaseDurations({ runId })
   };
 
   return { status: 200, body };
@@ -233,16 +247,31 @@ function phasesOfIteration(rawId: string, sources: ApiSources): ApiResponse {
  * Every rate leaves here with the count it was computed from beside it, never as a bare percentage.
  * The roadmap says so and it is right: 83% hides whether it was five of six or fifty of sixty.
  */
-function metrics(_query: URLSearchParams, sources: ApiSources): ApiResponse {
-  const specifications = sources.reader.specificationStatistics();
+function metrics(query: URLSearchParams, sources: ApiSources): ApiResponse {
+  const generators = sources.reader.generators();
+  const requested = query.get('generator') ?? undefined;
+
+  // Refused rather than ignored. A mistyped generator that silently returned every run would answer
+  // a question nobody asked with a number that looks exactly like the one they wanted.
+  if (requested !== undefined && !generators.some((entry) => entry.generator === requested)) {
+    const known = generators.map((entry) => entry.generator).join(', ');
+
+    return { status: 400, body: { error: `No run in this store used generator '${requested}'. Known: ${known || 'none'}.` } };
+  }
+
+  const filter: MeasurementFilter = requested === undefined ? {} : { generator: requested };
+  const specifications = sources.reader.specificationStatistics(filter);
+  const runs = sources.reader.runs().filter((run) => requested === undefined || run.generator === requested);
 
   const body: MetricsResponse = {
     specifications,
-    phases: sources.reader.phaseDurations(),
+    phases: sources.reader.phaseDurations(filter),
     sampleSize: {
-      runs: sources.reader.runs().length,
+      runs: runs.length,
       specificationAttempts: specifications.reduce((total, entry) => total + entry.attempts, 0)
-    }
+    },
+    generator: requested ?? 'all',
+    generators
   };
 
   return { status: 200, body };

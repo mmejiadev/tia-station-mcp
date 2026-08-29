@@ -1,4 +1,5 @@
 ﻿using System;
+using TiaMcpServer.Knowledge;
 
 namespace TiaMcpServer.Governance
 {
@@ -12,6 +13,9 @@ namespace TiaMcpServer.Governance
     /// </remarks>
     public sealed class ChangeRequest
     {
+        /// <summary>What a request that never reached a hardware lookup reports.</summary>
+        public const string NotLookedUp = "this change was not put through a documentation lookup";
+
         /// <summary>Describes a requested change.</summary>
         /// <param name="tool">The tool asking, for example <c>WriteScl</c>.</param>
         /// <param name="target">What it would touch, as a full path.</param>
@@ -35,15 +39,17 @@ namespace TiaMcpServer.Governance
             Value = value ?? string.Empty;
             Origin = origin ?? string.Empty;
             BackupPath = string.Empty;
+            Documentation = HardwareContext.Unavailable(NotLookedUp);
         }
 
-        private ChangeRequest(ChangeRequest request, string backupPath)
+        private ChangeRequest(ChangeRequest request, string backupPath, HardwareContext documentation)
         {
             Tool = request.Tool;
             Target = request.Target;
             Value = request.Value;
             Origin = request.Origin;
             BackupPath = backupPath ?? string.Empty;
+            Documentation = documentation;
         }
 
         /// <summary>The tool asking.</summary>
@@ -61,6 +67,14 @@ namespace TiaMcpServer.Governance
         /// <summary>Where the previous state was saved, or empty when nothing was overwritten.</summary>
         public string BackupPath { get; }
 
+        /// <summary>What the documentation says about the equipment this change touches.</summary>
+        /// <remarks>
+        /// Never null. A request nobody looked anything up for carries an
+        /// <see cref="HardwareContextOutcome.Unavailable"/> saying exactly that, so a plan built
+        /// outside the guard is visibly uncited rather than quietly blank.
+        /// </remarks>
+        public HardwareContext Documentation { get; }
+
         /// <summary>The same request, naming where the previous state was saved.</summary>
         /// <param name="backupPath">The directory or file the previous state went to.</param>
         /// <returns>A copy carrying the backup path.</returns>
@@ -72,7 +86,27 @@ namespace TiaMcpServer.Governance
         /// </remarks>
         public ChangeRequest WithBackup(string backupPath)
         {
-            return new ChangeRequest(this, backupPath);
+            return new ChangeRequest(this, backupPath, Documentation);
+        }
+
+        /// <summary>The same request, carrying what the documentation says about it.</summary>
+        /// <param name="documentation">Excerpts, an honest not-found, or an unavailable with its reason.</param>
+        /// <returns>A copy carrying the documentation.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="documentation"/> is null.</exception>
+        /// <remarks>
+        /// A copy, for the same reason as <see cref="WithBackup"/>: the citations shown beside a
+        /// decision have to be the ones the decision was taken with. Attaching them to the request
+        /// rather than passing them to the plan follows the backup path, which is likewise something
+        /// the system discovers rather than something the caller asked for.
+        /// </remarks>
+        public ChangeRequest WithDocumentation(HardwareContext documentation)
+        {
+            if (documentation == null)
+            {
+                throw new ArgumentNullException(nameof(documentation));
+            }
+
+            return new ChangeRequest(this, BackupPath, documentation);
         }
     }
 }
