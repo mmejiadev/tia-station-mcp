@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Generation, GenerationRequest, Generator } from './generator.ts';
+import { UnusableGeneration, type Generation, type GenerationRequest, type Generator } from './generator.ts';
 import { repositoryRoot } from './serverLocation.ts';
 import type { TokenUsage } from './telemetry.ts';
 
@@ -51,6 +51,19 @@ export type SclRequest = {
 export type SclAnswer = {
   readonly text: string;
   readonly usage: TokenUsage;
+  /**
+   * Why the model stopped, as the API reported it, and what kinds of block came back.
+   *
+   * @remarks
+   * Diagnostics, and they exist because of a run that could not be explained. Fifteen of the
+   * forty-six generations on 2026-08-28 came back with no text at all, and the failure said only
+   * "the model answered with no SCL" — which is a symptom that fits a truncated answer, a refusal
+   * and a bug in this file equally well, so the sample could not be attributed to the model or to
+   * us. `end_turn` with a thinking block and no text means one thing; `max_tokens` means another;
+   * `refusal` means a third. Optional so a test double need not invent one.
+   */
+  readonly stopReason?: string | undefined;
+  readonly blocks?: readonly string[] | undefined;
 };
 
 /** Something that can answer an SCL request. The real one calls the API; tests pass a double. */
@@ -81,9 +94,16 @@ export function createModelGenerator(send: MessageSender, model: string = Defaul
 
       // The usage travels with a source that may well not compile, and that is the point: an
       // attempt whose SCL the compiler rejects was paid for like any other, and a cost that counted
-      // only the attempts that worked would understate the bill by the ones worth seeing. The one
-      // cost that is lost is an answer with no SCL in it at all, which throws below.
-      return { source: extractScl(answer.text), usage: answer.usage };
+      // only the attempts that worked would understate the bill by the ones worth seeing.
+      //
+      // An answer with no SCL in it was paid for too. It used to throw a plain error and take its
+      // cost with it, so the store recorded the cheap half of the sample and none of the expensive
+      // failures; now the cost comes out inside the failure and the loop records it either way.
+      try {
+        return { source: extractScl(answer.text), usage: answer.usage };
+      } catch (failure) {
+        throw new UnusableGeneration(describeUnusable(failure, answer), answer.usage);
+      }
     }
   };
 }
@@ -156,8 +176,30 @@ export function createApiSender(model: string = DefaultModel): MessageSender {
     // `message.model` and not the argument: a request can be served by a model other than the one
     // named — a refusal fallback is the case that exists today — and pricing what actually ran is
     // the whole reason for recording this instead of estimating it.
-    return { text, usage: readUsage(message.model, message.usage) };
+    return {
+      text,
+      usage: readUsage(message.model, message.usage),
+      stopReason: message.stop_reason ?? undefined,
+      blocks: message.content.map((block) => block.type)
+    };
   };
+}
+
+/**
+ * Says why an answer could not be used, with the two facts that tell the causes apart.
+ *
+ * @param failure What {@link extractScl} refused.
+ * @param answer The answer as it arrived.
+ * @remarks
+ * The message goes into the run's output and into the store, so the next unexplained sample is
+ * explained by reading it rather than by paying for another one. That is the whole point: the
+ * five-run sample cost ten euros and could not answer whether the fault was the model's or ours.
+ */
+function describeUnusable(failure: unknown, answer: SclAnswer): string {
+  const reason = failure instanceof Error ? failure.message : String(failure);
+  const blocks = answer.blocks === undefined ? 'unknown' : answer.blocks.join(', ') || 'none';
+
+  return `${reason} Stop reason: ${answer.stopReason ?? 'unknown'}. Blocks: ${blocks}. Text: ${answer.text.length} character(s).`;
 }
 
 /**
@@ -225,7 +267,7 @@ export function readUsage(model: string, usage: Anthropic.Usage): TokenUsage {
  * how the stations coordinate, what the sequence does - is deliberately left open, because that is
  * the part being measured.
  */
-const SystemPrompt = [
+export const SystemPrompt = [
   'You write SCL (Structured Control Language) for a Siemens S7-1500 PLC, compiled by TIA Portal V20.',
   '',
   'Your answer is written straight into a project and compiled. So:',

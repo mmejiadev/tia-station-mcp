@@ -119,6 +119,32 @@ describe('the dashboard API', () => {
     assert.equal(body.sampleSize.runs, 1);
     assert.equal(body.sampleSize.specificationAttempts, 3);
   });
+
+  it('names the generator its numbers are about, even when they are a blend', () => {
+    const answer = respondTo('/api/metrics', new URLSearchParams(), sources());
+    const body = answer.body as { generator: string; generators: { generator: string }[] };
+
+    // 'all' spelled out rather than left absent: a caller that forgets to look at this field is the
+    // one the field exists to protect, and an empty one reads as "the usual generator".
+    assert.equal(body.generator, 'all');
+    assert.deepEqual(body.generators.map((entry) => entry.generator), ['stub']);
+  });
+
+  it('answers for one generator when asked for one', () => {
+    const answer = respondTo('/api/metrics', new URLSearchParams('generator=stub'), sources());
+
+    assert.equal(answer.status, 200);
+    assert.equal((answer.body as { generator: string }).generator, 'stub');
+  });
+
+  it('refuses a generator no run used rather than quietly returning every run', () => {
+    // The failure this prevents is the silent one: a mistyped generator answering with the blend
+    // looks exactly like the answer that was wanted, and nothing on the page would say otherwise.
+    const answer = respondTo('/api/metrics', new URLSearchParams('generator=gpt'), sources());
+
+    assert.equal(answer.status, 400);
+    assert.match((answer.body as { error: string }).error, /No run in this store used generator 'gpt'/);
+  });
 });
 
 const recordedRun: RecordedRun = {
@@ -143,6 +169,7 @@ const store: DashboardStore = {
   iterationsOf: () => [],
   phaseDurations: () => [],
   phasesOfIteration: () => [],
+  generators: () => [{ generator: 'stub', runs: 1 }],
   specificationStatistics: () => [
     {
       specification: 'gripper',

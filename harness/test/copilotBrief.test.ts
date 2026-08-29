@@ -4,7 +4,7 @@ import type { AuditReadResult } from '../src/auditTrail.ts';
 import { buildBrief, type BriefSources } from '../src/copilotBrief.ts';
 import type { DashboardStore } from '../src/dashboardApi.ts';
 import type { GateVerdict } from '../src/gate.ts';
-import type { RecordedRun, SpecificationStatistics } from '../src/metricsReader.ts';
+import type { GeneratorSample, RecordedRun, SpecificationStatistics } from '../src/metricsReader.ts';
 
 /**
  * The brief is the copilot's whole world, so what is missing from it matters as much as what is in
@@ -46,6 +46,22 @@ describe('the copilot brief', () => {
 
     assert.match(brief.text, /attempted 7 time\(s\)/);
     assert.match(brief.text, /1\.40 mean iterations/);
+  });
+
+  it('warns that its rates are a blend when the store holds more than one generator', () => {
+    // The copilot only ever sees this text, so it cannot discover afterwards that 80% came from two
+    // generators. If the brief does not say so, the answer on screen attributes it to one of them.
+    const brief = buildBrief(sources({ generators: [{ generator: 'stub', runs: 50 }, { generator: 'model', runs: 10 }] }));
+
+    assert.match(brief.text, /stub: 50 run\(s\)/);
+    assert.match(brief.text, /model: 10 run\(s\)/);
+    assert.match(brief.text, /ALL of these generators together/);
+  });
+
+  it('does not warn about a blend when there is only one generator to blend', () => {
+    const brief = buildBrief(sources({ generators: [{ generator: 'stub', runs: 50 }] }));
+
+    assert.match(brief.text, /Every rate below is over that one generator/);
   });
 
   it('says a specification that never compiled has no mean, rather than a mean of zero', () => {
@@ -108,6 +124,7 @@ describe('the copilot brief', () => {
 type Overrides = {
   runs?: RecordedRun[];
   specifications?: SpecificationStatistics[];
+  generators?: GeneratorSample[];
   audit?: AuditReadResult;
 };
 
@@ -120,7 +137,8 @@ function sources(overrides: Overrides): BriefSources {
       { phase: 'compile', samples: 121, totalMilliseconds: 193_600, meanMilliseconds: 1600, failures: 0 }
     ],
     phasesOfIteration: () => [],
-    specificationStatistics: () => overrides.specifications ?? []
+    specificationStatistics: () => overrides.specifications ?? [],
+    generators: () => overrides.generators ?? [{ generator: 'stub', runs: 1 }]
   };
 
   return {

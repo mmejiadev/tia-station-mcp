@@ -64,6 +64,7 @@ export type BriefSources = {
 export function buildBrief(sources: BriefSources): CopilotBrief {
   const text = [
     describeRuns(sources.reader),
+    describeGenerators(sources.reader),
     describeSpecifications(sources.reader),
     describePhases(sources.reader),
     describeGate(sources.evaluateGate()),
@@ -107,6 +108,31 @@ function describeOneRun(run: {
     `${run.specifications} specification(s), ${run.cleanCompilations} compiled cleanly, ` +
     `${run.passed} passed on a simulated CPU, outcome: ${outcome}`
   );
+}
+
+/**
+ * Which generators produced what is in the store.
+ *
+ * @remarks
+ * First, and separately, because every rate below it is computed over all of them. A copilot that
+ * quoted 80% without knowing two generators were in the sample would be stating a number about
+ * neither — and it cannot check afterwards, because it only ever sees this text.
+ */
+function describeGenerators(reader: DashboardStore): string {
+  const generators = reader.generators();
+
+  if (generators.length === 0) {
+    return '## Generators\n\nThis store holds no runs.';
+  }
+
+  const lines = generators.map((entry) => `- ${entry.generator}: ${entry.runs} run(s)`);
+  const warning =
+    generators.length === 1
+      ? 'Every rate below is over that one generator.'
+      : 'The rates below are over ALL of these generators together. Say so whenever you quote one, ' +
+        'and never attribute a blended rate to a single generator.';
+
+  return ['## Generators', ...lines, '', warning].join('\n');
 }
 
 /** Per specification, each rate beside the sample size that produced it. */

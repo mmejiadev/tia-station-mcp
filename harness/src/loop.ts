@@ -1,4 +1,4 @@
-import type { Generator } from './generator.ts';
+import { UnusableGeneration, type Generation, type Generator } from './generator.ts';
 import type { McpServerConnection } from './mcpClient.ts';
 import type { Specification } from './specification.ts';
 import type { IterationId, IterationOutcome, RunId, Telemetry } from './telemetry.ts';
@@ -116,14 +116,22 @@ type AttemptResult = {
   readonly errorCount: number;
 };
 
-/** One pass of the whole chain. */
-async function runOneAttempt(
+/**
+ * Asks the generator, and records what the answer cost whether or not it was usable.
+ *
+ * @remarks
+ * The two paths exist because a failed generation is still a paid one. An answer with no SCL in it
+ * used to throw past the recording below, so the store held the cost of every attempt that worked
+ * and none of the ones that did not — a bill understated by exactly its expensive half, and in the
+ * direction that flatters. Found on 2026-08-28: 46 generations run, 31 costs recorded.
+ */
+async function generateAndRecordCost(
   options: LoopOptions,
   iterationId: IterationId,
   attempt: number,
   previousErrors: readonly string[]
-): Promise<AttemptResult> {
-  const { connection, telemetry, specification, generator } = options;
+): Promise<Generation> {
+  const { telemetry, specification, generator } = options;
 
   try {
     const generated = await telemetry.time(iterationId, 'generate', () =>
@@ -131,13 +139,32 @@ async function runOneAttempt(
     );
 
     // Recorded here, before anything can go wrong with the source, and only when there is one to
-    // record: the stub costs nothing and says so by reporting nothing. Recording it after the
-    // compile would lose the cost of every attempt that failed to compile, which is the half of
-    // the bill worth looking at.
+    // record: the stub costs nothing and says so by reporting nothing.
     if (generated.usage !== undefined) {
       telemetry.recordUsage(iterationId, generated.usage);
     }
 
+    return generated;
+  } catch (failure) {
+    if (failure instanceof UnusableGeneration && failure.usage !== undefined) {
+      telemetry.recordUsage(iterationId, failure.usage);
+    }
+
+    throw failure;
+  }
+}
+
+/** One pass of the whole chain. */
+async function runOneAttempt(
+  options: LoopOptions,
+  iterationId: IterationId,
+  attempt: number,
+  previousErrors: readonly string[]
+): Promise<AttemptResult> {
+  const { connection, telemetry, specification } = options;
+
+  try {
+    const generated = await generateAndRecordCost(options, iterationId, attempt, previousErrors);
     const source = generated.source;
 
     const written = await telemetry.time(iterationId, 'write', () =>

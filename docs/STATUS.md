@@ -5,6 +5,97 @@
 
 ## ▶ RESUME HERE
 
+**2026-08-28, night — the model generator was measured for the first time, and it cost more in
+findings than in euros.**
+
+Two samples ran against a model instead of the pattern expander. Neither number is publishable yet,
+and the reasons why are the work.
+
+**Opus 5 refuses about a third of these requests.** Fifteen of forty-six generations came back with
+`stop_reason: refusal`, no content blocks and **zero output tokens**. Isolated with four probes
+costing about €0.25 in total, and the bisection is unambiguous: the same prompt on **Sonnet 5**
+answers normally, and *"say hello"* on Opus 5 answers normally — what it refuses is being asked for
+PLC code. So the raw 4 of 30 that Opus scored is **not a measure of capability**: a third of its
+attempts never happened. It is not published anywhere and must not be.
+
+**A defect of ours came out with it, and it was flattering the bill.** A generation whose answer
+held no SCL threw a plain error and took its usage with it, so the store recorded the attempts that
+worked and none of the ones that did not — 46 generations run, 31 costs recorded. `UnusableGeneration`
+now carries the cost out of the failure, `loop.ts` records it on both paths, and the failure message
+names `stop_reason`, the block types and the text length. That message is what turned ten euros of
+mystery into four cheap probes, and it is why the next unexplained sample will not be paid for twice.
+
+**Before either sample could run, the statistics had to learn what a generator is.**
+`specificationStatistics` and `phaseDurations` read every iteration in the store with no filter, so
+the first model run would have blended two experiments **in the README's table, in the dashboard and
+in the copilot's brief at once** — the exact thing the README says produces a number about neither.
+They now take a `MeasurementFilter`; `/api/metrics` takes `?generator=` and **refuses** an unknown one
+rather than quietly returning the blend; the response always names the generator, `all` included; the
+Metrics view has a picker and states the mix; and the copilot's brief warns when its rates span more
+than one. The store separates by **model id**, not by `stub`/`model` — a run's generator is recorded
+as `claude-opus-5`, so every model stays its own sample.
+
+**What Sonnet 5 actually did**, n=11, sample stopped early on purpose when the budget got close:
+
+| | `claude-sonnet-5` | `stub` |
+|---|---|---|
+| Passed | **1 of 11** | 126 of 158 (80%) |
+| Compiler errors | 30 of 33 attempts | — |
+| Compiled and the cell misbehaved | 1 | the gap between 97% and 80% |
+| Cost | **$5.17** over 32 generations | nothing |
+
+The one pass is worth looking at: `four-station-runs` failed to compile, was handed TIA's own errors,
+and passed on the second attempt. That is the loop doing exactly what the README claims. What it does
+not do is work every time.
+
+**The 97% / 80% of the expander did not move**, and that is the separation working: still 50 runs,
+still 158 attempts, untouched by 7 model runs sitting beside them.
+
+**One consequence to carry forward: the interrupted run leaves a permanent mark.** Stopping the
+second Sonnet repetition mid-iteration left one run and one iteration with no outcome, so **criterion
+2 of the gate goes from met to not met** until a complete run follows. Nothing was deleted to tidy
+that away — a run nobody knows the end of is exactly what that criterion exists to notice.
+
+**Green**: harness **156/156**, dashboard 11/11, both typechecks clean, server 0 warnings. Two TIA
+Portal processes and one `TiaMcpServer` were left behind by the kill and were closed by hand; the
+licence is free.
+
+**Next action.** The measurement to finish is a model sample big enough to publish, and the API
+budget is down to roughly €3.5 — Haiku 4.5 at about €0.02 a generation is the only one that fits, and
+it generates without thinking, which is a weaker generator and has to be said. Otherwise: stage 2 of
+the knowledge layer, phase 5b, or criterion 5 with the teacher.
+
+**2026-08-28, end of day — fifty runs. Criterion 1 is met, and only the teacher's review is left.**
+
+Ten runs in twenty minutes took the store to **50 complete runs, 158 specification attempts**. Four
+of the five gate criteria are now met, and the fifth is the in-person design review — the one thing
+in this project no measurement can move.
+
+```
+MET      1. 50 complete loop runs in Study Mode — 50 of 50
+MET      2. zero silent failures
+MET      3. complete audit — 191 backups, all present
+MET      4. a stable clean-compilation rate — 100% over both halves of the window
+NOT MET  5. an in-person design review with the supervising teacher
+```
+
+**The numbers moved, and the README moved with them**: 154 of 158 compiled cleanly (97%, was 96%),
+**126 of 158 ran on a simulated CPU and behaved as specified (80%, was 67%)**, one iteration 19.7 s
+(was 22.0 s). The per-specification and per-phase tables were re-read from the store rather than
+adjusted. The 80% is still the pattern expander's, and the README still says so above the table.
+
+**The jump from 67% to 80% is not tuning.** The ten new runs had **zero failed downloads**, against
+21% of attempts in the first forty. What changed was the PLCSIM download fix, and this is the sample
+that shows it held.
+
+**The first attempt at these runs was refused, correctly, and nothing was contaminated.** The command
+went out without `--policy`, so the guard refused `UseTcpIpNetworkMode` with *"no policy is configured
+for Study mode, so nothing is permitted in it"*, the run died before writing a single row, and the
+store stayed at forty. `harness/policy.json` is part of the experiment, not a machine's
+configuration — a run whose permissions differ from another's is not comparable with it. The same
+mistake is recorded further down this file from a previous session, which is the second time it has
+cost a run.
+
 **2026-08-28, later — stage 1 of the knowledge layer is built, and it cites three real manuals.**
 
 The only authorised stage of `docs/KNOWLEDGE-LAYER.md` is done. There is a local index in

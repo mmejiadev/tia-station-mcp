@@ -27,6 +27,28 @@ export type Generation = {
   readonly usage?: TokenUsage;
 };
 
+/**
+ * A generation that was paid for and produced nothing the loop can use.
+ *
+ * @remarks
+ * It exists to carry the cost out of a failure. Until it did, `createModelGenerator` threw a plain
+ * error when the answer held no SCL, the usage went with it, and the store recorded the attempt with
+ * no cost at all — so the bill was understated **by exactly the failures**, which is the direction
+ * that flatters. The five-run sample of 2026-08-28 paid for 46 generations and recorded 31.
+ *
+ * `usage` is optional because a generator that costs nothing can still fail; it is the model one
+ * that must never lose a cost it incurred.
+ */
+export class UnusableGeneration extends Error {
+  readonly usage: TokenUsage | undefined;
+
+  constructor(message: string, usage?: TokenUsage) {
+    super(message);
+    this.name = 'UnusableGeneration';
+    this.usage = usage;
+  }
+}
+
 /** Something that produces SCL for a specification. */
 export type Generator = {
   /** Recorded with the run, so a number can be attributed to what produced the code. */
