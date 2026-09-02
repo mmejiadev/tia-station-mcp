@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { repairPageText } from './pageText.ts';
 
 /**
  * Extracts the text of a PDF, one string per page.
@@ -14,6 +15,10 @@ import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
  * No external font data is fetched and nothing outside the file is read. A manual is a document from
  * outside this machine, and the brief is explicit that retrieved content is data and never
  * instructions — that starts at the parser, before anything is indexed.
+ *
+ * Every page goes through {@link repairPageText} on the way out. Two of the three manuals in the
+ * corpus carry control characters inside their technical references, and repairing them here rather
+ * than at query time means the index holds one text that both the search and a reader see.
  */
 
 /**
@@ -52,6 +57,7 @@ function joinItems(items: readonly { str?: string; hasEOL?: boolean }[]): string
  */
 export async function readPdfPages(path: string): Promise<string[]> {
   const file = await readFile(path);
+
   const document = await getDocument({
     data: new Uint8Array(file),
     useSystemFonts: false,
@@ -64,7 +70,7 @@ export async function readPdfPages(path: string): Promise<string[]> {
     for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
       const page = await document.getPage(pageNumber);
       const content = await page.getTextContent();
-      pages.push(joinItems(content.items as { str?: string; hasEOL?: boolean }[]));
+      pages.push(repairPageText(joinItems(content.items as { str?: string; hasEOL?: boolean }[])));
       page.cleanup();
     }
 

@@ -15,7 +15,8 @@
     "gate": "node src/gateReport.ts",
     "api": "node --env-file-if-exists=.env src/apiServer.ts",
     "knowledge:index": "node src/knowledge/knowledgeIndex.ts",
-    "knowledge:lookup": "node src/knowledge/hardwareLookup.ts"
+    "knowledge:lookup": "node src/knowledge/hardwareLookup.ts",
+    "knowledge:gate": "node src/knowledge/retrievalReport.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.121.0",

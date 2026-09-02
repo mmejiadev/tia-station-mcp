@@ -277,11 +277,93 @@ this way so that no existing stage number moves.
    Workshop Mode the acknowledgement is a person's, item by item. It does not replace the per-write
    plan. It precedes it.
 
-3. **The retrieval gate.** Fifty questions, two metrics, one blocking threshold. **Do not proceed
-   past this stage without it.**
+3. **The retrieval gate — done, 2026-08-29.** Fifty questions, two metrics, two thresholds fixed
+   before anything was measured. Built as `harness/src/knowledge/retrievalGate.ts`, run with
+   `npm run knowledge:gate`, and described under "Stage 3 as built" below. It opened, and it found
+   a defect in stage 1 on its first use.
 4. **On-demand ingestion**, with whitelist, quarantine and audit.
 5. **The cited safety checklist**, universal and class tiers static, specific tier cited. Only if
    stage 3 cleared.
+
+## Stage 3 as built — 2026-08-29
+
+Fifty questions in `harness/knowledge-eval/questions.json`: **30 answerable**, each naming the device,
+the page and a phrase that page contains, and **20 unanswerable**, each carrying why it cannot be
+answered so a reader can disagree with the judgement rather than with the score.
+
+**The ground truth comes from the documents, never from the retriever.** Pages were sampled across
+the three manuals and read; the questions were written from that text with the search never
+consulted. Authoring them by asking the index would have approved it by construction. The runner
+**re-checks every recorded page and phrase against the corpus before scoring anything**, and refuses
+to report a rate if any has drifted — a re-ingested corpus or a new edition of a manual would
+otherwise move the ground truth silently.
+
+**Two thresholds, fixed in the cold**, in the spirit of `RequiredCompleteRuns`: citation precision
+**70%**, correct abstention **90%**. Abstention is the harder of the two deliberately, because the
+brief says it matters more, and a test asserts that ordering so it cannot be inverted by a diff.
+Both must be met; there is no averaging, because a retriever that finds everything and never stays
+silent is precisely the dangerous one.
+
+**What it measured, first run:**
+
+```
+MET      citation precision: 90% of n=30, 70% required
+MET      correct abstention: 95% of n=20, 90% required
+```
+
+**After the control characters were repaired and four exact-reference questions added:**
+
+```
+MET      citation precision: 91% of n=34, 70% required
+MET      correct abstention: 95% of n=20, 90% required
+```
+
+**The one abstention failure is the interesting one.** Asked about a **UR20** — the right
+manufacturer, a robot the indexed manual does not cover — it quoted the UR5e manual instead of
+staying silent. Brand-level near misses are the residual weakness, and they are the class most
+likely to mislead somebody who trusts the name on the citation.
+
+### The defect the gate found on its first use
+
+Authoring the ground truth turned up something the index cannot answer at all: **PDF extraction
+leaves control characters inside tokens**. `EN ISO 13855` is stored as `EN ISO 13855`,
+`IEC 61496-1` as `IEC 61496D1`, `M26 × 11` as `M26× 11`.
+
+Measured across the corpus: **1 626 occurrences on 165 of 538 pages**, concentrated in C4000 (1 229)
+and DSBC (397); the UR5e manual has none.
+
+This corrupts exactly what the lexical half of the search exists for. The divergence note below
+justifies the trigram vector by its ability to match `6ES7214-1AG40` against `6ES7 214-1AG40-0XB0` —
+and a standard number split by a control character defeats both BM25 tokenisation and the trigrams.
+An exact-reference query against those two documents cannot match today. **It is a stage 1 ingestion
+defect, not a stage 3 one**, and it is recorded here rather than fixed quietly because the 90% above
+was measured with it present.
+
+**It was then fixed, and the fix taught something about the evaluation set.** `repairPageText` runs
+on every page as it leaves the extractor: a control character **between two digits is removed**,
+because there it splits one number; anywhere else it becomes a space, because there it stands in for
+a separator and joining the words would manufacture a token the document does not contain. The rule
+is read off this corpus, not derived from the PDF specification, and each of its tests is a case it
+was read off. What the repair deliberately does **not** do is guess: the same `U+0002` stands for a
+space in `VDMA 24562` and for a hyphen in `NF E 49-003.1`, so the hyphen stays lost rather than being
+authored back into a corpus whose value is that it is quoted verbatim.
+
+The index was rebuilt: **0 control characters over 538 pages**, and `EN ISO 13855` is a single token
+again. **Both rates were unchanged at 90% and 95%** — because not one of the fifty questions depended
+on an exact standard number. A fix that repairs 1 626 corruptions and moves no metric is a fact about
+the questions, not about the fix, so four bare-reference questions were added and checked against the
+index that existed before the repair:
+
+| question | before | after |
+|---|---|---|
+| `EN ISO 13855` | UR5e p84, C4000 p72, C4000 p10 | **C4000 p40** |
+| `EN ISO 13857` | UR5e p84, C4000 p72 | **C4000 p40** |
+| `IEC 61508` | **not found** | **C4000 p72** |
+| `VDMA 24562` | **not found** | **DSBC p2** |
+
+Four misses became four hits, and the gate now covers the class the trigram vector was built for.
+The residual `IEC 61496D1` is a different fault in the same fonts — a `D` where a hyphen belongs —
+and it is left alone for the same reason the hyphen above is: recovering it means guessing.
 
 ## Stage 1 as built — 2026-08-28
 
