@@ -7,7 +7,6 @@ using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Text.Json.Nodes;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using TiaMcpServer.Siemens;
 
@@ -1022,16 +1021,22 @@ namespace TiaMcpServer.ModelContextProtocol
                 // Determine total by scanning .s7dcl files matching regex
                 int total = 0;
                 var scanWarnings = new JsonArray();
+
+                // The pre-scan only counts files and warns about missing en-US resources, so a
+                // failure here must not stop the import - but it is logged rather than swallowed.
+                // An empty catch is forbidden outright by CLAUDE.md, and this file held three of
+                // them until the audit of 2026-09-02: a warning that never appeared looked exactly
+                // like a document with nothing wrong with it.
                 try
                 {
                     if (Directory.Exists(importPath))
                     {
-                        var rx = string.IsNullOrWhiteSpace(regexName) ? null : new Regex(regexName, RegexOptions.Compiled);
+                        var filter = Siemens.NameFilter.Parse(regexName);
                         var files = Directory.GetFiles(importPath, "*.s7dcl", SearchOption.TopDirectoryOnly);
                         foreach (var f in files)
                         {
                             var name = Path.GetFileNameWithoutExtension(f);
-                            if (rx != null && !rx.IsMatch(name))
+                            if (!filter.Matches(name))
                                 continue;
                             total++;
 
@@ -1047,11 +1052,17 @@ namespace TiaMcpServer.ModelContextProtocol
                                     });
                                 }
                             }
-                            catch { }
+                            catch (Exception scanFailure)
+                            {
+                                Logger?.LogWarning(scanFailure, "Could not read the en-US resources of '{Name}' in '{ImportPath}'", name, importPath);
+                            }
                         }
                     }
                 }
-                catch { /* ignore pre-scan errors */ }
+                catch (Exception scanFailure)
+                {
+                    Logger?.LogWarning(scanFailure, "The pre-scan of '{ImportPath}' failed; the import continues without its warnings", importPath);
+                }
 
                 if (progressToken != null)
                 {
@@ -1133,7 +1144,12 @@ namespace TiaMcpServer.ModelContextProtocol
                             progressToken
                         });
                     }
-                    catch { }
+                    catch (Exception notifyFailure)
+                    {
+                        // Already handling a failure: this one must not replace it, but a progress
+                        // channel that has quietly died is worth knowing about.
+                        Logger?.LogWarning(notifyFailure, "Could not send the failure notification for '{ImportPath}'", importPath);
+                    }
                 }
 
                 Logger?.LogError(ex, $"Failed importing documents from '{importPath}'");

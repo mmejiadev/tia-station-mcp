@@ -1552,16 +1552,12 @@ namespace TiaMcpServer.Siemens
                     {
                         if (regexName.IndexOfAny(_regexChars) >= 0)
                         {
-                            try
-                            {
-                                var regex = new Regex(regexName, RegexOptions.IgnoreCase);
-                                block = group.Blocks.FirstOrDefault(b => regex.IsMatch(b.Name)) as PlcBlock;
-                            }
-                            catch (Exception)
-                            {
-                                // Invalid regex, return null
-                                return null;
-                            }
+                            // Refused rather than returned as null: an invalid filter is not the
+                            // same answer as "there is no such block", and reporting it as one
+                            // sends the caller looking for a block instead of at their pattern.
+                            var filter = NameFilter.Parse(regexName);
+
+                            block = group.Blocks.FirstOrDefault(b => filter.Matches(b.Name)) as PlcBlock;
                         }
                         else
                         {
@@ -1602,16 +1598,11 @@ namespace TiaMcpServer.Siemens
                     {
                         if (regexName.IndexOfAny(_regexChars) >= 0)
                         {
-                            try
-                            {
-                                var regex = new Regex(regexName, RegexOptions.IgnoreCase);
-                                type = group.Types.FirstOrDefault(t => regex.IsMatch(t.Name)) as PlcType;
-                            }
-                            catch (Exception)
-                            {
-                                // Invalid regex, return null
-                                return null;
-                            }
+                            // Refused rather than returned as null: an invalid filter is not the
+                            // same answer as "there is no such type".
+                            var filter = NameFilter.Parse(regexName);
+
+                            type = group.Types.FirstOrDefault(t => filter.Matches(t.Name)) as PlcType;
                         }
                         else
                         {
@@ -2509,16 +2500,14 @@ namespace TiaMcpServer.Siemens
                         return imported;
                     }
 
-                    var rx = string.IsNullOrWhiteSpace(regexName)
-                        ? null
-                        : new Regex(regexName, RegexOptions.Compiled);
+                    var filter = NameFilter.Parse(regexName);
 
                     // Consider .s7dcl as the primary index; .s7res is optional supplemental
                     var files = dir.GetFiles("*.s7dcl", SearchOption.TopDirectoryOnly);
                     foreach (var file in files)
                     {
                         var name = Path.GetFileNameWithoutExtension(file.Name);
-                        if (rx != null && !rx.IsMatch(name))
+                        if (!filter.Matches(name))
                         {
                             continue;
                         }
@@ -3446,20 +3435,17 @@ namespace TiaMcpServer.Siemens
         {
             var anySuccess = false;
 
+            // Parsed once for the whole group rather than per item, and refused rather than
+            // caught: an invalid filter used to skip every entry silently, which returned a short
+            // list that looked complete. See NameFilter.
+            var filter = NameFilter.Parse(regexName);
+
             foreach (var composition in group.Devices)
             {
                 if (composition is Device device)
                 {
-                    try
+                    if (!filter.Matches(device.Name))
                     {
-                        if (!string.IsNullOrEmpty(regexName) && !Regex.IsMatch(device.Name, regexName, RegexOptions.IgnoreCase))
-                        {
-                            continue; // Skip this device if it doesn't match the pattern
-                        }
-                    }
-                    catch (Exception)
-                    {
-                        // Invalid regex pattern, skip this device
                         continue;
                     }
 
@@ -3481,20 +3467,17 @@ namespace TiaMcpServer.Siemens
         {
             var anySuccess = false;
 
+            // Parsed once for the whole group rather than per item, and refused rather than
+            // caught: an invalid filter used to skip every entry silently, which returned a short
+            // list that looked complete. See NameFilter.
+            var filter = NameFilter.Parse(regexName);
+
             foreach (var composition in group.Blocks)
             {
                 if (composition is PlcBlock block)
                 {
-                    try
+                    if (!filter.Matches(block.Name))
                     {
-                        if (!string.IsNullOrEmpty(regexName) && !Regex.IsMatch(block.Name, regexName, RegexOptions.IgnoreCase))
-                        {
-                            continue; // Skip this block if it doesn't match the pattern
-                        }
-                    }
-                    catch (Exception)
-                    {
-                        // Invalid regex pattern, skip this block
                         continue;
                     }
 
@@ -3516,20 +3499,17 @@ namespace TiaMcpServer.Siemens
         {
             var anySuccess = false;
 
+            // Parsed once for the whole group rather than per item, and refused rather than
+            // caught: an invalid filter used to skip every entry silently, which returned a short
+            // list that looked complete. See NameFilter.
+            var filter = NameFilter.Parse(regexName);
+
             foreach (var composition in group.Types)
             {
                 if (composition is PlcType type)
                 {
-                    try
+                    if (!filter.Matches(type.Name))
                     {
-                        if (!string.IsNullOrEmpty(regexName) && !Regex.IsMatch(type.Name, regexName, RegexOptions.IgnoreCase))
-                        {
-                            continue; // Skip this block if it doesn't match the pattern
-                        }
-                    }
-                    catch (Exception)
-                    {
-                        // Invalid regex pattern, skip this block
                         continue;
                     }
 
