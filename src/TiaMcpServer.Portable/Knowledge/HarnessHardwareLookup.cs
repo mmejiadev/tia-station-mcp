@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Text;
 using System.Text.Json;
 
 namespace TiaMcpServer.Knowledge
@@ -109,10 +110,16 @@ namespace TiaMcpServer.Knowledge
         /// <param name="question">What to ask.</param>
         /// <returns>The context its answer describes.</returns>
         /// <remarks>
-        /// Standard error is redirected and drained rather than ignored. A child process whose
-        /// error pipe fills up blocks writing to it, forever, while the parent waits for the output
-        /// pipe — a deadlock that appears only once the lookup has enough to say, which is to say
-        /// only when something is already wrong.
+        /// **Both pipes are drained asynchronously, and that is what makes the timeout mean
+        /// anything.** Reading standard output with <c>ReadToEnd</c> blocks until the child closes
+        /// it, so a lookup that started and then hung — the likeliest way for it to fail — never
+        /// reached the <c>WaitForExit</c> below at all, and the tool call waited for ever. Found in
+        /// the audit of 2026-09-02.
+        ///
+        /// Standard error is drained for a different reason, and both are needed: a child whose
+        /// error pipe fills up blocks writing to it, forever, while the parent waits on the output
+        /// pipe. That deadlock appears only once the lookup has enough to say, which is to say only
+        /// when something is already wrong.
         /// </remarks>
         private HardwareContext Ask(string question)
         {
@@ -123,10 +130,16 @@ namespace TiaMcpServer.Knowledge
                     return HardwareContext.Unavailable("the lookup produced no process");
                 }
 
-                lookup.ErrorDataReceived += (sender, line) => { };
-                lookup.BeginErrorReadLine();
+                var answer = new StringBuilder();
 
-                var answer = lookup.StandardOutput.ReadToEnd();
+                // Held while appending and while reading back: the handlers run on thread-pool
+                // threads, this method reads the builder on its own.
+                var pen = new object();
+
+                lookup.OutputDataReceived += (sender, line) => Collect(answer, pen, line.Data);
+                lookup.ErrorDataReceived += (sender, line) => { };
+                lookup.BeginOutputReadLine();
+                lookup.BeginErrorReadLine();
 
                 if (!lookup.WaitForExit((int)_timeout.TotalMilliseconds))
                 {
@@ -135,7 +148,32 @@ namespace TiaMcpServer.Knowledge
                     return HardwareContext.Unavailable($"the lookup did not answer within {_timeout.TotalSeconds:0} s");
                 }
 
-                return Read(answer, lookup.ExitCode);
+                // The overload with no timeout, after the one with a timeout has returned true: it
+                // is what waits for the readers to drain, and without it the last line of the
+                // answer can still be in flight when it is parsed.
+                lookup.WaitForExit();
+
+                lock (pen)
+                {
+                    return Read(answer.ToString(), lookup.ExitCode);
+                }
+            }
+        }
+
+        /// <summary>Appends one line of the answer, from whichever thread produced it.</summary>
+        /// <param name="answer">The answer so far.</param>
+        /// <param name="pen">What is held while writing to it.</param>
+        /// <param name="line">The line, or null at the end of the stream.</param>
+        private static void Collect(StringBuilder answer, object pen, string line)
+        {
+            if (line == null)
+            {
+                return;
+            }
+
+            lock (pen)
+            {
+                answer.AppendLine(line);
             }
         }
 
