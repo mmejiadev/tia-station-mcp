@@ -45,7 +45,15 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0-preview.4.25258.110" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
+
+    <!--
+      Pinned, not wanted directly. ModelContextProtocol 0.3.0-preview.4 asks for
+      Microsoft.Bcl.Memory 9.0.5, which carries GHSA-73j8-2gch-69rq (CVSS 7.5, denial of service,
+      patched in 9.0.14). A direct reference is how a transitive version is raised. Delete this
+      line once the MCP SDK is upgraded and stops asking for a vulnerable one.
+    -->
+    <PackageReference Include="Microsoft.Bcl.Memory" Version="10.0.11" />
     <PackageReference Include="ModelContextProtocol" Version="0.3.0-preview.4" />
     <PackageReference Include="Siemens.Collaboration.Net.OperatingSystem.Windows" Version="3.0.1725521661" />
     <PackageReference Include="Siemens.Collaboration.Net.TiaPortal.Openness.Resolver" Version="1.1.1725480302" />
