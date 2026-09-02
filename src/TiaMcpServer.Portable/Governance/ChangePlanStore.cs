@@ -15,10 +15,24 @@ namespace TiaMcpServer.Governance
     ///
     /// Taking a plan removes it: a confirmation is spent when it is used. Replaying one would let
     /// a single approval authorise a second write nobody looked at.
+    ///
+    /// **Every method holds one lock, and a concurrent collection would not do.** This store is a
+    /// singleton reached from two threads: a write started as a job runs on the thread pool through
+    /// <c>JobStore.Start</c>, while <c>ApplyChange</c> confirms a plan on the thread serving the
+    /// protocol. A <c>ConcurrentDictionary</c> would make each individual operation atomic, but the
+    /// invariant that matters is not one operation - <see cref="Take"/> is a lookup, a removal and
+    /// an expiry check that have to happen together, and <see cref="Pending"/> has to describe one
+    /// moment rather than a state that changed while it was being read. Contention is a handful of
+    /// operations per write, so the lock costs nothing measurable.
+    ///
+    /// **Nothing runs while the lock is held.** <see cref="Take"/> hands the caller the work to run;
+    /// running it - a compile, a download, minutes of TIA Portal - happens outside, or one slow
+    /// write would block every other thread that touched this store.
     /// </remarks>
     public sealed class ChangePlanStore
     {
         private readonly Dictionary<PlanId, PendingChange> _pending = new Dictionary<PlanId, PendingChange>();
+        private readonly object _gate = new object();
         private readonly ISystemClock _clock;
 
         /// <summary>Creates a store.</summary>
@@ -45,7 +59,10 @@ namespace TiaMcpServer.Governance
                 throw new ArgumentNullException(nameof(execute));
             }
 
-            _pending[plan.Id] = new PendingChange(plan, execute);
+            lock (_gate)
+            {
+                _pending[plan.Id] = new PendingChange(plan, execute);
+            }
         }
 
         /// <summary>Takes a plan out to run it.</summary>
@@ -58,14 +75,22 @@ namespace TiaMcpServer.Governance
         /// <exception cref="PortalException">No such plan, or it has expired.</exception>
         public PendingChange Take(PlanId id)
         {
-            if (!_pending.TryGetValue(id, out var pending))
-            {
-                throw new PortalException(
-                    PortalErrorCode.NotFound,
-                    $"No plan '{id}' is waiting. It may have been confirmed already, or expired, or never existed.");
-            }
+            PendingChange pending;
 
-            _pending.Remove(id);
+            // The lookup and the removal are one step on purpose. Two threads confirming the same
+            // identifier must not both come away with the work: whoever loses the race is told the
+            // plan is not waiting, which is true.
+            lock (_gate)
+            {
+                if (!_pending.TryGetValue(id, out pending))
+                {
+                    throw new PortalException(
+                        PortalErrorCode.NotFound,
+                        $"No plan '{id}' is waiting. It may have been confirmed already, or expired, or never existed.");
+                }
+
+                _pending.Remove(id);
+            }
 
             if (!pending.Plan.IsConfirmableAt(_clock.UtcNow))
             {
@@ -84,11 +109,14 @@ namespace TiaMcpServer.Governance
         {
             var now = _clock.UtcNow;
 
-            return _pending.Values
-                .Select(pending => pending.Plan)
-                .Where(plan => plan.IsConfirmableAt(now))
-                .OrderBy(plan => plan.Expiry)
-                .ToList();
+            lock (_gate)
+            {
+                return _pending.Values
+                    .Select(pending => pending.Plan)
+                    .Where(plan => plan.IsConfirmableAt(now))
+                    .OrderBy(plan => plan.Expiry)
+                    .ToList();
+            }
         }
 
         /// <summary>Forgets plans that can no longer be confirmed.</summary>
@@ -96,14 +124,20 @@ namespace TiaMcpServer.Governance
         public int PurgeExpired()
         {
             var now = _clock.UtcNow;
-            var expired = _pending.Where(entry => !entry.Value.Plan.IsConfirmableAt(now)).Select(entry => entry.Key).ToList();
-
-            foreach (var id in expired)
+            lock (_gate)
             {
-                _pending.Remove(id);
-            }
+                var expired = _pending
+                    .Where(entry => !entry.Value.Plan.IsConfirmableAt(now))
+                    .Select(entry => entry.Key)
+                    .ToList();
 
-            return expired.Count;
+                foreach (var id in expired)
+                {
+                    _pending.Remove(id);
+                }
+
+                return expired.Count;
+            }
         }
     }
 }
