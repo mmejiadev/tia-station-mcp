@@ -84,17 +84,18 @@ namespace TiaMcpServer.Governance
             }
 
             var plan = new ChangePlan(PlanId.Create(), Cite(request), _gate.Mode, now + PlanLifetime);
-
-            Record(plan, AuditOutcome.Planned, decision.Reason, now);
+            var unrecorded = Record(plan, AuditOutcome.Planned, decision.Reason, now);
 
             if (_gate.RequiredConfirmation == Confirmation.Manual)
             {
+                // No unrecorded plan can reach here: manual confirmation means Workshop Mode, and
+                // there Record does not catch at all - a trail it cannot write refuses the work.
                 _plans.Add(plan, execute);
 
                 return ChangeOutcome.AwaitingConfirmation(plan);
             }
 
-            return Run(plan, execute, now);
+            return Run(plan, execute, now, unrecorded);
         }
 
         /// <summary>Records a refusal and reports it.</summary>
@@ -110,10 +111,9 @@ namespace TiaMcpServer.Governance
         private ChangeOutcome Refuse(ChangeRequest request, PolicyDecision decision, DateTimeOffset now)
         {
             var plan = new ChangePlan(PlanId.Create(), request, _gate.Mode, now + PlanLifetime);
+            var unrecorded = Record(plan, AuditOutcome.Refused, decision.Reason, now);
 
-            Record(plan, AuditOutcome.Refused, decision.Reason, now);
-
-            return ChangeOutcome.Refused(decision.Reason, plan);
+            return ChangeOutcome.Refused(Combine(decision.Reason, unrecorded), plan);
         }
 
         /// <summary>Attaches what the documentation says about the change.</summary>
@@ -145,33 +145,60 @@ namespace TiaMcpServer.Governance
                 // A plan made in one mode confirmed in another describes work nobody approved.
                 var reason = $"Plan '{id}' was made in {pending.Plan.Mode} mode and this session is in {_gate.Mode}.";
 
-                Record(pending.Plan, AuditOutcome.Refused, reason, now);
+                var unrecorded = Record(pending.Plan, AuditOutcome.Refused, reason, now);
 
-                return ChangeOutcome.Refused(reason, pending.Plan);
+                return ChangeOutcome.Refused(Combine(reason, unrecorded), pending.Plan);
             }
 
-            return Run(pending.Plan, pending.Execute, now);
+            return Run(pending.Plan, pending.Execute, now, string.Empty);
         }
 
-        private ChangeOutcome Run(ChangePlan plan, Func<string> execute, DateTimeOffset now)
+        /// <summary>Runs a plan and records how it went.</summary>
+        /// <param name="plan">The plan to run.</param>
+        /// <param name="execute">What running it does.</param>
+        /// <param name="now">The current moment, in UTC.</param>
+        /// <param name="unrecorded">Anything earlier that could not be written down.</param>
+        /// <returns>The outcome, carrying every audit failure that reached it.</returns>
+        private ChangeOutcome Run(ChangePlan plan, Func<string> execute, DateTimeOffset now, string unrecorded)
         {
             try
             {
                 var result = execute();
+                var trouble = Combine(unrecorded, Record(plan, AuditOutcome.Applied, string.Empty, now));
 
-                Record(plan, AuditOutcome.Applied, string.Empty, now);
-
-                return ChangeOutcome.Applied(plan, result);
+                return ChangeOutcome.Applied(plan, result, trouble);
             }
             catch (Exception exception)
             {
                 // Recorded before rethrowing: a change that failed halfway is exactly the one
                 // somebody will need to find later, and it is the one least likely to be
                 // remembered.
-                Record(plan, AuditOutcome.Failed, exception.Message, now);
+                var trouble = Combine(unrecorded, Record(plan, AuditOutcome.Failed, exception.Message, now));
+
+                if (trouble.Length > 0)
+                {
+                    // The change failed and the failure could not be written down either. No
+                    // outcome is returned on this path, so the only place a caller is guaranteed to
+                    // look is the exception itself.
+                    exception.Data["auditFailure"] = trouble;
+                }
 
                 throw;
             }
+        }
+
+        /// <summary>Joins a reason with an audit failure, when there is one.</summary>
+        /// <param name="reason">What the caller was going to be told.</param>
+        /// <param name="unrecorded">The audit failure, or an empty string.</param>
+        /// <returns>Both, or just the reason.</returns>
+        private static string Combine(string reason, string unrecorded)
+        {
+            if (unrecorded.Length == 0)
+            {
+                return reason;
+            }
+
+            return reason.Length == 0 ? unrecorded : reason + " " + unrecorded;
         }
 
         /// <summary>
@@ -184,16 +211,28 @@ namespace TiaMcpServer.Governance
         /// the same failure is reported and the work continues: the worst case there is a
         /// simulation nobody can reconstruct.
         /// </remarks>
+        /// <param name="plan">What was decided.</param>
+        /// <param name="outcome">How it ended.</param>
+        /// <param name="detail">Why, when there is a why.</param>
+        /// <param name="now">The current moment, in UTC.</param>
+        /// <returns>Empty when the entry was written; why it was not, when it was not.</returns>
         /// <exception cref="PortalException">The trail could not be written, in Workshop Mode.</exception>
-        private void Record(ChangePlan plan, AuditOutcome outcome, string detail, DateTimeOffset now)
+        private string Record(ChangePlan plan, AuditOutcome outcome, string detail, DateTimeOffset now)
         {
             try
             {
                 _audit.Append(new AuditEntry(now, plan, outcome, detail));
+
+                return string.Empty;
             }
-            catch (PortalException) when (_gate.Mode == OperationMode.Study)
+            catch (PortalException failure) when (_gate.Mode == OperationMode.Study)
             {
-                // Reported through the outcome rather than swallowed: see ChangeOutcome.Detail.
+                // Handed back, never swallowed. Until the audit of 2026-09-02 this block was empty
+                // and its comment claimed the failure was reported through the outcome. Nothing
+                // reported it, so a Study run could lose entries with nobody told - and the
+                // workshop gate reads that trail to decide whether a machine may be switched on.
+                // Every caller now puts this into the outcome it returns.
+                return "The audit trail could not be written, so this change is not in it: " + failure.Message;
             }
         }
     }
