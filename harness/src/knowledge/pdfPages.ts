@@ -58,11 +58,16 @@ function joinItems(items: readonly { str?: string; hasEOL?: boolean }[]): string
 export async function readPdfPages(path: string): Promise<string[]> {
   const file = await readFile(path);
 
-  const document = await getDocument({
+  // The loading task is kept, not only its promise: destroying *it* is what releases the
+  // worker, and `PDFDocumentProxy.destroy` - which this used to call - was deprecated in
+  // pdfjs 5 and removed in 6. An undestroyed task leaks a worker per document, which on a
+  // corpus of manuals is how ingestion runs out of memory rather than how it fails.
+  const loadingTask = getDocument({
     data: new Uint8Array(file),
     useSystemFonts: false,
     standardFontDataUrl: StandardFontDirectory,
-  }).promise;
+  });
+  const document = await loadingTask.promise;
 
   try {
     const pages: string[] = [];
@@ -77,6 +82,6 @@ export async function readPdfPages(path: string): Promise<string[]> {
     return pages;
   }
   finally {
-    await document.destroy();
+    await loadingTask.destroy();
   }
 }
