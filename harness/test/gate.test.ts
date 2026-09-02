@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import type { AuditChainReport } from '../src/auditChain.ts';
 import type { AuditEntry } from '../src/auditTrail.ts';
 import { evaluateGate, type GateEvidence } from '../src/gate.ts';
 import type { RunStatistics } from '../src/telemetry.ts';
@@ -96,6 +97,37 @@ describe('workshop gate', () => {
     assert.equal(criterion(verdict, 3).met, true);
   });
 
+  it('refuses when the audit trail was edited after it was written', () => {
+    // Until 2026-09-02 this criterion read the trail without ever checking the hashes the server
+    // chains it with, so a trail with an entry rewritten reported "the audit is complete". The
+    // backups being on disk says nothing about whether the record of them still says what it said.
+    const chain = {
+      chained: 40,
+      unchained: 0,
+      brokenAtLine: 12,
+      reason: "the entry's own values do not match its hash - it was edited after it was written",
+      intact: false
+    };
+
+    const verdict = evaluateGate({ ...evidenceThatMeetsEverything(), chain });
+
+    assert.equal(verdict.open, false);
+    assert.equal(criterion(verdict, 3).met, false);
+    assert.match(criterion(verdict, 3).evidence, /breaks at line 12/);
+  });
+
+  it('does not refuse history written before chaining existed, and says how much of it there is', () => {
+    // A chain can only vouch for what it covered. Refusing the entries that predate it would make
+    // the criterion unmeetable for a reason nobody can fix; hiding them would imply they are
+    // verified, which is worse than saying they are not.
+    const chain = { chained: 40, unchained: 1200, brokenAtLine: 0, reason: '', intact: true };
+
+    const verdict = evaluateGate({ ...evidenceThatMeetsEverything(), chain });
+
+    assert.equal(criterion(verdict, 3).met, true);
+    assert.match(criterion(verdict, 3).evidence, /1200 earlier entr\(ies\) predate chaining/);
+  });
+
   it('refuses when the clean-compilation rate falls beyond the tolerance', () => {
     // Ten runs at 100%, then ten at 50%: a fall of fifty points against a tolerated ten.
     const runs = [...passingRuns(40), ...decliningRuns(41, 10)];
@@ -167,9 +199,15 @@ function evidenceThatMeetsEverything(): GateEvidence {
     runs: passingRuns(50),
     unfinishedIterations: 0,
     audit: { entries: [entry({})], unreadableLines: [] },
+    chain: intactChain(),
     backupExists: () => true,
     review: { date: '2026-09-01', reviewer: 'the supervising teacher' }
   };
+}
+
+/** A chain that holds over everything in the trail. */
+function intactChain(): AuditChainReport {
+  return { chained: 1, unchained: 0, brokenAtLine: 0, reason: '', intact: true };
 }
 
 function criterion(verdict: { criteria: readonly { number: number; met: boolean; evidence: string }[] }, number: number) {

@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { verifyAuditChain, type AuditChainReport } from './auditChain.ts';
 
 /**
  * How the server recorded the fate of one planned change.
@@ -78,6 +79,24 @@ export function readAuditTrail(path: string): AuditReadResult {
   });
 
   return { entries, unreadableLines };
+}
+
+/**
+ * Checks the hash chain of a trail on disk.
+ *
+ * @param path The trail, one JSON object per line.
+ * @returns What the check found.
+ * @remarks
+ * Separate from {@link readAuditTrail}, and it reads the file a second time. The two answer
+ * different questions — what was written, and whether what was written was afterwards edited — and
+ * the second one is the reason `AuditReadResult` does not simply grow a field: every caller that
+ * builds one by hand would then have to state a verdict on a chain it never looked at.
+ *
+ * A missing file throws, for the same reason as {@link readAuditTrail}: "there is no file" means
+ * nobody knows, not "nothing was written".
+ */
+export function readAuditChain(path: string): AuditChainReport {
+  return verifyAuditChain(readFileSync(path, 'utf8').split('\n'));
 }
 
 /** One line, or nothing when it is not an entry. */
