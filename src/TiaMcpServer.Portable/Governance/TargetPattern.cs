@@ -57,7 +57,12 @@ namespace TiaMcpServer.Governance
             // Everything escaped, then only the wildcard put back. Building the expression this
             // way means a pattern containing regex punctuation is treated as the literal text a
             // reader of the policy file would expect.
-            var expression = "^" + Regex.Escape(pattern).Replace("\\*", ".*") + "$";
+            //
+            // Anchored with \A and \z rather than ^ and $. In .NET, $ also matches immediately
+            // before a trailing newline, so "PLC_0/Blocks/*" accepted a target ending in one
+            // as though it were not there. A whitelist that matches a string it was never
+            // shown is not a whitelist. Found in the audit of 2026-09-02.
+            var expression = @"\A" + Regex.Escape(pattern).Replace("\\*", ".*") + @"\z";
 
             return new Regex(expression, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         }

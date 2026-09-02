@@ -118,6 +118,19 @@ namespace TiaMcpServer.Governance.Tests
             }
         }
 
+        [TestMethod]
+        public void Decide_ATargetWithATrailingNewline_IsStillOffTheAllowList()
+        {
+            // In .NET the $ anchor also matches immediately before a trailing newline, so the
+            // pattern "PLC_0/Blocks/*" used to accept a target carrying one. A whitelist that
+            // matches a string it was never shown is not a whitelist. Audit of 2026-09-02.
+            var policy = PolicyFor(OperationMode.Study, allow: new[] { "PLC_0/Blocks/*" }, deny: Array.Empty<string>());
+
+            var decision = policy.Decide(OperationMode.Study, "PLC_0/Blocks/FB_Station" + (char)10);
+
+            Assert.IsFalse(decision.IsAllowed, decision.Reason);
+        }
+
         private static WritePolicy PolicyFor(OperationMode mode, string[] allow, string[] deny)
         {
             return new WritePolicy(new Dictionary<OperationMode, ModeRules>
