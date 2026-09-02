@@ -30,8 +30,8 @@ namespace TiaMcpServer.Governance.Tests
             var response = GuardedTool.Run(
                 guard,
                 Request(AllowedTarget),
-                () => new ResponseWriteScl(new[] { "FB_Station" }) { Message = "Generated 1 block(s)" },
-                () => new ResponseWriteScl(Array.Empty<string>()));
+                () => new StubToolResponse(new[] { "FB_Station" }) { Message = "Generated 1 block(s)" },
+                () => new StubToolResponse(Array.Empty<string>()));
 
             Assert.AreEqual(1, response.GeneratedBlocks.Count);
             Assert.AreEqual("Generated 1 block(s)", response.Message);
@@ -46,8 +46,8 @@ namespace TiaMcpServer.Governance.Tests
             var response = GuardedTool.Run(
                 guard,
                 Request(ForbiddenTarget),
-                () => { ran = true; return new ResponseWriteScl(new[] { "FB_Estop" }); },
-                () => new ResponseWriteScl(Array.Empty<string>()));
+                () => { ran = true; return new StubToolResponse(new[] { "FB_Estop" }); },
+                () => new StubToolResponse(Array.Empty<string>()));
 
             Assert.IsFalse(ran, "a refused change must not reach the Openness API at all");
             Assert.AreEqual(0, response.GeneratedBlocks.Count);
@@ -64,8 +64,8 @@ namespace TiaMcpServer.Governance.Tests
             var response = GuardedTool.Run(
                 guard,
                 Request(ForbiddenTarget),
-                () => new ResponseWriteScl(Array.Empty<string>()),
-                () => new ResponseWriteScl(Array.Empty<string>()));
+                () => new StubToolResponse(Array.Empty<string>()),
+                () => new StubToolResponse(Array.Empty<string>()));
 
             Assert.IsNotNull(response.Meta);
             Assert.AreEqual(false, response.Meta!["success"]!.GetValue<bool>());
@@ -81,8 +81,8 @@ namespace TiaMcpServer.Governance.Tests
             var response = GuardedTool.Run(
                 guard,
                 Request(AllowedTarget),
-                () => { ran = true; return new ResponseWriteScl(new[] { "FB_Station" }); },
-                () => new ResponseWriteScl(Array.Empty<string>()));
+                () => { ran = true; return new StubToolResponse(new[] { "FB_Station" }); },
+                () => new StubToolResponse(Array.Empty<string>()));
 
             Assert.IsFalse(ran, "nothing may be written before a person confirms it");
             Assert.AreEqual(
@@ -98,11 +98,11 @@ namespace TiaMcpServer.Governance.Tests
             // would contradict the record. That is a defect in the tool, not a policy decision.
             var guard = GuardFor(OperationMode.Study);
 
-            Assert.ThrowsException<PortalException>(() => GuardedTool.Run<ResponseWriteScl>(
+            Assert.ThrowsException<PortalException>(() => GuardedTool.Run<StubToolResponse>(
                 guard,
                 Request(AllowedTarget),
                 () => null!,
-                () => new ResponseWriteScl(Array.Empty<string>())));
+                () => new StubToolResponse(Array.Empty<string>())));
         }
 
         private static ChangeRequest Request(string target)

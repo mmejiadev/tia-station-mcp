@@ -33,7 +33,7 @@ namespace TiaMcpServer.Spec
     /// compiler as <c>{{stationName}}</c> and come back as a syntax error pointing at generated code,
     /// which is the least useful place to be told about a typo in a template.
     /// </remarks>
-    public sealed class SclTemplateExpander
+    public static class SclTemplateExpander
     {
         private const string StationsRegion = "stations";
         private const string HandoversRegion = "handovers";
@@ -49,7 +49,7 @@ namespace TiaMcpServer.Spec
         /// <exception cref="ArgumentException"><paramref name="template"/> is empty.</exception>
         /// <exception cref="ArgumentNullException"><paramref name="cell"/> is null.</exception>
         /// <exception cref="PortalException">A region is malformed, or a placeholder has no value.</exception>
-        public string Expand(string template, CellSpecification cell)
+        public static string Expand(string template, CellSpecification cell)
         {
             if (string.IsNullOrWhiteSpace(template))
             {

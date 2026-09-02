@@ -45,7 +45,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\TiaMcpServer\TiaMcpServer.csproj" />
+    <ProjectReference Include="..\..\src\TiaMcpServer.Portable\TiaMcpServer.Portable.csproj" />
   </ItemGroup>
 
   <ItemGroup>

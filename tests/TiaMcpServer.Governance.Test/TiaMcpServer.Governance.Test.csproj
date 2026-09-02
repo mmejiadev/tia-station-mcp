@@ -19,9 +19,13 @@
     that stops being checked. That is only true if they live outside that assembly — hence this
     project.
 
-    Nothing here may take a dependency that needs TIA Portal at run time. The reference below is
-    to our own assembly, and the governance types touch no Openness type, so Siemens.Engineering
-    is never loaded.
+    Nothing here may take a dependency that needs TIA Portal at run time, and since 2026-09-02
+    nothing here may take one that needs it at *build* time either. The reference below is to
+    TiaMcpServer.Portable, which references no Siemens package at all — not to TiaMcpServer, which
+    references the Openness resolver and therefore cannot be compiled on a machine without a
+    licence. That one line is what puts these tests on a hosted CI runner; pointing it back at
+    TiaMcpServer would take them off it again without breaking anything locally, which is exactly
+    how it would happen.
 
     No inherited debt: this project is new, and a real finding here gets fixed rather than
     suppressed. CA1307 was the first, and it was fixed by using the StringComparison overload.
@@ -41,7 +45,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\TiaMcpServer\TiaMcpServer.csproj" />
+    <ProjectReference Include="..\..\src\TiaMcpServer.Portable\TiaMcpServer.Portable.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,0 +1,66 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The half of the server that never talks to TIA Portal.
+
+    Governance, the cell specification, the job store, the hardware knowledge lookup and the error
+    model. Not one type here references Siemens.Engineering, and this project does not reference the
+    Openness resolver — which is the whole point, and it is a safety property rather than tidiness.
+
+    TiaMcpServer.csproj references the Openness resolver, which locates Siemens.Engineering.dll from
+    an installed TIA Portal at *build* time. Anything that references that project therefore needs
+    TIA Portal to compile, even code that never calls it. That is how the governance and spec tests
+    ended up impossible to build on a machine without a licence, while CLAUDE.md says in as many
+    words that a safety rule which can only be checked on a licensed machine is a safety rule that
+    stops being checked. Splitting this assembly out is what makes those 149 tests runnable on a
+    hosted CI runner.
+
+    So the rule for this project is short: **nothing here may reference TiaMcpServer, and no package
+    reference may drag in the Openness resolver.** A ProjectReference back to TiaMcpServer would not
+    fail the build — it would quietly undo the reason this project exists.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <BaseOutputPath>.\bin</BaseOutputPath>
+  </PropertyGroup>
+
+  <!--
+    Two repository-wide style decisions, already taken and justified in
+    src/TiaMcpServer/TiaMcpServer.csproj. Repeating them is better than having the same code style
+    pass in one project and fail in another. This is not a debt ledger and must not become one: the
+    code here is ours, and a real finding gets fixed rather than suppressed.
+  -->
+  <PropertyGroup>
+    <NoWarn>$(NoWarn);IDE0008</NoWarn>  <!-- var: CLAUDE.md asks for judgement the analyzer cannot make -->
+    <NoWarn>$(NoWarn);CA1861</NoWarn>   <!-- constant arrays as arguments: a hot-path concern -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Text.Json" Version="10.0.0-preview.4.25258.110" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      SimulationTagValueParser turns the text of a tag write into a value and needs neither TIA
+      Portal nor PLCSIM, so it lives here and can be tested anywhere. It stays internal, and the
+      two assemblies that legitimately reach it are named rather than the type made public:
+      TiaMcpServer, whose SimulationTagAccess calls it, and the test project.
+
+      This is not a convenience. NumberStyles.Any was used there first and parsed '1,5' as 15 under
+      the invariant culture, which is the exact mistake the class exists to reject; it survived
+      because nothing could reach the type to test it.
+    -->
+    <InternalsVisibleTo Include="TiaMcpServer" />
+    <InternalsVisibleTo Include="TiaMcpServer.Spec.Test" />
+
+    <!--
+      HardwareContext.WithOutcome exists only so the governance tests can build an outcome no
+      factory can produce, and assert that the exhaustive switch throws on it. Making the type's
+      constructor public to reach that one rule would open the very hole the factories close: a
+      context claiming to be "cited" with nothing to cite.
+    -->
+    <InternalsVisibleTo Include="TiaMcpServer.Governance.Test" />
+  </ItemGroup>
+
+</Project>

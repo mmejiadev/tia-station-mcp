@@ -284,7 +284,7 @@ explicit confirmation. See [`CLAUDE.md`](CLAUDE.md).
 ### Nothing is written without a policy
 
 Every tool that changes the project, a virtual controller, or the project on disk goes through
-the governance layer in `src/TiaMcpServer/Governance/`. The sequence never varies: check the
+the governance layer in `src/TiaMcpServer.Portable/Governance/`. The sequence never varies: check the
 policy, make a plan, record it in the audit trail, then run it.
 
 **A missing policy denies every write.** That is not an oversight to work around: the absence of

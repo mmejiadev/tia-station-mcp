@@ -94,6 +94,24 @@ namespace TiaMcpServer.Governance.Tests
         }
     }
 
+    /// <summary>What a write tool hands back, in the shape the guard has to preserve.</summary>
+    /// <remarks>
+    /// A double rather than a real response type, and not only to keep this project free of the
+    /// assembly that needs TIA Portal to build. <see cref="ModelContextProtocol.GuardedTool"/> is
+    /// generic over <see cref="ModelContextProtocol.ResponseMessage"/> and knows nothing about any
+    /// particular tool, so a test that named one would be asserting about WriteScl by accident.
+    /// </remarks>
+    internal sealed class StubToolResponse : ModelContextProtocol.ResponseMessage
+    {
+        public StubToolResponse(IReadOnlyList<string> generatedBlocks)
+        {
+            GeneratedBlocks = generatedBlocks;
+        }
+
+        /// <summary>The payload a refusal must not produce.</summary>
+        public IReadOnlyList<string> GeneratedBlocks { get; }
+    }
+
     /// <summary>A lookup that breaks the way a real one breaks: it reports, it does not throw.</summary>
     internal sealed class BrokenHardwareLookup : IHardwareLookup
     {

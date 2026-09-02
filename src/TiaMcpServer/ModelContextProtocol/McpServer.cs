@@ -817,17 +817,16 @@ namespace TiaMcpServer.ModelContextProtocol
             try
             {
                 var cell = Spec.CellSpecificationFile.Load(cellPath);
-                var expander = new Spec.SclTemplateExpander();
 
-                var stationPattern = expander.Expand(ReadPattern(patternDirectory, "station.scl.tmpl"), cell);
-                var coordinator = expander.Expand(ReadPattern(patternDirectory, "coordinator.scl.tmpl"), cell);
+                var stationPattern = Spec.SclTemplateExpander.Expand(ReadPattern(patternDirectory, "station.scl.tmpl"), cell);
+                var coordinator = Spec.SclTemplateExpander.Expand(ReadPattern(patternDirectory, "coordinator.scl.tmpl"), cell);
                 var scl = stationPattern + Environment.NewLine + coordinator;
 
                 if (includeEntryPoint)
                 {
                     // Last, and it has to be: the data block is an instance of the coordinator, so
                     // a source declaring it before the block it instantiates does not compile.
-                    scl += Environment.NewLine + expander.Expand(ReadPattern(patternDirectory, "main.scl.tmpl"), cell);
+                    scl += Environment.NewLine + Spec.SclTemplateExpander.Expand(ReadPattern(patternDirectory, "main.scl.tmpl"), cell);
                 }
 
                 return new ResponseCellScl(cell.Name, cell.Stations.Select(item => item.Name).ToList(), scl)

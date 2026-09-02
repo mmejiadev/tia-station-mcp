@@ -1,15 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Text.Json.Nodes;
 
 namespace TiaMcpServer.ModelContextProtocol
 {
-    public class ResponseMessage
-    {
-        public string? Message { get; set; }
-        public JsonObject? Meta { get; set; }
-    }
-
     public class ResponseAttributes : ResponseMessage
     {
         public IEnumerable<Attribute>? Attributes { get; set; }
