@@ -89,12 +89,12 @@ namespace TiaMcpServer.Siemens
 
                 if (blockGroup != null)
                 {
-                    var path = blockPath.Contains("/") ? blockPath.Substring(0, blockPath.LastIndexOf("/")) : string.Empty;
-                    var regexName = blockPath.Contains("/") ? blockPath.Substring(blockPath.LastIndexOf("/") + 1) : blockPath;
+                    var target = ProjectPath.Parse(blockPath);
+                    var regexName = target.Name;
 
                     PlcBlock? block = null;
 
-                    var group = GetPlcBlockGroupByPath(softwarePath, path);
+                    var group = GetPlcBlockGroupByPath(softwarePath, target.Parent);
                     if (group != null)
                     {
                         if (regexName.IndexOfAny(_regexChars) >= 0)

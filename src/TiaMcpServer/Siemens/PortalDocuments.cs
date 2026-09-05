@@ -195,12 +195,11 @@ namespace TiaMcpServer.Siemens
                         // Export code blocks as documents
                         // https://docs.tia.siemens.cloud/r/en-us/v20/creating-and-managing-blocks/exporting-and-importing-blocks-in-simatic-sd-format-s7-1200-s7-1500/exporting-and-importing-blocks-in-simatic-sd-format-s7-1200-s7-1500
 
-                        var groupPath = blockPath.Contains("/") ? blockPath.Substring(0, blockPath.LastIndexOf("/")) : string.Empty;
-                        var blockName = blockPath.Contains("/") ? blockPath.Substring(blockPath.LastIndexOf("/") + 1) : blockPath;
+                        var target = ProjectPath.Parse(blockPath);
+                        var groupPath = target.Parent;
+                        var blockName = target.Name;
 
                         var group = GetPlcBlockGroupByPath(softwarePath, groupPath);
-
-                        //group?.Blocks.ForEach(b => Console.WriteLine($"Block: {b.Name}, Type: {b.GetType().Name}"));
 
                         // join exportPath and groupPath
                         if (!Directory.Exists(exportPath))

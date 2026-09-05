@@ -69,12 +69,12 @@ namespace TiaMcpServer.Siemens
 
                 if (typeGroup != null)
                 {
-                    var path = typePath.Contains("/") ? typePath.Substring(0, typePath.LastIndexOf("/")) : string.Empty;
-                    var regexName = typePath.Contains("/") ? typePath.Substring(typePath.LastIndexOf("/") + 1) : typePath;
+                    var target = ProjectPath.Parse(typePath);
+                    var regexName = target.Name;
 
                     PlcType? type = null;
 
-                    var group = GetPlcTypeGroupByPath(softwarePath, path);
+                    var group = GetPlcTypeGroupByPath(softwarePath, target.Parent);
                     if (group != null)
                     {
                         if (regexName.IndexOfAny(_regexChars) >= 0)
