@@ -1,9 +1,74 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-09-02**
+> Last updated: **2026-09-03**
 
 ## ▶ RESUME HERE
+
+### Where the work stopped — 2026-09-03, end of session
+
+**The second half of F2 is under way: `PlcBlock` no longer leaves the portal layer, and
+`ModelContextProtocol/` no longer contains a single `using Siemens.Engineering`.** Everything is in
+the working tree and nothing is committed; the branch is `work/portable-split-and-audit`, whose
+twelve earlier commits are pushed and ahead of `main`.
+
+```
+the block descriptions
+  src/TiaMcpServer/Siemens/BlockDescription.cs        new  what a block is, once it is detached
+  src/TiaMcpServer/Siemens/BlockGroupDescription.cs   new  a group and everything under it
+  src/TiaMcpServer/Siemens/ObjectAttribute.cs         new  one attribute, read rather than referenced
+  src/TiaMcpServer/Siemens/BlockDescriber.cs          new  the translation, in the layer that may do it
+  src/TiaMcpServer/Siemens/EngineeringAttributeReader.cs new  moved down from Helper.cs
+  src/TiaMcpServer/IsExternalInit.cs                  new  so a DTO can be immutable on net48
+
+the option that was an Openness enum in the MCP layer
+  src/TiaMcpServer/Siemens/ImportDocumentOption.cs    new  string to ImportDocumentOptions, with the aliases
+  tests/TiaMcpServer.Test/Test23ImportOptions.cs      new  8 cases, one of them the refusal
+
+the layers themselves
+  src/TiaMcpServer/Siemens/Portal.cs                  mod  GetBlock, GetBlocks, GetBlockHierarchy,
+                                                           ExportBlock(s), ImportBlocksFromDocuments
+                                                           all return descriptions; the finders are private
+  src/TiaMcpServer/ModelContextProtocol/McpServer.cs  mod  eight copies of the same translation, now one
+  src/TiaMcpServer/ModelContextProtocol/McpServerWrites.cs mod  passes the option as a word, maps PortalException
+  src/TiaMcpServer/ModelContextProtocol/Responses.cs  mod  ObjectAttribute, BlockGroupDescription, Path
+  src/TiaMcpServer/ModelContextProtocol/Helper.cs     del  its two methods now live in the portal layer
+  src/TiaMcpServer/ModelContextProtocol/Types.cs      del  Attribute shadowed System.Attribute; gone
+  tests/TiaMcpServer.Test/Test4Software.cs            mod  4 tests on what a description must carry
+```
+
+**Everything is green.** Solution builds with **0 warnings**; governance **113/113**, specification
+**44/44**, TIA **148/152 in 6 m 08 s** with 4 skipped and 0 failing, and no orphan portal process
+afterwards — the process list was checked, not assumed.
+
+**A new test found a real defect rather than confirming the refactor.**
+`GetBlock("1_Tests/FC_Block_1")` described that block with the path
+`Program blocks/1_Tests/FC_Block_1`, which no tool accepts as input: the inherited group walker
+tests the *original* group for `PlcBlockSystemGroup` instead of the one it has climbed to, so it
+never stops below the root. The suggestions that `ExportBlock` offers on a not-found path came from
+that same call, so every "Did you mean" it has ever printed was unusable. `GetBlockPath` now walks
+with `GetUserBlockGroupPath` and stops at the system group. `GetPlcBlockGroupPath` was deliberately
+left as it is: it lays out the directories of a preserve-path export, where the extra folder is
+harmless and changing it would move every file an existing snapshot already wrote.
+
+**A test that passes by not running is worse than one that fails.** The first version of
+`Test23ImportOptions` named `ImportDocumentOptions` in a `[DataRow]` and in a method signature.
+VSTest reads that metadata while discovering tests, before `AssemblyInitialize` has resolved
+Openness, so the whole class was skipped with a message in the log and a green summary. The options
+travel through those tests as strings now.
+
+**The next action, exactly.** The same treatment for what is left, in this order, one Portal method
+at a time with its `Test<Area>` case: **types** (`GetType`, `GetTypes`, `ExportType`, `ExportTypes`
+— the mirror image of the blocks, so `TypeDescription` and a `TypeDescriber` alongside the ones
+written today), then **devices** (`GetDevice`, `GetDeviceItem`, `GetDevices`), then
+**project and session** (`GetProjects`, `GetSessions`, `GetPlcSoftware`). Those nine methods still
+hand Openness objects to `McpServer.cs`, which reads them through
+`EngineeringAttributeReader.Read` — the reference is gone from the `using` list but the objects
+still cross, and F2 is not closed until they do not.
+
+**Left running on the machine at the end of the session**: nothing.
+
+---
 
 ### Where the work stopped — 2026-09-02, end of session
 

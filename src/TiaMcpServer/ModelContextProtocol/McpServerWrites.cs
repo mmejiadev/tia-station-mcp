@@ -937,7 +937,9 @@ namespace TiaMcpServer.ModelContextProtocol
                     throw new McpException("ImportFromDocuments requires TIA Portal V20 or newer", McpErrorCode.InvalidParams);
                 }
 
-                var option = ParseImportDocumentOption(importOption);
+                // Refused before a plan exists: a mistyped option is invalid input, not a change
+                // that failed halfway through an import.
+                TiaMcpServer.Siemens.ImportDocumentOption.Validate(importOption);
 
                 // Pre-check .s7res for missing en-US tags
                 var warnings = new JsonArray();
@@ -969,7 +971,7 @@ namespace TiaMcpServer.ModelContextProtocol
                     request,
                     () =>
                     {
-                        if (!Portal.ImportFromDocuments(softwarePath, groupPath, importPath, fileNameWithoutExtension, option))
+                        if (!Portal.ImportFromDocuments(softwarePath, groupPath, importPath, fileNameWithoutExtension, importOption))
                         {
                             throw new McpException($"Failed importing '{fileNameWithoutExtension}' from '{importPath}'", McpErrorCode.InternalError);
                         }
@@ -986,6 +988,10 @@ namespace TiaMcpServer.ModelContextProtocol
                         };
                     },
                     () => new ResponseImportFromDocuments());
+            }
+            catch (TiaMcpServer.Siemens.PortalException pex)
+            {
+                throw ToMcpException(pex, $"Failed importing '{fileNameWithoutExtension}' from '{importPath}'");
             }
             catch (Exception ex) when (ex is not McpException)
             {
@@ -1075,7 +1081,10 @@ namespace TiaMcpServer.ModelContextProtocol
                     });
                 }
 
-                var option = ParseImportDocumentOption(importOption);
+                // Refused before a plan exists: a mistyped option is invalid input, not a change
+                // that failed halfway through an import.
+                TiaMcpServer.Siemens.ImportDocumentOption.Validate(importOption);
+
                 var request = new Governance.ChangeRequest(
                     "ImportBlocksFromDocuments",
                     ChangeTarget.Program(softwarePath, groupPath),
@@ -1089,7 +1098,7 @@ namespace TiaMcpServer.ModelContextProtocol
                     request,
                     () =>
                     {
-                        var imported = Portal.ImportBlocksFromDocuments(softwarePath, groupPath, importPath, regexName, option);
+                        var imported = Portal.ImportBlocksFromDocuments(softwarePath, groupPath, importPath, regexName, importOption);
                         var items = DescribeBlocks(imported);
 
                         return new ResponseImportBlocksFromDocuments
@@ -1150,6 +1159,13 @@ namespace TiaMcpServer.ModelContextProtocol
                         // channel that has quietly died is worth knowing about.
                         Logger?.LogWarning(notifyFailure, "Could not send the failure notification for '{ImportPath}'", importPath);
                     }
+                }
+
+                if (ex is TiaMcpServer.Siemens.PortalException pex)
+                {
+                    // A refused import option is invalid input, not a broken environment, and
+                    // telling the caller to retry it would be wrong.
+                    throw ToMcpException(pex, $"Failed importing documents from '{importPath}'");
                 }
 
                 Logger?.LogError(ex, $"Failed importing documents from '{importPath}'");

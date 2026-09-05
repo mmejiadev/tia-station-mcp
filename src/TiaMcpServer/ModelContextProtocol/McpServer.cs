@@ -3,8 +3,6 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using Siemens.Engineering.SW;
-using Siemens.Engineering.SW.Blocks;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -324,7 +322,7 @@ namespace TiaMcpServer.ModelContextProtocol
                 var responseList = new List<ResponseProjectInfo>();
                 foreach (var project in list)
                 {
-                    var attributes = Helper.GetAttributeList(project);
+                    var attributes = EngineeringAttributeReader.Read(project);
 
                     if (project != null)
                     {
@@ -968,7 +966,12 @@ namespace TiaMcpServer.ModelContextProtocol
             return message;
         }
 
-        private static List<ResponseBlockInfo> DescribeBlocks(IEnumerable<PlcBlock>? blocks)
+        /// <remarks>
+        /// The portal layer has already read everything; this only reshapes it into the response
+        /// contract. It used to read the blocks itself, from live <c>PlcBlock</c> objects, at eight
+        /// sites with eight copies of the same dozen assignments.
+        /// </remarks>
+        private static List<ResponseBlockInfo> DescribeBlocks(IEnumerable<BlockDescription>? blocks)
         {
             var described = new List<ResponseBlockInfo>();
 
@@ -979,28 +982,29 @@ namespace TiaMcpServer.ModelContextProtocol
 
             foreach (var block in blocks)
             {
-                if (block == null)
-                {
-                    continue;
-                }
-
-                described.Add(new ResponseBlockInfo
-                {
-                    Name = block.Name,
-                    TypeName = block.GetType().Name,
-                    Namespace = block.Namespace,
-                    ProgrammingLanguage = Enum.GetName(typeof(ProgrammingLanguage), block.ProgrammingLanguage),
-                    MemoryLayout = Enum.GetName(typeof(MemoryLayout), block.MemoryLayout),
-                    IsConsistent = block.IsConsistent,
-                    HeaderName = block.HeaderName,
-                    ModifiedDate = block.ModifiedDate,
-                    IsKnowHowProtected = block.IsKnowHowProtected,
-                    Attributes = Helper.GetAttributeList(block),
-                    Description = block.ToString()
-                });
+                described.Add(Describe(block));
             }
 
             return described;
+        }
+
+        private static ResponseBlockInfo Describe(BlockDescription block)
+        {
+            return new ResponseBlockInfo
+            {
+                Name = block.Name,
+                Path = block.Path,
+                TypeName = block.TypeName,
+                Namespace = block.Namespace,
+                ProgrammingLanguage = block.ProgrammingLanguage,
+                MemoryLayout = block.MemoryLayout,
+                IsConsistent = block.IsConsistent,
+                HeaderName = block.HeaderName,
+                ModifiedDate = block.ModifiedDate,
+                IsKnowHowProtected = block.IsKnowHowProtected,
+                Attributes = block.Attributes,
+                Description = block.Description
+            };
         }
 
         private static McpException ToMcpException(TiaMcpServer.Siemens.PortalException portalException, string fallbackMessage)
@@ -1088,7 +1092,7 @@ namespace TiaMcpServer.ModelContextProtocol
 
                 if (device != null)
                 {
-                    var attributes = Helper.GetAttributeList(device);
+                    var attributes = EngineeringAttributeReader.Read(device);
 
                     return new ResponseDeviceInfo
                     {
@@ -1127,7 +1131,7 @@ namespace TiaMcpServer.ModelContextProtocol
 
                 if (deviceItem != null)
                 {
-                    var attributes = Helper.GetAttributeList(deviceItem);
+                    var attributes = EngineeringAttributeReader.Read(deviceItem);
 
                     return new ResponseDeviceItemInfo
                     {
@@ -1170,7 +1174,7 @@ namespace TiaMcpServer.ModelContextProtocol
                     {
                         if (device != null)
                         {
-                            var attributes = Helper.GetAttributeList(device);
+                            var attributes = EngineeringAttributeReader.Read(device);
                             responseList.Add(new ResponseDeviceInfo
                             {
                                 Name = device.Name,
@@ -1219,7 +1223,7 @@ namespace TiaMcpServer.ModelContextProtocol
                 if (software != null)
                 {
 
-                    var attributes = Helper.GetAttributeList(software);
+                    var attributes = EngineeringAttributeReader.Read(software);
 
                     return new ResponseSoftwareInfo
                     {
@@ -1297,28 +1301,15 @@ namespace TiaMcpServer.ModelContextProtocol
                 var block = Portal.GetBlock(softwarePath, blockPath);
                 if (block != null)
                 {
-                    var attributes = Helper.GetAttributeList(block);
-
-                    return new ResponseBlockInfo
+                    var info = Describe(block);
+                    info.Message = $"Block info retrieved from '{blockPath}' in '{softwarePath}'";
+                    info.Meta = new JsonObject
                     {
-                        Message = $"Block info retrieved from '{blockPath}' in '{softwarePath}'",
-                        Name = block.Name,
-                        TypeName = block.GetType().Name,
-                        Namespace = block.Namespace,
-                        ProgrammingLanguage = Enum.GetName(typeof(ProgrammingLanguage),block.ProgrammingLanguage),
-                        MemoryLayout = Enum.GetName(typeof(MemoryLayout), block.MemoryLayout),
-                        IsConsistent = block.IsConsistent,
-                        HeaderName = block.HeaderName,
-                        ModifiedDate = block.ModifiedDate,
-                        IsKnowHowProtected = block.IsKnowHowProtected,
-                        Attributes = attributes,
-                        Description = block.ToString(),
-                        Meta = new JsonObject
-                        {
-                            ["timestamp"] = DateTime.Now,
-                            ["success"] = true
-                        }
+                        ["timestamp"] = DateTime.Now,
+                        ["success"] = true
                     };
+
+                    return info;
                 }
                 else
                 {
@@ -1343,29 +1334,7 @@ namespace TiaMcpServer.ModelContextProtocol
             {
                 var list = Portal.GetBlocks(softwarePath, regexName);
 
-                var responseList = new List<ResponseBlockInfo>();
-                foreach (var block in list)
-                {
-                    if (block != null)
-                    {
-                        var attributes = Helper.GetAttributeList(block);
-
-                        responseList.Add(new ResponseBlockInfo
-                        {
-                            Name = block.Name,
-                            TypeName = block.GetType().Name,
-                            Namespace = block.Namespace,
-                            ProgrammingLanguage = Enum.GetName(typeof(ProgrammingLanguage), block.ProgrammingLanguage),
-                            MemoryLayout = Enum.GetName(typeof(MemoryLayout), block.MemoryLayout),
-                            IsConsistent = block.IsConsistent,
-                            HeaderName = block.HeaderName,
-                            ModifiedDate = block.ModifiedDate,
-                            IsKnowHowProtected = block.IsKnowHowProtected,
-                            Attributes = attributes,
-                            Description = block.ToString()
-                        });
-                    }
-                }
+                var responseList = DescribeBlocks(list);
 
                 if (list != null)
                 {
@@ -1400,10 +1369,9 @@ namespace TiaMcpServer.ModelContextProtocol
 
             try
             {
-                var rootGroup = Portal.GetBlockRootGroup(softwarePath);
-                if (rootGroup != null)
+                var hierarchy = Portal.GetBlockHierarchy(softwarePath);
+                if (hierarchy != null)
                 {
-                    var hierarchy = Helper.BuildBlockHierarchy(rootGroup);
                     return new ResponseBlocksWithHierarchy
                     {
                         Message = $"Block hierarchy retrieved from '{softwarePath}'",
@@ -1478,7 +1446,7 @@ namespace TiaMcpServer.ModelContextProtocol
 
                                     var candidates = blocks
                                         .Take(10)
-                                        .Select(b => Portal.GetBlockPath(b))
+                                        .Select(b => b.Path)
                                         .Where(p => !string.IsNullOrWhiteSpace(p))
                                         .Distinct(StringComparer.OrdinalIgnoreCase)
                                         .ToList();
@@ -1596,23 +1564,9 @@ namespace TiaMcpServer.ModelContextProtocol
                 {
                     foreach (var b in allBlocks)
                     {
-                        if (b != null && b.IsConsistent == false)
+                        if (!b.IsConsistent)
                         {
-                            var attrs = Helper.GetAttributeList(b);
-                            inconsistentInfos.Add(new ResponseBlockInfo
-                            {
-                                Name = b.Name,
-                                TypeName = b.GetType().Name,
-                                Namespace = b.Namespace,
-                                ProgrammingLanguage = Enum.GetName(typeof(ProgrammingLanguage), b.ProgrammingLanguage),
-                                MemoryLayout = Enum.GetName(typeof(MemoryLayout), b.MemoryLayout),
-                                IsConsistent = b.IsConsistent,
-                                HeaderName = b.HeaderName,
-                                ModifiedDate = b.ModifiedDate,
-                                IsKnowHowProtected = b.IsKnowHowProtected,
-                                Attributes = attrs,
-                                Description = b.ToString()
-                            });
+                            inconsistentInfos.Add(Describe(b));
                         }
                     }
                 }
@@ -1620,7 +1574,7 @@ namespace TiaMcpServer.ModelContextProtocol
                 // Send progress update after export completion
                 if (exportedBlocks != null && progressToken != null)
                 {
-                    var exportedCount = exportedBlocks.Count();
+                    var exportedCount = exportedBlocks.Count;
                     await server.SendNotificationAsync("notifications/progress", new
                     {
                         Progress = exportedCount,
@@ -1632,32 +1586,8 @@ namespace TiaMcpServer.ModelContextProtocol
 
                 if (exportedBlocks != null)
                 {
-                    var responseList = new List<ResponseBlockInfo>();
-                    var processedCount = 0;
-                    
-                    foreach (var block in exportedBlocks)
-                    {
-                        if (block != null)
-                        {
-                            var attributes = Helper.GetAttributeList(block);
-
-                            responseList.Add(new ResponseBlockInfo
-                            {
-                                Name = block.Name,
-                                TypeName = block.GetType().Name,
-                                Namespace = block.Namespace,
-                                ProgrammingLanguage = Enum.GetName(typeof(ProgrammingLanguage), block.ProgrammingLanguage),
-                                MemoryLayout = Enum.GetName(typeof(MemoryLayout), block.MemoryLayout),
-                                IsConsistent = block.IsConsistent,
-                                HeaderName = block.HeaderName,
-                                ModifiedDate = block.ModifiedDate,
-                                IsKnowHowProtected = block.IsKnowHowProtected,
-                                Attributes = attributes,
-                                Description = block.ToString()
-                            });
-                        }
-                        processedCount++;
-                    }
+                    var responseList = DescribeBlocks(exportedBlocks);
+                    var processedCount = responseList.Count;
 
                     // Send final progress notification
                     if (progressToken != null)
@@ -1739,7 +1669,7 @@ namespace TiaMcpServer.ModelContextProtocol
                 var type = Portal.GetType(softwarePath, typePath);
                 if (type != null)
                 {
-                    var attributes = Helper.GetAttributeList(type);
+                    var attributes = EngineeringAttributeReader.Read(type);
 
                     return new ResponseTypeInfo
                     {
@@ -1787,7 +1717,7 @@ namespace TiaMcpServer.ModelContextProtocol
                 {
                     if (type != null)
                     {
-                        var attributes = Helper.GetAttributeList(type);
+                        var attributes = EngineeringAttributeReader.Read(type);
 
                         responseList.Add(new ResponseTypeInfo
                         {
@@ -1955,7 +1885,7 @@ namespace TiaMcpServer.ModelContextProtocol
                     {
                         if (t != null && t.IsConsistent == false)
                         {
-                            var attrs = Helper.GetAttributeList(t);
+                            var attrs = EngineeringAttributeReader.Read(t);
                             inconsistentTypeInfos.Add(new ResponseTypeInfo
                             {
                                 Name = t.Name,
@@ -1993,7 +1923,7 @@ namespace TiaMcpServer.ModelContextProtocol
                     {
                         if (type != null)
                         {
-                            var attributes = Helper.GetAttributeList(type);
+                            var attributes = EngineeringAttributeReader.Read(type);
 
                             responseList.Add(new ResponseTypeInfo
                             {
@@ -2186,7 +2116,7 @@ namespace TiaMcpServer.ModelContextProtocol
                 // Send progress update after export completion
                 if (exportedBlocks != null && progressToken != null)
                 {
-                    var exportedCount = exportedBlocks.Count();
+                    var exportedCount = exportedBlocks.Count;
                     await server.SendNotificationAsync("notifications/progress", new
                     {
                         Progress = exportedCount,
@@ -2198,32 +2128,8 @@ namespace TiaMcpServer.ModelContextProtocol
 
                 if (exportedBlocks != null)
                 {
-                    var responseList = new List<ResponseBlockInfo>();
-                    var processedCount = 0;
-                    
-                    foreach (var block in exportedBlocks)
-                    {
-                        if (block != null)
-                        {
-                            var attributes = Helper.GetAttributeList(block);
-
-                            responseList.Add(new ResponseBlockInfo
-                            {
-                                Name = block.Name,
-                                TypeName = block.GetType().Name,
-                                Namespace = block.Namespace,
-                                ProgrammingLanguage = Enum.GetName(typeof(ProgrammingLanguage), block.ProgrammingLanguage),
-                                MemoryLayout = Enum.GetName(typeof(MemoryLayout), block.MemoryLayout),
-                                IsConsistent = block.IsConsistent,
-                                HeaderName = block.HeaderName,
-                                ModifiedDate = block.ModifiedDate,
-                                IsKnowHowProtected = block.IsKnowHowProtected,
-                                Attributes = attributes,
-                                Description = block.ToString()
-                            });
-                        }
-                        processedCount++;
-                    }
+                    var responseList = DescribeBlocks(exportedBlocks);
+                    var processedCount = responseList.Count;
 
                     // Send final progress notification
                     if (progressToken != null)
@@ -2283,38 +2189,6 @@ namespace TiaMcpServer.ModelContextProtocol
                 
                 Logger?.LogError(ex, $"Failed exporting documents to '{exportPath}'");
                 throw new McpException($"Unexpected error exporting documents to '{exportPath}': {ex.Message}", ex, McpErrorCode.InternalError);
-            }
-        }
-
-        private static ImportDocumentOptions ParseImportDocumentOption(string option)
-        {
-            if (string.IsNullOrWhiteSpace(option)) return ImportDocumentOptions.Override;
-
-            var normalized = option.Trim();
-
-            // Primary: accept exact enum names (case-insensitive)
-            if (Enum.TryParse<ImportDocumentOptions>(normalized, ignoreCase: true, out var parsed))
-            {
-                return parsed;
-            }
-
-            // Aliases and common misspellings
-            switch (normalized.ToLowerInvariant())
-            {
-                case "override": return ImportDocumentOptions.Override;
-                case "none": return ImportDocumentOptions.None;
-                case "skipinactiveculture":
-                case "skipinactivecultures":
-                case "skipinactive":
-                case "skipinactivecult":
-                    return ImportDocumentOptions.SkipInactiveCultures;
-                case "activeinactiveculture":
-                case "activateinactivecultures":
-                case "activeinactivecultures":
-                case "activateinactive":
-                    return ImportDocumentOptions.ActivateInactiveCultures;
-                default:
-                    throw new McpException($"Invalid importOption '{option}'. Allowed: None, Override, SkipInactiveCultures, ActivateInactiveCultures", McpErrorCode.InvalidParams);
             }
         }
 

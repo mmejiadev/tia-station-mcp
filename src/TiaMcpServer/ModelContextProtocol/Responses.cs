@@ -1,11 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
+using TiaMcpServer.Siemens;
 
 namespace TiaMcpServer.ModelContextProtocol
 {
     public class ResponseAttributes : ResponseMessage
     {
-        public IEnumerable<Attribute>? Attributes { get; set; }
+        public IEnumerable<ObjectAttribute>? Attributes { get; set; }
     }
 
     public class ResponseSoftwareInfo : ResponseAttributes
@@ -28,7 +29,7 @@ namespace TiaMcpServer.ModelContextProtocol
 
     public class ResponseBlockInfo : ResponseAttributes
     {
-        //public string? Path { get; set; }
+        public string? Path { get; set; }
         public string? TypeName { get; set; }
         public string? Name { get; set; }
         public string? Namespace { get; set; }
@@ -42,7 +43,7 @@ namespace TiaMcpServer.ModelContextProtocol
     }
     public class ResponseBlocksWithHierarchy : ResponseMessage
     {
-        public BlockGroupInfo? Root { get; set; }
+        public BlockGroupDescription? Root { get; set; }
     }
 
     public class ResponseTypeInfo : ResponseAttributes

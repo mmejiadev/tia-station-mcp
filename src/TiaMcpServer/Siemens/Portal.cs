@@ -1526,7 +1526,61 @@ namespace TiaMcpServer.Siemens
 
         #region blocks/types
 
-        public PlcBlock? GetBlock(string softwarePath, string blockPath)
+        /// <summary>Describes one block of a PLC program.</summary>
+        /// <param name="softwarePath">Path to the PLC software in the project.</param>
+        /// <param name="blockPath">Full path to the block, <c>Group/Subgroup/Name</c>.</param>
+        /// <returns>The description, or null when there is no such block.</returns>
+        /// <remarks>
+        /// A description rather than the <c>PlcBlock</c> itself: see <see cref="BlockDescription"/>
+        /// for why an engineering object must not leave this layer.
+        /// </remarks>
+        /// <exception cref="PortalException">The name is not a valid filter.</exception>
+        public BlockDescription? GetBlock(string softwarePath, string blockPath)
+        {
+            var block = FindBlock(softwarePath, blockPath);
+
+            return block == null ? null : BlockDescriber.Describe(block, GetBlockPath(block));
+        }
+
+        /// <summary>Describes the blocks of a PLC program, filtered by name.</summary>
+        /// <param name="softwarePath">Path to the PLC software in the project.</param>
+        /// <param name="regexName">The name filter, or empty for every block.</param>
+        /// <returns>One description per matching block, in the order the program lists them.</returns>
+        /// <exception cref="PortalException">The filter is not a valid expression.</exception>
+        public IReadOnlyList<BlockDescription> GetBlocks(string softwarePath, string regexName = "")
+        {
+            return DescribeBlocks(FindBlocks(softwarePath, regexName));
+        }
+
+        /// <summary>Describes a set of blocks, each with the path it was found at.</summary>
+        /// <param name="blocks">The blocks to describe.</param>
+        /// <returns>One description per block, in the order given.</returns>
+        /// <remarks>
+        /// Private because the blocks themselves are: this is the last thing that touches a
+        /// <c>PlcBlock</c> before it goes out of scope for good.
+        /// </remarks>
+        private List<BlockDescription> DescribeBlocks(IEnumerable<PlcBlock> blocks)
+        {
+            var described = new List<BlockDescription>();
+            foreach (var block in blocks)
+            {
+                described.Add(BlockDescriber.Describe(block, GetBlockPath(block)));
+            }
+
+            return described;
+        }
+
+        /// <summary>Describes the whole block tree of a PLC program.</summary>
+        /// <param name="softwarePath">Path to the PLC software in the project.</param>
+        /// <returns>The root group with its blocks and subgroups, or null when it cannot be read.</returns>
+        public BlockGroupDescription? GetBlockHierarchy(string softwarePath)
+        {
+            var root = FindBlockRootGroup(softwarePath);
+
+            return root == null ? null : BlockDescriber.DescribeGroup(root, string.Empty);
+        }
+
+        private PlcBlock? FindBlock(string softwarePath, string blockPath)
         {
             _logger?.LogInformation($"Getting block by path: {blockPath}");
 
@@ -1617,7 +1671,17 @@ namespace TiaMcpServer.Siemens
             return null;
         }
 
-        public string GetBlockPath(PlcBlock block)
+        /// <remarks>
+        /// The path a caller writes, so that the one in a description can be handed straight back to
+        /// GetBlock or ExportBlock. That means it stops below the root: a PLC program hangs off a
+        /// <see cref="PlcBlockSystemGroup"/> called "Program blocks", and nothing accepts that name
+        /// as the first segment of a path.
+        ///
+        /// <see cref="GetPlcBlockGroupPath"/> does include it, and is left alone: it lays out the
+        /// directories of a preserve-path export, where the extra folder is harmless and changing it
+        /// would move every file an existing snapshot already wrote.
+        /// </remarks>
+        private string GetBlockPath(PlcBlock block)
         {
             if (block == null)
             {
@@ -1626,14 +1690,32 @@ namespace TiaMcpServer.Siemens
 
             if (block.Parent is PlcBlockGroup parentGroup)
             {
-                var groupPath = GetPlcBlockGroupPath(parentGroup);
+                var groupPath = GetUserBlockGroupPath(parentGroup);
                 return string.IsNullOrEmpty(groupPath) ? block.Name : $"{groupPath}/{block.Name}";
             }
 
             return block.Name;
         }
 
-        public List<PlcBlock> GetBlocks(string softwarePath, string regexName = "")
+        /// <remarks>
+        /// Walks up from a group to the root, dropping the system group at the top. A user group
+        /// never has a system group as an ancestor other than that root, so the loop ends there.
+        /// </remarks>
+        private string GetUserBlockGroupPath(PlcBlockGroup group)
+        {
+            var segments = new List<string>();
+
+            PlcBlockGroup? current = group;
+            while (current != null && !(current is PlcBlockSystemGroup))
+            {
+                segments.Insert(0, current.Name);
+                current = current.Parent as PlcBlockGroup;
+            }
+
+            return string.Join("/", segments);
+        }
+
+        private List<PlcBlock> FindBlocks(string softwarePath, string regexName = "")
         {
             _logger?.LogInformation("Getting blocks...");
 
@@ -1657,15 +1739,15 @@ namespace TiaMcpServer.Siemens
                     }
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Console.WriteLine($"Error getting blocks: {ex.Message}");
+                _logger?.LogError(ex, "Error getting blocks from {SoftwarePath} with regex {RegexName}", softwarePath, regexName);
             }
 
             return list;
         }
 
-        public PlcBlockGroup? GetBlockRootGroup(string softwarePath)
+        private PlcBlockSystemGroup? FindBlockRootGroup(string softwarePath)
         {
             _logger?.LogInformation("Getting block root group...");
 
@@ -1722,7 +1804,7 @@ namespace TiaMcpServer.Siemens
             return list;
         }
 
-        public PlcBlock? ExportBlock(string softwarePath, string blockPath, string exportPath, bool preservePath = false)
+        public BlockDescription? ExportBlock(string softwarePath, string blockPath, string exportPath, bool preservePath = false)
         {
             _logger?.LogInformation($"Exporting block by path: {blockPath}");
 
@@ -1733,7 +1815,7 @@ namespace TiaMcpServer.Siemens
                     throw new PortalException(PortalErrorCode.InvalidState, "No project is open in TIA Portal");
                 }
 
-                var block = GetBlock(softwarePath, blockPath);
+                var block = FindBlock(softwarePath, blockPath);
 
                 if (block == null)
                 {
@@ -1768,7 +1850,7 @@ namespace TiaMcpServer.Siemens
 
                 block.Export(new FileInfo(exportPath), ExportOptions.None);
 
-                return block;
+                return BlockDescriber.Describe(block, GetBlockPath(block));
             }
             catch (Exception ex)
             {
@@ -1939,7 +2021,7 @@ namespace TiaMcpServer.Siemens
             return success;
         }
 
-        public IEnumerable<PlcBlock>? ExportBlocks(string softwarePath, string exportPath, string regexName = "", bool preservePath = false)
+        public IReadOnlyList<BlockDescription>? ExportBlocks(string softwarePath, string exportPath, string regexName = "", bool preservePath = false)
         {
             _logger?.LogInformation("Exporting blocks...");
 
@@ -1955,12 +2037,12 @@ namespace TiaMcpServer.Siemens
 
             try
             {
-                list = GetBlocks(softwarePath, regexName).ToArray();
+                list = FindBlocks(softwarePath, regexName).ToArray();
             }
             catch (Exception ex)
             {
                 _logger?.LogError(ex, "Failed to retrieve block list for {SoftwarePath}", softwarePath);
-                return exportList;
+                return DescribeBlocks(exportList);
             }
 
             for (int k = 0; k < list.Count(); k++)
@@ -2058,7 +2140,7 @@ namespace TiaMcpServer.Siemens
                 _logger?.LogInformation($"ExportBlocks completed successfully. Exported {exportList.Count} blocks.");
             }
 
-            return exportList;
+            return DescribeBlocks(exportList);
         }
 
         public IEnumerable<PlcType>? ExportTypes(string softwarePath, string exportPath, string regexName = "", bool preservePath = false)
@@ -2267,7 +2349,7 @@ namespace TiaMcpServer.Siemens
         }
 
         // TIA portal crashes when exporting blocks as documents, :-(
-        public IEnumerable<PlcBlock>? ExportBlocksAsDocuments(string softwarePath, string exportPath, string regexName = "", bool preservePath = false)
+        public IReadOnlyList<BlockDescription>? ExportBlocksAsDocuments(string softwarePath, string exportPath, string regexName = "", bool preservePath = false)
         {
             _logger?.LogInformation("Exporting blocks as documents...");
 
@@ -2288,12 +2370,12 @@ namespace TiaMcpServer.Siemens
             PlcBlock[] list;
             try
             {
-                list = GetBlocks(softwarePath, regexName).ToArray();
+                list = FindBlocks(softwarePath, regexName).ToArray();
             }
             catch (Exception ex)
             {
                 _logger?.LogError(ex, $"Failed to retrieve block list for {softwarePath}");
-                return exportList;
+                return DescribeBlocks(exportList);
             }
 
             for (int i = 0; i < list.Count(); i++)
@@ -2414,10 +2496,10 @@ namespace TiaMcpServer.Siemens
                 _logger?.LogInformation($"ExportBlocksAsDocuments completed successfully. Exported {exportList.Count} blocks.");
             }
 
-            return exportList;
+            return DescribeBlocks(exportList);
         }
 
-        public bool ImportFromDocuments(string softwarePath, string groupPath, string importPath, string fileNameWithoutExtension, ImportDocumentOptions option)
+        public bool ImportFromDocuments(string softwarePath, string groupPath, string importPath, string fileNameWithoutExtension, string option)
         {
             _logger?.LogInformation($"Importing block from documents: {fileNameWithoutExtension} in {importPath}");
 
@@ -2431,6 +2513,8 @@ namespace TiaMcpServer.Siemens
                 _logger?.LogWarning("ImportFromDocuments is only supported on TIA Portal V20 or newer");
                 return false;
             }
+
+            var importOption = ImportDocumentOption.Parse(option);
 
             try
             {
@@ -2449,8 +2533,8 @@ namespace TiaMcpServer.Siemens
                     try
                     {
                         result = (group != null)
-                            ? group.Blocks.ImportFromDocuments(dir, fileNameWithoutExtension, option)
-                            : plcSoftware.BlockGroup.Blocks.ImportFromDocuments(dir, fileNameWithoutExtension, option);
+                            ? group.Blocks.ImportFromDocuments(dir, fileNameWithoutExtension, importOption)
+                            : plcSoftware.BlockGroup.Blocks.ImportFromDocuments(dir, fileNameWithoutExtension, importOption);
                     }
                     catch (EngineeringNotSupportedException ex)
                     {
@@ -2470,7 +2554,7 @@ namespace TiaMcpServer.Siemens
             return false;
         }
 
-        public IEnumerable<PlcBlock>? ImportBlocksFromDocuments(string softwarePath, string groupPath, string importPath, string regexName, ImportDocumentOptions option, bool preservePath = false)
+        public IReadOnlyList<BlockDescription>? ImportBlocksFromDocuments(string softwarePath, string groupPath, string importPath, string regexName, string option, bool preservePath = false)
         {
             _logger?.LogInformation($"Importing blocks from documents in {importPath} with regex '{regexName}'");
 
@@ -2485,6 +2569,8 @@ namespace TiaMcpServer.Siemens
                 return null;
             }
 
+            var importOption = ImportDocumentOption.Parse(option);
+
             var imported = new List<PlcBlock>();
 
             try
@@ -2497,7 +2583,7 @@ namespace TiaMcpServer.Siemens
                     if (!dir.Exists)
                     {
                         _logger?.LogWarning($"Import directory does not exist: {importPath}");
-                        return imported;
+                        return DescribeBlocks(imported);
                     }
 
                     var filter = NameFilter.Parse(regexName);
@@ -2515,8 +2601,8 @@ namespace TiaMcpServer.Siemens
                         try
                         {
                             var result = (group != null)
-                                ? group.Blocks.ImportFromDocuments(dir, name, option)
-                                : plcSoftware.BlockGroup.Blocks.ImportFromDocuments(dir, name, option);
+                                ? group.Blocks.ImportFromDocuments(dir, name, importOption)
+                                : plcSoftware.BlockGroup.Blocks.ImportFromDocuments(dir, name, importOption);
 
                             if (result != null && result.State == DocumentResultState.Success && result.ImportedPlcBlocks != null)
                             {
@@ -2545,7 +2631,7 @@ namespace TiaMcpServer.Siemens
                 _logger?.LogError(ex, "Error importing blocks from documents");
             }
 
-            return imported;
+            return DescribeBlocks(imported);
         }
 
         #endregion

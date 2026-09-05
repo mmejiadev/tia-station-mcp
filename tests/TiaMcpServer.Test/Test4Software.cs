@@ -64,6 +64,35 @@ namespace TiaMcpServer.Test
             Assert.AreEqual("FC_Block_1", block.Name);
         }
 
+        /// <remarks>
+        /// The description is what leaves the portal layer, so the path has to travel inside it.
+        /// Before the split the MCP layer worked the path out by walking a live block back up its
+        /// parents, which is exactly the kind of call this DTO exists to stop.
+        /// </remarks>
+        [TestMethod]
+        public void GetBlock_ExistingPath_DescriptionCarriesItsFullPath()
+        {
+            var block = AssemblyHooks.SharedPortal.GetBlock(Settings.Project1PlcSoftwarePath0, BlockPath);
+
+            Assert.IsNotNull(block, $"No block found at '{BlockPath}'");
+            Assert.AreEqual(BlockPath, block.Path);
+        }
+
+        /// <remarks>
+        /// A description is read once and detached: everything a caller needs must already be in
+        /// it, because the block it came from is gone by the time anyone reads this.
+        /// </remarks>
+        [TestMethod]
+        public void GetBlock_ExistingPath_DescriptionIsComplete()
+        {
+            var block = AssemblyHooks.SharedPortal.GetBlock(Settings.Project1PlcSoftwarePath0, BlockPath);
+
+            Assert.IsNotNull(block);
+            Assert.AreEqual("FC", block.TypeName);
+            Assert.IsFalse(string.IsNullOrEmpty(block.ProgrammingLanguage), "The language was not read");
+            Assert.IsTrue(block.Attributes.Count > 0, "No attribute was read");
+        }
+
         [TestMethod]
         public void GetType_ExistingPath_ReturnsType()
         {
@@ -82,6 +111,36 @@ namespace TiaMcpServer.Test
 
             Assert.IsNotNull(blocks);
             Assert.IsTrue(blocks.Count > 0, $"No block matched '{regexName}'");
+        }
+
+        /// <remarks>
+        /// A path is what every other tool takes as input, so a listing that does not give one back
+        /// forces the caller to guess at the grouping.
+        /// </remarks>
+        [TestMethod]
+        public void GetBlocks_NoRegex_EveryDescriptionHasAPath()
+        {
+            var blocks = AssemblyHooks.SharedPortal.GetBlocks(Settings.Project1PlcSoftwarePath0, string.Empty);
+
+            Assert.IsTrue(blocks.Count > 0, "The program has blocks but none were returned");
+            Assert.IsFalse(
+                blocks.Any(block => string.IsNullOrEmpty(block.Path)),
+                "Some block was described without its path");
+        }
+
+        /// <remarks>
+        /// The hierarchy is the shape of the program, and it is now read in the portal layer rather
+        /// than walked lazily from above, one Openness call per group the caller expanded.
+        /// </remarks>
+        [TestMethod]
+        public void GetBlockHierarchy_PlcSoftware_ContainsTheTestGroup()
+        {
+            var root = AssemblyHooks.SharedPortal.GetBlockHierarchy(Settings.Project1PlcSoftwarePath0);
+
+            Assert.IsNotNull(root, "The block root group could not be read");
+            Assert.IsTrue(
+                root.Groups.Any(group => group.Name == BlockGroupPath),
+                $"'{BlockGroupPath}' is not among the groups of the root");
         }
 
         [TestMethod]
