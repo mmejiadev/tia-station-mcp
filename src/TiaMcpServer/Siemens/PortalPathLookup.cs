@@ -122,14 +122,40 @@ namespace TiaMcpServer.Siemens
                 // then use next segment to find device item
                 deviceItem = device.DeviceItems.FirstOrDefault(di => di.Name.Equals(nextSegment, StringComparison.OrdinalIgnoreCase));
 
+                return Descend(deviceItem, pathSegments, index + 2);
             }
 
             // a hardware plc has a Device.Name = 'S7-1500/ET200MP-Station_1' or something like that, which is not visible in the TIA-Portal IDE
-            if (device == null)
-            {
-                deviceItem = devices
+            deviceItem = devices
                 .SelectMany(d => d.DeviceItems)
                 .FirstOrDefault(di => di.Name.Equals(segment, StringComparison.OrdinalIgnoreCase));
+
+            return Descend(deviceItem, pathSegments, index + 1);
+        }
+
+        /// <summary>Follows what is left of a path down through nested device items.</summary>
+        /// <param name="deviceItem">Where the walk has got to, or null.</param>
+        /// <param name="pathSegments">The whole path.</param>
+        /// <param name="from">The first segment not yet matched.</param>
+        /// <returns>The item the path names, or null when a segment matches nothing.</returns>
+        /// <remarks>
+        /// Without this the match stopped at the first name it recognised and **silently dropped the
+        /// rest of the path**: 'PLC_0/PROFINET-Schnittstelle_1' resolved to PLC_0, and the caller got
+        /// an object that was not the one it asked for. Returning the wrong item is worse than
+        /// returning none, because nothing downstream can tell.
+        ///
+        /// A device item's interfaces, its rack slots and its ports are all nested items, so
+        /// everything below a CPU was unreachable by path until 2026-09-05. Found by the first tool
+        /// that tried to aim at an interface.
+        /// </remarks>
+        private static DeviceItem? Descend(DeviceItem? deviceItem, string[] pathSegments, int from)
+        {
+            for (var index = from; index < pathSegments.Length && deviceItem != null; index++)
+            {
+                var wanted = pathSegments[index];
+
+                deviceItem = deviceItem.DeviceItems
+                    .FirstOrDefault(nested => nested.Name.Equals(wanted, StringComparison.OrdinalIgnoreCase));
             }
 
             return deviceItem;

@@ -48,9 +48,11 @@ namespace TiaMcpServer.Siemens
 
             foreach (var device in devices)
             {
+                var root = AddressableDeviceName(device);
+
                 foreach (var deviceItem in device.DeviceItems)
                 {
-                    Collect(deviceItem, device.Name, nodes);
+                    Collect(deviceItem, root, nodes);
                 }
             }
 
@@ -59,9 +61,38 @@ namespace TiaMcpServer.Siemens
             return nodes;
         }
 
+        /// <summary>
+        /// The device's name when it can appear in a path, and nothing when it cannot.
+        /// </summary>
+        /// <param name="device">The device.</param>
+        /// <returns>The name, or an empty string.</returns>
+        /// <remarks>
+        /// **A name containing the separator cannot be part of a separator-joined path.** A hardware
+        /// station is called <c>S7-1500/ET200MP-Station_3</c> by Openness -- a name TIA Portal's own
+        /// IDE never shows -- and joining it with '/' produces something no reader can split back:
+        /// four segments where the first two are one name.
+        ///
+        /// This is why paths from this reader could not be handed to any tool that takes one. It went
+        /// unnoticed until 2026-09-05 because nothing tried: the topology was printed for a person,
+        /// and the first write tool aimed with those two columns failed on its first run.
+        ///
+        /// Dropping the name is not a loss. The lookup already ignores it for exactly these devices
+        /// and matches the device item instead, so <c>PLC_0/PROFINET-Schnittstelle_1</c> is what both
+        /// sides agree on. A PC station, whose name has no separator and *is* shown in the IDE, keeps
+        /// its prefix.
+        /// </remarks>
+        private static string AddressableDeviceName(Device device)
+        {
+            var name = device.Name ?? string.Empty;
+
+            return name.Contains(PathSeparator) ? string.Empty : name;
+        }
+
         private void Collect(DeviceItem deviceItem, string parentPath, List<NetworkNodeInfo> nodes)
         {
-            var path = parentPath + PathSeparator + deviceItem.Name;
+            var path = parentPath.Length == 0
+                ? deviceItem.Name
+                : parentPath + PathSeparator + deviceItem.Name;
 
             AddInterfaces(deviceItem, path, nodes);
 
