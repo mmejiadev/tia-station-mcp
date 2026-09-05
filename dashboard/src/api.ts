@@ -1,5 +1,6 @@
 import type {
   AuditResponse,
+  GuideDocument,
   IterationPhasesResponse,
   MetricsResponse,
   ModeResponse,
@@ -9,6 +10,7 @@ import type {
 import type { ChatTurn } from '../../harness/src/copilotChat.ts';
 import type { ChatResponse, CopilotStatus } from '../../harness/src/copilotEndpoint.ts';
 import type { GateVerdict } from '../../harness/src/gate.ts';
+import type { PreconditionReport } from '../../harness/src/preconditions.ts';
 
 export type {
   AuditResponse,
@@ -20,7 +22,9 @@ export type {
   GateVerdict,
   ChatTurn,
   ChatResponse,
-  CopilotStatus
+  CopilotStatus,
+  GuideDocument,
+  PreconditionReport
 };
 
 /**
@@ -94,6 +98,16 @@ export function readAudit(filters: Readonly<Record<string, string>>): Promise<Au
 /** The five workshop criteria and the verdict. */
 export function readGate(): Promise<GateVerdict> {
   return read<GateVerdict>('/api/gate');
+}
+
+/** The install guide as it stands on disk, so the page cannot drift from the file. */
+export function readGuide(): Promise<GuideDocument> {
+  return read<GuideDocument>('/api/guide');
+}
+
+/** What this machine meets, asked of the same script the bootstrap runs. */
+export function readPreconditions(): Promise<PreconditionReport> {
+  return read<PreconditionReport>('/api/preconditions');
 }
 
 /** What the permanent banner shows. */

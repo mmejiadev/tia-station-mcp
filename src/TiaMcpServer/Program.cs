@@ -62,8 +62,30 @@ namespace TiaMcpServer
             }
             else
             {
-                Console.WriteLine("User is not in the required group. Exiting...");
+                RefuseWithoutGroupMembership();
             }
+        }
+
+        /// <summary>Says why the server will not start, on the only channel that may carry prose.</summary>
+        /// <remarks>
+        /// **stderr, not stdout.** With the stdio transport, stdout *is* the JSON-RPC channel, so a
+        /// plain sentence written there is not a message to the user — it is a malformed frame, and
+        /// the host reports a protocol error instead of the reason. This is the first thing a new
+        /// installation hits, because Windows only grants the group's token at the next sign-in, so
+        /// it was also the one message most likely to be destroyed by the way it was sent.
+        ///
+        /// The exit code is set too: a host that starts this server can tell that it refused rather
+        /// than that it vanished.
+        /// </remarks>
+        private static void RefuseWithoutGroupMembership()
+        {
+            Console.Error.WriteLine(
+                "This account is not in the Windows group 'Siemens TIA Openness', which Openness " +
+                "requires. Add it with: net localgroup \"Siemens TIA Openness\" \"%USERNAME%\" /add " +
+                "(as an administrator), then sign out of Windows and back in — the group is only " +
+                "granted to a new sign-in, so this will keep failing until you do.");
+
+            Environment.ExitCode = 1;
         }
 
         public static async Task RunStdioHost(CliOptions? options)

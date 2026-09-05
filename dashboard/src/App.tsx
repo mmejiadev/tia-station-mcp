@@ -8,6 +8,7 @@ import { useTheme } from './theme.tsx';
 import { CopilotDock } from './components/CopilotDock.tsx';
 import { AuditView } from './views/AuditView.tsx';
 import { GateView } from './views/GateView.tsx';
+import { GuideView } from './views/GuideView.tsx';
 import { LiveRunView } from './views/LiveRunView.tsx';
 import { MetricsView } from './views/MetricsView.tsx';
 import { OverviewView } from './views/OverviewView.tsx';
@@ -32,7 +33,8 @@ const Views: Readonly<Record<string, () => ReactNode>> = {
   Runs: RunsView,
   Metrics: MetricsView,
   'Audit trail': AuditView,
-  'Workshop gate': GateView
+  'Workshop gate': GateView,
+  Guide: GuideView
 };
 
 const ViewNames = Object.keys(Views);

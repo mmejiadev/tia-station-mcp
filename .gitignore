@@ -66,3 +66,6 @@ harness/.env
 # so each machine builds its own index from documents its owner is entitled to have.
 harness/corpus/*
 !harness/corpus/recipe.json
+
+# Release artefacts. They are published, not committed: the hash is what ties one to a commit.
+release/

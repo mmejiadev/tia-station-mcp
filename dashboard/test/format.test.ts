@@ -79,6 +79,13 @@ describe('which view the address bar asks for', () => {
     assert.equal(viewFromHash('#/no-such-view', views), 'Runs');
   });
 
+  it('opens the Guide from a link somebody can send', () => {
+    // The view a new installation is pointed at, so its address has to survive being pasted into a
+    // message rather than only being reachable by clicking through the tabs.
+    assert.equal(hashFor('Guide'), '#/guide');
+    assert.equal(viewFromHash('#/guide', [...views, 'Guide']), 'Guide');
+  });
+
   it('refuses to route when there are no views at all', () => {
     assert.throws(() => viewFromHash('#/anything', []), /no views at all/);
   });
