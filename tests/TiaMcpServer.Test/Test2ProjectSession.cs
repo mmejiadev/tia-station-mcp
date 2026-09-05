@@ -15,10 +15,10 @@
         {
             AssemblyHooks.SharedPortal.OpenProject(AssemblyHooks.ProjectPath);
 
-            var projects = AssemblyHooks.SharedPortal.GetProjects();
-            projects.AddRange(AssemblyHooks.SharedPortal.GetSessions());
+            var open = AssemblyHooks.SharedPortal.GetProjects().Count
+                + AssemblyHooks.SharedPortal.GetSessions().Count;
 
-            Assert.IsTrue(projects.Count > 0, "Neither a project nor a session was reported");
+            Assert.IsTrue(open > 0, "Neither a project nor a session was reported");
         }
 
         [TestMethod]
