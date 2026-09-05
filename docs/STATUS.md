@@ -1,9 +1,46 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-09-03**
+> Last updated: **2026-09-05**
 
 ## ▶ RESUME HERE
+
+### 2026-09-05 — the first CI run, and it was right about both of us
+
+**Continuous integration had never actually run until pull request #13 opened it.** The workflow was
+written on 2026-09-02 and the note beside it said, honestly, that a hosted runner had not yet proved
+anything. It has now, and it failed twice for two different reasons — neither of which any local
+build or test run could have found.
+
+**The harness job: seven tests that cannot run on a runner, failing instead of saying so.**
+`mcpClient.test.ts` and `toolContract.test.ts` start the real `TiaMcpServer.exe`. A hosted runner
+cannot build it — that is the same Openness-at-build-time constraint the safety job exists for — so
+`resolveServerExecutable` threw inside their `before` hook, and the runner reported seven cancelled
+tests and a red build. `serverExecutableAbsence` now asks the same question without throwing, and
+both suites carry `{ skip: ... }` with the reason. On a machine that has built the solution they
+still run: **198 of 198 here, 191 with the executable hidden, exit code 0 both ways.**
+
+**The safety job: two style rules this machine's compiler does not enforce.** `IDE0040` on eleven
+interface members, then `IDE0032` on `PlanId._value`. Both are errors here by policy —
+`.editorconfig` sets `dotnet_style_require_accessibility_modifiers = always:error` and
+`Directory.Build.props` sets `TreatWarningsAsErrors` — and neither fires locally, because
+`AnalysisLevel` is `latest-all` and **the rule set is whatever the SDK in use happens to ship**. The
+runner installs the newest 8.0.x; this machine has 8.0.405.
+
+The interface members were given their modifiers. `IDE0032` was **suppressed with a justification
+and a test**, which is the one case where suppressing beats complying: `PlanId` is a struct, so
+`default(PlanId)` runs no constructor, and the auto property the analyzer offers would hand back a
+null `Value` where the getter's `?? string.Empty` returns an identifier that matches nothing.
+`PlanIdTests` now asserts that, so the suppression fails loudly if anyone accepts the offer.
+Governance is **118/118**.
+
+**What this leaves open, and it is a decision rather than a fix.** `latest-all` plus warnings-as-
+errors means any SDK the runner picks up can turn working code red without anyone touching it —
+twice in one afternoon so far. A `global.json` pinning the SDK, with `setup-dotnet` reading it
+through `global-json-file`, makes both machines compile with the same Roslyn. The price is that new
+analyzer rules stop arriving on their own. Not taken here: it is a policy change, not a correction.
+
+---
 
 ### Where the work stopped — 2026-09-03, end of session
 

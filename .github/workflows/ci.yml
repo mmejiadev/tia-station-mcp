@@ -3,8 +3,14 @@
 # What this runs, and what it deliberately cannot.
 #
 # The harness and the dashboard are Node and TypeScript and depend on nothing outside npm, so
-# every one of their 208 tests runs on a standard GitHub runner on every push. That includes the
+# almost all of their 208 tests run on a standard GitHub runner on every push. That includes the
 # workshop gate, the retrieval gate and the whole measurement layer.
+#
+# The exception is the seven that start the real server -- mcpClient and toolContract. They need
+# TiaMcpServer.exe to exist, and a hosted runner cannot build it for the same reason the safety job
+# exists at all. Those two suites skip here, with the reason printed, rather than failing: a suite
+# that cannot be checked on this machine reporting red would train everyone to ignore the colour.
+# They run on any machine that has built the solution, which is where they are meant to run.
 #
 # **The safety rules run here too, as of 2026-09-02**, and getting them here was the point of
 # splitting TiaMcpServer.Portable out of TiaMcpServer. The governance and specification tests never

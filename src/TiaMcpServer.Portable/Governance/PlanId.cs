@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Security.Cryptography;
 
 namespace TiaMcpServer.Governance
@@ -23,6 +24,15 @@ namespace TiaMcpServer.Governance
         private const int GroupLength = 3;
         private const int GroupCount = 2;
 
+        [SuppressMessage(
+            "Style",
+            "IDE0032:Use auto property",
+            Justification =
+                "An auto property cannot keep the guarantee this field exists for. A struct can " +
+                "always be produced as default(PlanId), which runs no constructor, so an auto " +
+                "property would hand back a null Value to code that has no reason to expect one. " +
+                "The getter below turns that into an empty identifier, which compares unequal to " +
+                "every real plan instead of throwing somewhere later. PlanIdTests asserts it.")]
         private readonly string _value;
 
         private PlanId(string value)
