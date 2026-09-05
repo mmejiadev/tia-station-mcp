@@ -5,6 +5,85 @@
 
 ## ▶ RESUME HERE
 
+### Phase 5b started — 2026-09-05
+
+**The release artefact exists, runs from its own folder, and is documented.** Three of the phase's
+deliverables are done and the blocking criterion is still untouched. On branch
+`work/phase-5b-deployment`, uncommitted.
+
+```
+src/TiaMcpServer/Program.cs             mod  the refusal moved off the protocol channel
+scripts/Test-Preconditions.ps1          new  what this machine has, and what to do about what it has not
+scripts/New-Release.ps1                 new  builds, packs, hashes
+INSTALL.md                              new  for somebody who has never seen this repository
+.gitignore                              mod  release/ is published, not committed
+```
+
+**A defect on the exact path a first installation walks.** `Program.cs` reported the missing group
+membership with `Console.WriteLine` — that is **stdout**, which under the stdio transport *is* the
+JSON-RPC channel. The sentence did not arrive as a message; it arrived as a malformed frame, and the
+host reported a protocol error instead of the reason. It is the first thing a new installation hits,
+because Windows only grants the group's token at the next sign-in, so the most important message in
+the system was the one guaranteed to be destroyed by the way it was sent. It now goes to stderr,
+names the whole fix including the sign-out, and sets a non-zero exit code.
+
+**The precondition check is PowerShell because it has to run before anything else exists.** Node,
+.NET and TIA Portal are what it checks for, so it cannot be written in any of them. It reads and
+changes nothing — no install, no group granted, no setting written — because half of those need a
+decision from whoever is running it. `-Json` is what the dashboard's Guide view will read, so that
+there is one implementation and two readers rather than a TypeScript copy that drifts.
+
+It tests **the token this session holds**, not the group's member list. An account added an hour ago
+and not signed out since fails, and reading the member list would report success while the server
+refuses to start.
+
+**Run, not assumed**: this machine passes all five. A bad `-TiaPortalLocation` gives `STOP`, the fix
+sentence and exit 1; `PATH` without Node gives `WARN` and still reports the machine ready, which is
+correct — the MCP server does not need Node. PLCSIM was exercised by pointing `PLCSIM_API_PATH`
+at a path that is not there, which the check now honours the way the build does. **Two branches
+could not be exercised here** because this machine meets them: the group absent, and .NET below 4.8.
+
+**The artefact was verified by running it, not by listing it.** `New-Release.ps1` built
+`tia-station-mcp-0.0.18.zip` (2.9 MB, SHA-256 published beside it), it was unzipped into a temporary
+folder outside the repository, and the harness's own `mcpClient` and `toolContract` suites were
+pointed at *that* executable through `TIA_MCP_SERVER`: **7/7**, listing its tools, reporting Study
+mode and refusing a write for want of a policy. Openness is deliberately not in the artefact — it
+belongs to the TIA Portal installation and is resolved from it at run time.
+
+**INSTALL.md carried a wrong claim until it was checked.** It said connecting, opening a project and
+compiling need no policy. `CompileSoftware` goes through `GuardedTool.Run` like every other write, so
+step 3 of the smoke path is refused without `PLC_0` allowed — and the guide would have sent the
+reader to look at the compiler. Everything else checkable was checked against the code: the six
+command-line options and their defaults, the three logging levels, `.ap20`, `PLC_0`, and that the
+example policy allows exactly what the smoke path needs.
+
+**The Guide view is built and nobody has looked at it.** It renders `INSTALL.md` itself through
+`react-markdown` and shows what this machine meets, from `/api/guide` and `/api/preconditions` —
+both of which were queried against the running server and answered correctly. What is unverified is
+how it *looks*: the Chrome extension was not connected and the dashboard has no component-render
+tests, so the rendering is a claim. The user reviewed it and called it good.
+
+**Deferred by the user, 2026-09-05: a pass over the dashboard's UI once the project is finished.**
+Recorded here so it is not lost. The reasoning is sound — a design pass is worth doing when the set
+of views has stopped changing, not while views are still being added.
+
+**What is not verified**: the two host-configuration snippets, for Claude Code and Claude Desktop,
+are written and not executed.
+
+**Still open in this phase.** *A version the numbers can be attributed to*: the server does not
+report its own version, and the harness records the executable's **path** rather than its version,
+so two runs measured before and after a rebuild in the same folder are indistinguishable in the
+store. Attributing a measurement to a build needs the server to say which build it is.
+
+**The action that closes the phase**, and it needs a machine this session does not have: **install
+from the artefact alone on a machine that has never built this project, following `INSTALL.md` and
+nothing else** — connect, compile, download to PLCSIM, read a tag. A virtual machine counts. Until
+that has been done once, the instructions are a guess.
+
+**Left running on the machine**: nothing.
+
+---
+
 ### F3 is closed, and closing it found a trap in the chain — 2026-09-05
 
 **The audit trail now records what documentation a change was justified with**, which was audit

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { join, resolve } from 'node:path';
 import { readAuditTrail } from './auditTrail.ts';
@@ -5,11 +6,12 @@ import { ChangeWatcher } from './changeWatcher.ts';
 import { DefaultChatModel } from './copilotChat.ts';
 import { createCopilot, type Copilot } from './copilotEndpoint.ts';
 import { createChatAsker } from './copilotSender.ts';
-import { respondTo, type ApiResponse, type ApiSources } from './dashboardApi.ts';
+import { respondTo, type ApiResponse, type ApiSources, type GuideDocument } from './dashboardApi.ts';
 import { evaluateGate } from './gate.ts';
 import { gatherEvidence } from './gateEvidence.ts';
 import { MetricsReader } from './metricsReader.ts';
 import { parseFlags } from './options.ts';
+import { checkPreconditions } from './preconditions.ts';
 import { repositoryRoot } from './serverLocation.ts';
 
 /**
@@ -81,6 +83,8 @@ type Options = {
   readonly databasePath: string;
   readonly auditPath: string;
   readonly reviewPath: string;
+  readonly guidePath: string;
+  readonly preconditionScriptPath: string;
   readonly port: number;
   readonly chatModel: string;
 };
@@ -101,13 +105,40 @@ type Options = {
  * from a sentence somebody types into that box to anything that changes a project. It is a POST
  * because a question and its history do not belong in a URL, not because it does more than read.
  */
+/**
+ * The install guide as it stands on disk.
+ *
+ * @remarks
+ * Read on every request rather than once at start-up, so editing the file and reloading the page
+ * shows the edit. It is a few kilobytes, on loopback.
+ *
+ * A missing file is reported rather than thrown: the API serves six other things, and a checkout
+ * without INSTALL.md should lose the Guide view and nothing else.
+ */
+function readGuide(path: string): GuideDocument {
+  try {
+    // The .md files in this repository carry a UTF-8 BOM, and readFileSync keeps it. Left in, the
+    // first line no longer begins with '#' and the title renders as a paragraph with an invisible
+    // character in front of it - which looks like the renderer being wrong.
+    const markdown = readFileSync(path, 'utf8').replace(/^\ufeff/, '');
+
+    return { markdown, available: true, reason: '' };
+  } catch (failure) {
+    const reason = failure instanceof Error ? failure.message : String(failure);
+
+    return { markdown: '', available: false, reason: `The install guide could not be read: ${reason}` };
+  }
+}
+
 function main(): void {
   const options = parseOptions(process.argv.slice(2));
   const reader = MetricsReader.open(options.databasePath);
   const sources: ApiSources = {
     reader,
     readAudit: () => readAuditTrail(options.auditPath),
-    evaluateGate: () => evaluateGate(gatherEvidence(reader, options))
+    evaluateGate: () => evaluateGate(gatherEvidence(reader, options)),
+    readGuide: () => readGuide(options.guidePath),
+    checkPreconditions: () => checkPreconditions(options.preconditionScriptPath)
   };
 
   const copilot = createCopilot(sources, options.chatModel, () => createChatAsker(options.chatModel));
@@ -402,6 +433,10 @@ function parseOptions(args: readonly string[]): Options {
     databasePath: resolve(values.get('--database') ?? join(harnessRoot, 'metrics.db')),
     auditPath: resolve(values.get('--audit') ?? join(harnessRoot, 'audit.jsonl')),
     reviewPath: resolve(values.get('--review') ?? join(repositoryRoot(), 'docs', 'workshop-review.md')),
+    guidePath: resolve(values.get('--guide') ?? join(repositoryRoot(), 'INSTALL.md')),
+    preconditionScriptPath: resolve(
+      values.get('--preconditions') ?? join(repositoryRoot(), 'scripts', 'Test-Preconditions.ps1')
+    ),
     port: readPort(values.get('--port')),
     chatModel: readChatModel(values.get('--chat-model'))
   };

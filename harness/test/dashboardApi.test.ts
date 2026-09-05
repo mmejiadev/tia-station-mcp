@@ -14,6 +14,20 @@ import type { RecordedRun } from '../src/metricsReader.ts';
  * parts that would otherwise only be exercised by clicking around a browser.
  */
 describe('the dashboard API', () => {
+  it('serves the install guide as the document, not as a rendering of it', () => {
+    const response = respondTo('/api/guide', new URLSearchParams(), sources());
+
+    assert.equal(response.status, 200);
+    assert.match((response.body as { markdown: string }).markdown, /Installing tia-station-mcp/);
+  });
+
+  it('answers what this machine meets, item by item', () => {
+    const response = respondTo('/api/preconditions', new URLSearchParams(), sources());
+
+    assert.equal(response.status, 200);
+    assert.equal((response.body as { ready: boolean }).ready, true);
+  });
+
   it('names the endpoints it has when asked for one it does not', () => {
     const answer = respondTo('/api/runz', new URLSearchParams(), sources());
 
@@ -187,7 +201,9 @@ function sources(trail?: AuditReadResult): ApiSources {
   return {
     reader: store,
     readAudit: () => trail ?? defaultTrail(),
-    evaluateGate: () => shutGate
+    evaluateGate: () => shutGate,
+    readGuide: () => ({ markdown: '# Installing tia-station-mcp', available: true, reason: '' }),
+    checkPreconditions: () => ({ available: true, ready: true, checks: [], reason: '' })
   };
 }
 

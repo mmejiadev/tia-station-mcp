@@ -1,5 +1,6 @@
 import type { AuditEntry, AuditReadResult } from './auditTrail.ts';
 import type { GateVerdict } from './gate.ts';
+import type { PreconditionReport } from './preconditions.ts';
 import type {
   GeneratorSample,
   IterationPhase,
@@ -46,6 +47,19 @@ export type ApiSources = {
   readonly reader: DashboardStore;
   readonly readAudit: () => AuditReadResult;
   readonly evaluateGate: () => GateVerdict;
+
+  /** The install guide, as the file itself rather than as a copy of what it says. */
+  readonly readGuide: () => GuideDocument;
+
+  /** What this machine meets, asked of the same script the bootstrap runs. */
+  readonly checkPreconditions: () => PreconditionReport;
+};
+
+/** The install guide as it stands on disk, or why it could not be read. */
+export type GuideDocument = {
+  readonly markdown: string;
+  readonly available: boolean;
+  readonly reason: string;
 };
 
 /**
@@ -400,12 +414,39 @@ function exactly(value: string, wanted: string | null): boolean {
   return wanted === null || value === wanted;
 }
 
+/**
+ * The install guide, served as the document rather than as a rendering of it.
+ *
+ * @remarks
+ * The Guide view renders `INSTALL.md` itself. A hand-written copy of the same instructions inside
+ * the dashboard would diverge from the file, and the divergent copy is the one that gets shown to
+ * whoever is installing this - the file is what a new user reads on GitHub before any of this is
+ * running, and the view is what they keep open once it is.
+ */
+function guide(_query: URLSearchParams, sources: ApiSources): ApiResponse {
+  return { status: 200, body: sources.readGuide() };
+}
+
+/**
+ * What this machine meets, item by item.
+ *
+ * @remarks
+ * The one thing this view can do that a Markdown file cannot. It runs the same script the bootstrap
+ * runs and reports what came back; it installs nothing and changes no setting, which is what keeps
+ * this API read-only in the sense that matters - it inspects, it does not act.
+ */
+function preconditions(_query: URLSearchParams, sources: ApiSources): ApiResponse {
+  return { status: 200, body: sources.checkPreconditions() };
+}
+
 const Routes: Readonly<Record<string, (query: URLSearchParams, sources: ApiSources) => ApiResponse>> = {
   '/api/runs': runs,
   '/api/metrics': metrics,
   '/api/audit': audit,
   '/api/gate': gate,
-  '/api/mode': mode
+  '/api/mode': mode,
+  '/api/guide': guide,
+  '/api/preconditions': preconditions
 };
 
 /** What a 404 lists, so a wrong URL says what the right ones are. */

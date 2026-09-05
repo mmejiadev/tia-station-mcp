@@ -143,4 +143,82 @@
   .tabular {
     font-variant-numeric: tabular-nums;
   }
+
+  /*
+    The install guide, rendered from INSTALL.md.
+
+    Written here rather than pulled in with a typography plugin: this styles one document whose
+    markup we control, and the whole point of the view is that the document stays the source. The
+    tokens are the dashboard's own, so the guide follows the theme like everything else.
+  */
+  .prose-guide {
+    @apply text-sm leading-relaxed;
+  }
+
+  .prose-guide h1 {
+    @apply mt-8 mb-4 text-2xl font-semibold first:mt-0;
+  }
+
+  .prose-guide h2 {
+    @apply border-border mt-8 mb-3 border-b pb-2 text-lg font-semibold;
+  }
+
+  .prose-guide h3 {
+    @apply mt-6 mb-2 font-semibold;
+  }
+
+  .prose-guide p {
+    @apply my-3;
+  }
+
+  .prose-guide ul {
+    @apply my-3 list-disc space-y-1 pl-6;
+  }
+
+  .prose-guide ol {
+    @apply my-3 list-decimal space-y-1 pl-6;
+  }
+
+  .prose-guide a {
+    @apply underline underline-offset-2;
+  }
+
+  .prose-guide code {
+    @apply bg-muted rounded px-1.5 py-0.5 font-mono text-xs;
+  }
+
+  .prose-guide pre {
+    @apply bg-muted my-4 overflow-x-auto rounded-md p-4;
+  }
+
+  /* Inside a block the background is the block's, and the padding is already there. */
+  .prose-guide pre code {
+    @apply bg-transparent p-0 text-xs;
+  }
+
+  .prose-guide blockquote {
+    @apply border-border text-muted-foreground my-4 border-l-2 pl-4 italic;
+  }
+
+  .prose-guide hr {
+    @apply border-border my-8;
+  }
+
+  /*
+    Tables scroll inside themselves rather than widening the page. The guide has a five-column
+    table of requirements, and a dashboard whose body scrolls sideways is a dashboard nobody can
+    read the left edge of.
+  */
+  .prose-guide table {
+    @apply my-4 block w-full overflow-x-auto text-xs;
+    border-collapse: collapse;
+  }
+
+  .prose-guide th {
+    @apply border-border bg-muted border px-3 py-2 text-left font-semibold;
+  }
+
+  .prose-guide td {
+    @apply border-border border px-3 py-2 align-top;
+  }
 }
