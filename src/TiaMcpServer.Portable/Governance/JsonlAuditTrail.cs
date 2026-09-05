@@ -31,16 +31,46 @@ namespace TiaMcpServer.Governance
     /// </remarks>
     public sealed class JsonlAuditTrail : IAuditTrail
     {
-        /// <summary>The order the chain hashes an entry's values in. It may never be reordered.</summary>
+        /// <summary>The version of the canonical form this server writes.</summary>
+        private const string CurrentChainVersion = "2";
+
+        /// <summary>The version assumed for a line that names none.</summary>
+        private const string OriginalChainVersion = "1";
+
+        /// <summary>
+        /// The order the chain hashes an entry's values in, per version of the canonical form.
+        /// </summary>
         /// <remarks>
-        /// Changing this order invalidates every hash already written, so the whole trail would
-        /// report as tampered with. If a field is ever added it goes on the end, and the entries
-        /// written before it stay verifiable.
+        /// **A list may never be reordered or edited once it has shipped.** The hash covers the
+        /// values in this order and nothing else, so changing a published list makes every entry
+        /// written under it report as edited after the fact -- which is the strongest alarm this
+        /// system has, raised by a routine code change.
+        ///
+        /// Adding a field means adding a *version*, and this is why. Until 2026-09-05 the comment
+        /// here promised that a field appended to the end would leave earlier entries verifiable.
+        /// It would not have: the canonical form is a JSON array of values, so an eleventh value
+        /// changes the hash of an entry written with ten. Measured against the golden fixture with
+        /// the harness verifier rather than reasoned about, because the promise had been believed
+        /// once already.
+        ///
+        /// A line records its version in <c>v</c>, and one written before versioning existed
+        /// records none and is read as version 1. <c>v</c> is not itself hashed and does not need to
+        /// be: editing it makes the entry verify against the wrong field list, and the hash stops
+        /// matching. It fails closed.
         /// </remarks>
-        private static readonly string[] ChainedFields =
-        {
-            "timestamp", "planId", "mode", "tool", "target", "value", "backupPath", "origin", "outcome", "detail"
-        };
+        private static readonly Dictionary<string, string[]> ChainedFieldsByVersion =
+            new Dictionary<string, string[]>(StringComparer.Ordinal)
+            {
+                [OriginalChainVersion] = new[]
+                {
+                    "timestamp", "planId", "mode", "tool", "target", "value", "backupPath", "origin", "outcome", "detail"
+                },
+                [CurrentChainVersion] = new[]
+                {
+                    "timestamp", "planId", "mode", "tool", "target", "value", "backupPath", "origin", "outcome", "detail",
+                    "documentation"
+                }
+            };
 
         /// <summary>Why a line with its chain fields removed is a forgery and not old history.</summary>
         private const string StrippedChain =
@@ -219,9 +249,22 @@ namespace TiaMcpServer.Governance
                 return "this entry does not point back to the one before it - the file was cut and re-joined";
             }
 
-            var values = new List<string>(ChainedFields.Length);
+            var version = Field(record, "v");
 
-            foreach (var name in ChainedFields)
+            if (version.Length == 0)
+            {
+                version = OriginalChainVersion;
+            }
+
+            if (!ChainedFieldsByVersion.TryGetValue(version, out var chainedFields))
+            {
+                return $"this entry names chain version '{version}', which this server does not know - " +
+                    "it was written by a newer one";
+            }
+
+            var values = new List<string>(chainedFields.Length);
+
+            foreach (var name in chainedFields)
             {
                 values.Add(Field(record, name));
             }
@@ -254,15 +297,17 @@ namespace TiaMcpServer.Governance
         private static ChainedLine Serialise(AuditEntry entry, long sequence, string previousHash)
         {
             var record = Fields(entry);
-            var values = new List<string>(ChainedFields.Length);
+            var chainedFields = ChainedFieldsByVersion[CurrentChainVersion];
+            var values = new List<string>(chainedFields.Length);
 
-            foreach (var name in ChainedFields)
+            foreach (var name in chainedFields)
             {
                 values.Add(record[name]);
             }
 
             var hash = AuditChain.Link(sequence, previousHash, values);
 
+            record["v"] = CurrentChainVersion;
             record["seq"] = sequence.ToString(CultureInfo.InvariantCulture);
             record["prev"] = previousHash;
             record["hash"] = hash;
@@ -283,7 +328,8 @@ namespace TiaMcpServer.Governance
                 ["backupPath"] = entry.BackupPath,
                 ["origin"] = entry.Origin,
                 ["outcome"] = entry.Outcome.ToString(),
-                ["detail"] = entry.Detail
+                ["detail"] = entry.Detail,
+                ["documentation"] = entry.Documentation
             };
         }
 
@@ -369,7 +415,8 @@ namespace TiaMcpServer.Governance
                 DateTimeOffset.Parse(Field(record, "timestamp"), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
                 plan,
                 (AuditOutcome)Enum.Parse(typeof(AuditOutcome), Field(record, "outcome")),
-                Field(record, "detail"));
+                Field(record, "detail"),
+                Field(record, "documentation"));
         }
 
         private static string Field(Dictionary<string, string> record, string name)

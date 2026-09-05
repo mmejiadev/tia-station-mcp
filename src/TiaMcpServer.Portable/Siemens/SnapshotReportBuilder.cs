@@ -16,9 +16,39 @@ namespace TiaMcpServer.Siemens
         private readonly List<string> _unsupported = new List<string>();
         private readonly List<string> _failed = new List<string>();
 
+        // Every path this run has already written to, so a second item cannot land on the first
+        // one's file. Ordinal-ignore-case because that is how the file system compares them.
+        private readonly HashSet<string> _claimed =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         internal SnapshotReportBuilder(string rootDirectory)
         {
             _rootDirectory = rootDirectory;
+        }
+
+        /// <remarks>
+        /// Two TIA names can map to one file name -- see <see cref="SnapshotFileName"/> -- and the
+        /// exporter deletes whatever is already at the path before writing. Without this, the second
+        /// block replaced the first and the report claimed both, which makes a snapshot that is
+        /// missing a block and does not say so.
+        ///
+        /// Refused rather than renamed: a snapshot exists to be diffed against the previous one, and
+        /// silently renaming files would produce a diff nobody can read. This way the collision is a
+        /// line in the failure list, naming both items.
+        /// </remarks>
+        internal bool TryClaim(FileInfo file, string itemName)
+        {
+            if (_claimed.Add(file.FullName))
+            {
+                return true;
+            }
+
+            AddFailure(
+                itemName,
+                $"another item in this snapshot already wrote '{ToRelativePath(file.FullName)}'. " +
+                "Their names differ only in characters a file name cannot carry.");
+
+            return false;
         }
 
         internal void AddExported(FileInfo file)

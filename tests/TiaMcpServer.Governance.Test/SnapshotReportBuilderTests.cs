@@ -103,6 +103,51 @@ namespace TiaMcpServer.Governance.Tests
             StringAssert.Contains(builder.Build().Unsupported.Single(), "GRAPH", StringComparison.Ordinal);
         }
 
+        /// <remarks>
+        /// The defect this method exists for. TIA allows a block called <c>"FC: v2"</c> and another
+        /// called <c>"FC* v2"</c>; both become <c>FC__v2.scl</c>, and the exporter deletes whatever
+        /// is at the path before writing. The snapshot ended up missing a block and saying it had
+        /// exported it, which the response documentation calls exactly not a backup.
+        /// </remarks>
+        [TestMethod]
+        public void TryClaim_TwoNamesThatMapToOneFile_RefusesTheSecondAndSaysWhy()
+        {
+            var builder = new SnapshotReportBuilder(Root);
+            var path = new FileInfo(Path.Combine(Root, "blocks", "FC__v2.scl"));
+
+            Assert.IsTrue(builder.TryClaim(path, "FC: v2"), "the first claim must be granted");
+            Assert.IsFalse(builder.TryClaim(path, "FC* v2"), "the second claim overwrote the first");
+
+            var failure = builder.Build().Failed.Single();
+
+            StringAssert.Contains(failure, "FC* v2", StringComparison.Ordinal);
+            StringAssert.Contains(failure, "blocks/FC__v2.scl", StringComparison.Ordinal);
+        }
+
+        [TestMethod]
+        public void TryClaim_DifferentPaths_AreBothGranted()
+        {
+            var builder = new SnapshotReportBuilder(Root);
+
+            Assert.IsTrue(builder.TryClaim(new FileInfo(Path.Combine(Root, "FC_1.scl")), "FC_1"));
+            Assert.IsTrue(builder.TryClaim(new FileInfo(Path.Combine(Root, "FC_2.scl")), "FC_2"));
+
+            Assert.AreEqual(0, builder.Build().Failed.Count);
+        }
+
+        /// <remarks>
+        /// The file system decides whether two paths are the same one, and on Windows it does not
+        /// care about case. Comparing them ordinally would let a collision through.
+        /// </remarks>
+        [TestMethod]
+        public void TryClaim_TheSamePathInADifferentCase_IsStillTheSamePath()
+        {
+            var builder = new SnapshotReportBuilder(Root);
+
+            Assert.IsTrue(builder.TryClaim(new FileInfo(Path.Combine(Root, "FC.scl")), "FC"));
+            Assert.IsFalse(builder.TryClaim(new FileInfo(Path.Combine(Root, "fc.scl")), "fc"));
+        }
+
         [TestMethod]
         public void Build_NothingAdded_IsEmptyRatherThanNull()
         {
