@@ -20,13 +20,12 @@ namespace TiaMcpServer.Siemens
                 return null;
             }
 
-            string[] pathSegments = softwarePath.Split('/');
+            // Read the same way as every other path in the server. It used to be Split('/') with
+            // empty segments kept, so 'Device//PLC' found nothing here while the group lookups
+            // accepted the same string -- one doubled slash, two answers.
+            string[] pathSegments = ProjectPath.Parse(softwarePath).Segments.ToArray();
             int index = 0;
 
-            if (index >= pathSegments.Length)
-                return null;
-
-            string segment = pathSegments[index];
             SoftwareContainer? softwareContainer = null;
 
             // in Devices

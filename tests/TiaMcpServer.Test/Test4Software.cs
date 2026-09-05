@@ -165,6 +165,41 @@ namespace TiaMcpServer.Test
                 $"'{BlockGroupPath}' is not among the groups of the root");
         }
 
+        /// <remarks>
+        /// This was a real defect, found while extracting ProjectPath and not by anything failing.
+        /// An empty block path became "the root group", an empty name became a filter that matches
+        /// everything, and GetBlock returned whichever block came first -- a different block on a
+        /// different project, reported as though it were the one asked for. Every write tool takes
+        /// a path like this one.
+        /// </remarks>
+        [TestMethod]
+        [DataRow("")]
+        [DataRow("   ")]
+        [DataRow("/")]
+        public void GetBlock_APathThatNamesNoBlock_RefusesInsteadOfReturningOne(string blockPath)
+        {
+            var failure = Assert.ThrowsException<PortalException>(
+                () => AssemblyHooks.SharedPortal.GetBlock(Settings.Project1PlcSoftwarePath0, blockPath));
+
+            Assert.AreEqual(PortalErrorCode.InvalidParams, failure.Code);
+        }
+
+        /// <remarks>
+        /// The forgiving half of the same rule, and it has to hold through the real lookup rather
+        /// than only in the unit tests: a doubled or trailing slash is a typing artefact.
+        /// </remarks>
+        [TestMethod]
+        [DataRow("1_Tests//FC_Block_1")]
+        [DataRow("/1_Tests/FC_Block_1")]
+        [DataRow(" 1_Tests / FC_Block_1 ")]
+        public void GetBlock_ASlashOutOfPlace_StillFindsTheBlock(string blockPath)
+        {
+            var block = AssemblyHooks.SharedPortal.GetBlock(Settings.Project1PlcSoftwarePath0, blockPath);
+
+            Assert.IsNotNull(block, $"'{blockPath}' found no block");
+            Assert.AreEqual("FC_Block_1", block.Name);
+        }
+
         [TestMethod]
         public void GetBlocks_RegexMatchingNothing_ReturnsEmptyList()
         {

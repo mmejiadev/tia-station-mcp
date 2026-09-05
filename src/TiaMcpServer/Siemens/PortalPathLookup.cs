@@ -20,11 +20,7 @@ namespace TiaMcpServer.Siemens
             if (_project?.Devices == null || string.IsNullOrWhiteSpace(devicePath))
                 return null;
 
-            var pathSegments = devicePath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
-            if (pathSegments.Length == 0)
-            {
-                return null;
-            }
+            var pathSegments = ProjectPath.Parse(devicePath).Segments.ToArray();
 
             // Try top-level device first
             if (pathSegments.Length == 1)
@@ -68,8 +64,7 @@ namespace TiaMcpServer.Siemens
                 return null;
             }
 
-            // Split the device path by '/' to get each device name  
-            var pathSegments = deviceItemPath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            var pathSegments = ProjectPath.Parse(deviceItemPath).Segments.ToArray();
 
             DeviceItem? deviceItem = null;
 
@@ -156,8 +151,7 @@ namespace TiaMcpServer.Siemens
                 }
 
 
-                // Split the path by '/' to get each group name
-                var groupNames = groupPath.Split(['/'], StringSplitOptions.RemoveEmptyEntries);
+                var groupNames = ProjectPath.GroupSegments(groupPath);
 
                 PlcBlockGroup? currentGroup = plcSoftware.BlockGroup;
 
@@ -192,7 +186,7 @@ namespace TiaMcpServer.Siemens
                     return null;
                 }
 
-                var groupNames = groupPath.Split(['/'], StringSplitOptions.RemoveEmptyEntries);
+                var groupNames = ProjectPath.GroupSegments(groupPath);
 
                 PlcTypeGroup? currentGroup = plcSoftware.TypeGroup;
 

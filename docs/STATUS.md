@@ -5,6 +5,66 @@
 
 ## ▶ RESUME HERE
 
+### F5, first half — 2026-09-05
+
+**Thirty-three tests that could only run on a licensed machine now run anywhere**, and one of them
+found a defect that nothing was failing over. On branch `work/pure-logic-f5`, uncommitted.
+
+```
+src/TiaMcpServer.Portable/Siemens/ProjectPath.cs          new  one reading of a path, at last
+src/TiaMcpServer.Portable/Siemens/NetworkTopologyWriter.cs mov  moved out of the licensed assembly
+src/TiaMcpServer.Portable/Siemens/NetworkNodeInfo.cs      mov  what it writes
+src/TiaMcpServer.Portable/Siemens/SnapshotReportBuilder.cs mov  moved out too
+src/TiaMcpServer.Portable/Siemens/SnapshotResult.cs       mov  what it builds
+tests/.../ProjectPathTests.cs                             new  20 tests
+tests/.../NetworkTopologyWriterTests.cs                   new   6 tests
+tests/.../SnapshotReportBuilderTests.cs                   new   7 tests
+src/TiaMcpServer/Siemens/Portal{Blocks,Types,Documents,PathLookup,SoftwareContainer}.cs  mod  9 sites
+tests/TiaMcpServer.Test/Test4Software.cs                  mod  6 tests through the real lookup
+```
+
+**The code had three readings of the same path, and nobody had noticed.** `Split('/')` keeping empty
+segments in the software lookup; `Split('/', RemoveEmptyEntries)` in the device and group lookups;
+`Contains("/")` with `LastIndexOf` and two `Substring` calls in the block, type and document
+lookups. So `Device//PLC` was "not found" from one tool and the same as `Device/PLC` from another.
+`ProjectPath` is now the only one, and it is forgiving about slashes and spaces on purpose: a
+doubled slash is a typing artefact, and refusing it sends the caller to look at the project instead
+of at the string.
+
+**The defect it exposed, which was found by reading rather than by a failure.**
+`GetBlock(software, "")` **returned a block**: the empty path became "the root group", the empty
+name became a filter that matches everything, and `FirstOrDefault` handed back whichever block came
+first — reported as the block that was asked for. Every write tool takes a path that way. An empty
+path is now `InvalidParams`, which is what a missing argument is, and `Test4Software` asserts it
+through the real lookup along with the forgiving half.
+
+**The two classes that moved had no test at all.** `NetworkTopologyWriter` and
+`SnapshotReportBuilder` reference no Openness type and never did; they lived in the assembly that
+needs TIA Portal to build, so the only way to reach them was to run the whole Openness suite, and
+nothing did. That is audit finding F5 in one sentence. The sorting that keeps a topology file from
+producing phantom diffs is now asserted, as is the relative-path handling that lets two machines
+compare snapshot reports.
+
+**Everything is green.** 0 warnings; governance **151/151** (118 before this session),
+specification **44/44**, TIA **160/164 in 7 m 03 s** with 4 skipped and 0 failing, no orphan process.
+
+**Found and deliberately not fixed, because it is a decision rather than a correction.**
+`SourceSnapshotExporter.MakeValidFileName` replaces every character that is invalid in a file name
+with `_`, and `PrepareFile` deletes an existing file before writing. Two blocks whose names differ
+only in those characters — TIA allows `"FC: v2"` and `"FC* v2"` — land on the same `FC__v2.scl`, and
+the second silently overwrites the first **while the report says both were exported**. The docs on
+`ResponseExportSnapshot` say a snapshot that does not describe the whole program is not a backup;
+this makes one incomplete without saying so. Fixing it changes snapshot file names, which breaks the
+diffs of every snapshot already taken, so it is the user's call.
+
+**The next action.** The second half of F5: `SclBlockGenerator` and `SourceSnapshotExporter` still
+mix pure rules — file names, extensions, which languages have no text representation — with the
+Openness calls around them. Then F3, and F8 to F12. The other front is **phase 5b, deployment**.
+
+**Left running on the machine**: nothing.
+
+---
+
 ### McpServer.cs is split too — 2026-09-05
 
 **2,176 lines against this repository's limit of 300; now 369, across ten files.** Same move as
