@@ -109,6 +109,48 @@ namespace TiaMcpServer.ModelContextProtocol
             }
         }
 
+        [McpServerTool(Name = "SetDeviceAddress"), Description("Set the address of one network node, for example a CPU's IP. Take devicePath and nodeName straight from GetNetworkTopology, which prints both for every interface in the project. The current layout is recorded to the backup registry first. The address the node holds afterwards is read back rather than echoed, because TIA normalises some of them.")]
+        public static ResponseMessage SetDeviceAddress(
+            [Description("devicePath: path of the device item owning the interface, as GetNetworkTopology prints it")] string devicePath,
+            [Description("nodeName: the node on that interface, as GetNetworkTopology prints it")] string nodeName,
+            [Description("address: the address to set, for example 192.168.0.1 on Ethernet or a station number on PROFIBUS")] string address)
+        {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
+            try
+            {
+                var target = ChangeTarget.Program(devicePath);
+                var backupDirectory = Backups.Allocate("SetDeviceAddress", target);
+                var request = new Governance.ChangeRequest("SetDeviceAddress", target, address)
+                    .WithBackup(backupDirectory);
+
+                return GuardedTool.Run(
+                    GuardedWrites,
+                    request,
+                    () =>
+                    {
+                        var applied = Portal.SetNodeAddress(devicePath, nodeName, address, backupDirectory);
+
+                        return new ResponseMessage
+                        {
+                            Message = $"'{nodeName}' on '{devicePath}' now answers at '{applied}'",
+                            Meta = new JsonObject
+                            {
+                                ["timestamp"] = DateTime.Now,
+                                ["success"] = true,
+                                ["address"] = applied
+                            }
+                        };
+                    },
+                    () => new ResponseMessage());
+            }
+            catch (TiaMcpServer.Siemens.PortalException pex)
+            {
+                throw ToMcpException(pex, $"Failed to set '{nodeName}' on '{devicePath}' to '{address}'");
+            }
+        }
+
         [McpServerTool(Name = "AssignDeviceToIoSystem"), Description("Attach an IO device to an existing PROFINET IO system. The current network layout is recorded to the backup registry first. The CPU that owns the IO system cannot be attached to it: a controller is not one of its own devices.")]
         public static ResponseMessage AssignDeviceToIoSystem(
             [Description("devicePath: full path to the IO device to attach")] string devicePath,

@@ -5,6 +5,61 @@
 
 ## ▶ RESUME HERE
 
+### Phase 6 begun, and running it once found two older defects — 2026-09-05
+
+**The goal changed today: cover everything TIA Portal can do.** `docs/ROADMAP.md` now carries phases
+6 to 10 for that, with Workshop Mode moved to phase 11 — its number moved, its position did not.
+The plan came from measuring rather than guessing: 59 tools against roughly 1,800 public types in
+`Siemens.Engineering.dll`, checked by reflection.
+
+**One thing in that plan is not achievable by extending this server, and it is worth knowing before
+anyone promises it.** Reading a live value from a physical PLC cannot be done through Openness at
+all: `OnlineProvider` offers `GoOnline`, `GoOffline`, `State` and the master-secret calls, and
+nothing else. Watch and force tables are *offline* objects. That capability needs an OPC UA client
+or an S7 communication library — a separate component, which is why it is phase 9 and not a tool.
+
+**First slice of phase 6: `SetDeviceAddress`.** Sixty tools now. It takes the two names
+`GetNetworkTopology` already prints, goes through `GuardedTool.Run` with a backup of the layout
+first, and reads the address back afterwards instead of echoing it — TIA normalises some, and a
+caller trusting the echo would download to an address the project does not have.
+
+**Then it was run, and it failed on the first try for reasons that predated it.**
+
+**`GetNetworkTopology` printed paths that nothing could resolve.** An Openness hardware station is
+called `S7-1500/ET200MP-Station_3` — a name containing the path separator, and one TIA Portal's own
+IDE never shows. The reader joined it into the path; the lookup deliberately ignores it, as its own
+inherited comment says. The two had never agreed, and nobody noticed because until now nothing used
+that output as input. The reader now drops a device name that contains the separator, because such a
+name cannot be part of a separator-joined path — a fact about the encoding, not a heuristic.
+
+**The path resolver silently discarded everything after the first name it recognised.**
+`PLC_0/PROFINET-Schnittstelle_1` resolved to `PLC_0`: it returned **an object that was not the one
+asked for**, which is worse than returning none, because nothing downstream can tell. Everything
+below a CPU — its interfaces, its slots, its ports — was unreachable by path. `Descend` now follows
+the remaining segments.
+
+**Neither was found by reading.** Both were found by one test asserting one property: that the two
+columns the read tool prints are enough to aim the write tool. Without it, `SetDeviceAddress` would
+have been committed compiling, with its guard tested, and never once working against a hardware PLC.
+
+**Everything is green.** 0 warnings; governance **170/170**, specification **44/44**, harness
+**214/214**, TIA **165/169 in 7 m 32 s** with 4 skipped and 0 failing, no orphan process.
+
+**An operational note that belongs in `INSTALL.md`.** The MCP server holds its TIA Portal open for
+as long as the server lives, and `AssemblyInitialize` refuses to run the suite while any portal is
+open — rightly, after a run once blocked for thirteen hours by attaching to somebody's session. So
+**using the installed server and running the test suite are mutually exclusive**, and whoever
+installs this and then tries to contribute will hit that without knowing why.
+
+**The next action.** The rest of phase 6: creating and connecting subnets
+(`Node.CreateAndConnectToSubnet`, `SubnetComposition.Create`), then tag tables and constants
+(`PlcTagTableComposition.Create`, `PlcTagComposition.Create`) — exported today, and impossible to
+author.
+
+**Left running on the machine**: nothing.
+
+---
+
 ### Phase 5b started — 2026-09-05
 
 **The release artefact exists, runs from its own folder, and is documented.** Three of the phase's

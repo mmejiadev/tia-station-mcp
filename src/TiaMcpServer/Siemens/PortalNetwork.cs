@@ -1,7 +1,9 @@
 ﻿using Microsoft.Extensions.Logging;
 using Siemens.Engineering.HW;
+using Siemens.Engineering.HW.Features;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace TiaMcpServer.Siemens
 {
@@ -10,6 +12,9 @@ namespace TiaMcpServer.Siemens
     /// </remarks>
     public partial class Portal
     {
+        /// <summary>What Openness calls a node's address. The reader uses the same name.</summary>
+        private const string NodeAddressAttribute = "Address";
+
         /// <summary>
         /// Reads the project's network layout: every device interface, its address and its subnet.
         /// </summary>
@@ -106,6 +111,107 @@ namespace TiaMcpServer.Siemens
             catch (Exception ex)
             {
                 throw DecorateNetworkFailure(ex, devicePath, backupDirectory, "AssignDeviceToIoSystem");
+            }
+        }
+
+        /// <summary>Sets the address of one network node.</summary>
+        /// <param name="deviceItemPath">Path of the device item owning the interface.</param>
+        /// <param name="nodeName">The node, as GetNetworkTopology names it.</param>
+        /// <param name="address">The address to set.</param>
+        /// <param name="backupDirectory">Where the current layout is recorded first. Required.</param>
+        /// <returns>The address the node holds afterwards, read back rather than echoed.</returns>
+        /// <exception cref="PortalException">
+        /// No project is open, the device item or the node does not exist, or TIA Portal refused the
+        /// address.
+        /// </exception>
+        /// <remarks>
+        /// **Its two names are two columns of GetNetworkTopology.** That read tool already prints
+        /// device path and node name for every interface in the project, so finding what to change
+        /// and changing it use the same vocabulary. A write whose arguments cannot be obtained from
+        /// a read is a write nobody can aim.
+        ///
+        /// The address is read back afterwards instead of being echoed, for the reason
+        /// WriteSimulationTag gives: reporting what was asked for tells the caller nothing about
+        /// what happened. TIA normalises some addresses, and a caller that trusted the echo would
+        /// go on to download to an address the project does not have.
+        ///
+        /// This is why the tool exists at all: a download to PLCSIM only connects when the CPU
+        /// address in the project matches the virtual controller's, and until now that address
+        /// could only be typed into TIA Portal by hand.
+        /// </remarks>
+        public string SetNodeAddress(string deviceItemPath, string nodeName, string address, string backupDirectory)
+        {
+            _logger?.LogInformation("Setting {Node} on {Device} to {Address}...", nodeName, deviceItemPath, address);
+
+            try
+            {
+                if (string.IsNullOrWhiteSpace(nodeName) || string.IsNullOrWhiteSpace(address))
+                {
+                    throw new PortalException(PortalErrorCode.InvalidParams, "nodeName and address are required");
+                }
+
+                var deviceItem = RequireDeviceItemForWrite(deviceItemPath, backupDirectory);
+                var node = RequireNode(deviceItem, deviceItemPath, nodeName);
+
+                SetAddress(node, address);
+
+                return node.GetAttribute(NodeAddressAttribute)?.ToString() ?? string.Empty;
+            }
+            catch (Exception ex)
+            {
+                throw DecorateNetworkFailure(ex, deviceItemPath, backupDirectory, "SetNodeAddress");
+            }
+        }
+
+        /// <remarks>
+        /// Names the nodes that do exist when the wanted one does not. The alternative message,
+        /// "node not found", sends somebody back to TIA Portal to look up a name this server could
+        /// have printed.
+        /// </remarks>
+        private static Node RequireNode(DeviceItem deviceItem, string deviceItemPath, string nodeName)
+        {
+            var networkInterface = deviceItem.GetService<NetworkInterface>()
+                ?? throw new PortalException(
+                    PortalErrorCode.InvalidState,
+                    $"'{deviceItemPath}' has no network interface, so it has no address to set");
+
+            foreach (Node node in networkInterface.Nodes)
+            {
+                if (string.Equals(node.Name, nodeName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return node;
+                }
+            }
+
+            var present = string.Join(", ", networkInterface.Nodes.Select(one => one.Name));
+
+            throw new PortalException(
+                PortalErrorCode.NotFound,
+                $"'{deviceItemPath}' has no node called '{nodeName}'. It has: {present}");
+        }
+
+        /// <remarks>
+        /// A refused address is the caller's mistake, so it comes back as invalid input rather than
+        /// as an operation failure. The message carries what the node holds now, because the shape
+        /// differs by network: an Ethernet node takes 192.168.0.1 and a PROFIBUS node takes a
+        /// station number, and guessing which this is would be worse than showing the current one.
+        /// </remarks>
+        private static void SetAddress(Node node, string address)
+        {
+            var before = node.GetAttribute(NodeAddressAttribute)?.ToString() ?? string.Empty;
+
+            try
+            {
+                node.SetAttribute(NodeAddressAttribute, address);
+            }
+            catch (Exception failure)
+            {
+                throw new PortalException(
+                    PortalErrorCode.InvalidParams,
+                    $"TIA Portal refused '{address}' for node '{node.Name}'. It holds '{before}' now, " +
+                    "which is the shape this network expects.",
+                    null,
+                    failure);
             }
         }
 

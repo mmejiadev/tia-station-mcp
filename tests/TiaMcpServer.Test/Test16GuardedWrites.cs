@@ -148,6 +148,19 @@ namespace TiaMcpServer.Test
             AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
         }
 
+        /// <remarks>
+        /// The rule CLAUDE.md states and this class exists to enforce: a tool that changes anything
+        /// goes through the guard. Setting an address rewires which machine answers where, so it is
+        /// a write like any other and a policy that says nothing about the target refuses it.
+        /// </remarks>
+        [TestMethod]
+        public void SetDeviceAddress_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.SetDeviceAddress(Settings.Project1PlcSoftwarePath0, "PROFINET interface_1", "192.168.0.42");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
         [TestMethod]
         public void DownloadToSimulation_WithNoPolicy_IsRefused()
         {

@@ -423,9 +423,89 @@ Explicitly out of scope: a central server, remote access to the dashboard, and a
 Exposing the API beyond loopback publishes a record of everything the server changed and where every
 backup lives, and that is a decision with consequences, not a deployment convenience.
 
-### Phase 6 — Workshop Mode, supervised and last
+## Covering what TIA Portal can do — phases 6 to 10
+
+Added 2026-09-05, after an audit of what this server reaches against what the Openness API actually
+offers. The measurement, not the impression: 59 tools against roughly 1,800 public types across some
+sixty namespaces. The stated goal is now **all of it**.
+
+What the server covers today is one stretch of the work: *write code, compile it, simulate it,
+observe it*. What it barely touches is the stretch before that — building the station — and the one
+after — talking to a real machine. An integrator does three things: configures, programs, and
+commissions. This automates the second.
+
+**Two of the gaps are not extensions of what exists**, and saying so is the point of this section:
+
+- **Reading a live value from a physical PLC cannot be done through Openness at all.**
+  `OnlineProvider` offers `GoOnline`, `GoOffline`, `State` and the master-secret calls, and nothing
+  else. Watch and force tables are *offline* objects: Openness creates them and fills them in, and
+  never reads what they hold on the machine. That capability needs an **OPC UA client**, or an S7
+  communication library — a separate component speaking a different protocol, not another tool on
+  this server. Checked against `Siemens.Engineering.dll` for V20, not assumed.
+- **Commanding physical hardware is gated by phase 11**, and the gate is the reason this project
+  exists rather than an obstacle in front of it.
+
+Everything else in these phases is API that exists and is documented. It is work, not research.
+
+### Phase 6 — Addresses, subnets and tag tables
+
+The smallest of these and the one that removes a pain already felt. Today a download to PLCSIM only
+works if the CPU's address in the project matches the virtual controller's, and **there is no tool
+that sets an address** — it has to be typed into TIA Portal by hand.
+
+- Setting a node's address, creating subnets, PROFIBUS alongside PROFINET, PROFINET device names.
+- Creating and editing tag tables, tags and constants: `PlcTagTableComposition.Create`,
+  `PlcTagComposition.Create`. They are exported today and cannot be authored, and a program without
+  tags is half a program.
+
+### Phase 7 — Building the station
+
+The largest gap and the largest namespace: `Siemens.Engineering.HW` holds 862 public types. Today a
+device can be created from an order number and nothing can be done to it afterwards.
+
+- `HardwareObject.PlugNew`, `CanPlugNew`, `GetPlugLocations`, `PlugCopy`, `PlugMove`,
+  `DeviceItem.Delete`: racks, modules, power supplies, IO cards.
+- Parameters through `SetAttribute`: cycle, start-up, protection, whatever a device exposes.
+- Importing GSD/GSDML for third-party devices.
+
+This is what turns the server from "it edits a project somebody else built" into "it builds one".
+
+### Phase 8 — Knowing what uses what
+
+`CrossReferenceService.GetCrossReferences` answers *who calls this block*, which is exactly the
+question to ask **before** rewriting it. For a loop where a model edits code it did not write, this
+is worth more than its size suggests. Watch and force tables, created offline, belong here too.
+
+### Phase 9 — Reading a real PLC, over OPC UA
+
+Not Openness. A client that connects to the CPU's OPC UA server and reads variables from a machine
+that is running.
+
+It sits after phases 6 and 7 for a reason: reading a real machine is only useful once one can be
+configured. It also has a precondition the server can already check — `GetOpcUaInterfaces` says
+whether the CPU publishes anything at all, and an empty list means there is nothing to read until
+somebody configures an interface.
+
+**This reads. It does not command.** That distinction is the whole reason it comes before phase 11.
+
+### Phase 10 — The rest of the surface
+
+In descending order of what they give back for the work:
+
+- **Graphical languages.** LAD, FBD and GRAPH have no authoring API: they are generated as SimaticML
+  XML and imported. Expensive, and GRAPH is the worst of the three.
+- Technological objects (axes, cams), alarms and text lists, libraries and master copies, project
+  comparison, certificates and syslog.
+- **HMI Unified**, roughly 400 types. Named last on purpose: it is the largest remaining surface and
+  the one that gives a four-station cell the least. Doing it should be a decision, not momentum.
+
+### Phase 11 — Workshop Mode, supervised and last
 
 Last, and only under supervision. Deliberately.
+
+**It was phase 6 until 2026-09-05 and its number moved, not its position.** Five phases were
+inserted before it, and the rule has never been a number: new code that commands physical machinery
+is not the newest code in the repository, and it comes after everything else.
 
 ### The knowledge layer
 
