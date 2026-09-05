@@ -9,7 +9,8 @@
 
 **The audit trail now records what documentation a change was justified with**, which was audit
 finding F3: the plan showed the citation to whoever confirmed the change and the trail kept no trace
-of it. Getting there meant fixing something else first. On branch `work/pure-logic-f5`, uncommitted.
+of it. Getting there meant fixing something else first. On branch `work/audit-chain-version`,
+uncommitted.
 
 **The trail's own documentation promised something false, and believing it would have been
 expensive.** It said a field appended to the end of the chained values would leave earlier entries
@@ -64,7 +65,7 @@ compile, download to PLCSIM, read a tag.
 ### F5, first half — 2026-09-05
 
 **Thirty-three tests that could only run on a licensed machine now run anywhere**, and one of them
-found a defect that nothing was failing over. On branch `work/pure-logic-f5`, uncommitted.
+found a defect that nothing was failing over. Merged as PR #16.
 
 ```
 src/TiaMcpServer.Portable/Siemens/ProjectPath.cs          new  one reading of a path, at last
