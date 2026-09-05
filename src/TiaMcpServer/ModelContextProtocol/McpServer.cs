@@ -315,23 +315,18 @@ namespace TiaMcpServer.ModelContextProtocol
 
             try
             {
-                var list = Portal.GetProjects();
+                var list = new List<TiaMcpServer.Siemens.ObjectDescription>(Portal.GetProjects());
 
                 list.AddRange(Portal.GetSessions());
 
                 var responseList = new List<ResponseProjectInfo>();
                 foreach (var project in list)
                 {
-                    var attributes = EngineeringAttributeReader.Read(project);
-
-                    if (project != null)
+                    responseList.Add(new ResponseProjectInfo
                     {
-                        responseList.Add(new ResponseProjectInfo
-                        {
-                            Name = project.Name,
-                            Attributes = attributes
-                        });
-                    }
+                        Name = project.Name,
+                        Attributes = project.Attributes
+                    });
                 }
 
                 return new ResponseGetProjects
@@ -988,6 +983,39 @@ namespace TiaMcpServer.ModelContextProtocol
             return described;
         }
 
+        private static List<ResponseTypeInfo> DescribeTypes(IEnumerable<TypeDescription>? types)
+        {
+            var described = new List<ResponseTypeInfo>();
+
+            if (types == null)
+            {
+                return described;
+            }
+
+            foreach (var type in types)
+            {
+                described.Add(Describe(type));
+            }
+
+            return described;
+        }
+
+        private static ResponseTypeInfo Describe(TypeDescription type)
+        {
+            return new ResponseTypeInfo
+            {
+                Name = type.Name,
+                Path = type.Path,
+                TypeName = type.TypeName,
+                Namespace = type.Namespace,
+                IsConsistent = type.IsConsistent,
+                ModifiedDate = type.ModifiedDate,
+                IsKnowHowProtected = type.IsKnowHowProtected,
+                Attributes = type.Attributes,
+                Description = type.Description
+            };
+        }
+
         private static ResponseBlockInfo Describe(BlockDescription block)
         {
             return new ResponseBlockInfo
@@ -1092,14 +1120,12 @@ namespace TiaMcpServer.ModelContextProtocol
 
                 if (device != null)
                 {
-                    var attributes = EngineeringAttributeReader.Read(device);
-
                     return new ResponseDeviceInfo
                     {
                         Message = $"Device info retrieved from '{devicePath}'",
                         Name = device.Name,
-                        Attributes = attributes,
-                        Description = device.ToString(),
+                        Attributes = device.Attributes,
+                        Description = device.Description,
                         Meta = new JsonObject
                         {
                             ["timestamp"] = DateTime.Now,
@@ -1131,14 +1157,12 @@ namespace TiaMcpServer.ModelContextProtocol
 
                 if (deviceItem != null)
                 {
-                    var attributes = EngineeringAttributeReader.Read(deviceItem);
-
                     return new ResponseDeviceItemInfo
                     {
                         Message = $"Device item info retrieved from '{deviceItemPath}'",
                         Name = deviceItem.Name,
-                        Attributes = attributes,
-                        Description = deviceItem.ToString(),
+                        Attributes = deviceItem.Attributes,
+                        Description = deviceItem.Description,
                         Meta = new JsonObject
                         {
                             ["timestamp"] = DateTime.Now,
@@ -1172,16 +1196,12 @@ namespace TiaMcpServer.ModelContextProtocol
                 {
                     foreach (var device in list)
                     {
-                        if (device != null)
+                        responseList.Add(new ResponseDeviceInfo
                         {
-                            var attributes = EngineeringAttributeReader.Read(device);
-                            responseList.Add(new ResponseDeviceInfo
-                            {
-                                Name = device.Name,
-                                Attributes = attributes,
-                                Description = device.ToString()
-                            });
-                        }
+                            Name = device.Name,
+                            Attributes = device.Attributes,
+                            Description = device.Description
+                        });
                     }
 
                     return new ResponseDevices
@@ -1222,15 +1242,12 @@ namespace TiaMcpServer.ModelContextProtocol
                 var software = Portal.GetPlcSoftware(softwarePath);
                 if (software != null)
                 {
-
-                    var attributes = EngineeringAttributeReader.Read(software);
-
                     return new ResponseSoftwareInfo
                     {
                         Message = $"Software info retrieved from '{softwarePath}'",
                         Name = software.Name,
-                        Attributes = attributes,
-                        Description = software.ToString(),
+                        Attributes = software.Attributes,
+                        Description = software.Description,
                         Meta = new JsonObject
                         {
                             ["timestamp"] = DateTime.Now,
@@ -1669,25 +1686,15 @@ namespace TiaMcpServer.ModelContextProtocol
                 var type = Portal.GetType(softwarePath, typePath);
                 if (type != null)
                 {
-                    var attributes = EngineeringAttributeReader.Read(type);
-
-                    return new ResponseTypeInfo
+                    var info = Describe(type);
+                    info.Message = $"Type info retrieved from '{typePath}' in '{softwarePath}'";
+                    info.Meta = new JsonObject
                     {
-                        Message = $"Type info retrieved from '{typePath}' in '{softwarePath}'",
-                        Name = type.Name,
-                        TypeName = type.GetType().Name,
-                        Namespace = type.Namespace,
-                        IsConsistent = type.IsConsistent,
-                        ModifiedDate = type.ModifiedDate,
-                        IsKnowHowProtected = type.IsKnowHowProtected,
-                        Attributes = attributes,
-                        Description = type.ToString(),
-                        Meta = new JsonObject
-                        {
-                            ["timestamp"] = DateTime.Now,
-                            ["success"] = true
-                        }
+                        ["timestamp"] = DateTime.Now,
+                        ["success"] = true
                     };
+
+                    return info;
                 }
                 else
                 {
@@ -1712,26 +1719,7 @@ namespace TiaMcpServer.ModelContextProtocol
             {
                 var list = Portal.GetTypes(softwarePath, regexName);
 
-                var responseList = new List<ResponseTypeInfo>();
-                foreach (var type in list)
-                {
-                    if (type != null)
-                    {
-                        var attributes = EngineeringAttributeReader.Read(type);
-
-                        responseList.Add(new ResponseTypeInfo
-                        {
-                            Name = type.Name,
-                            TypeName = type.GetType().Name,
-                            Namespace = type.Namespace,
-                            IsConsistent = type.IsConsistent,
-                            ModifiedDate = type.ModifiedDate,
-                            IsKnowHowProtected = type.IsKnowHowProtected,
-                            Attributes = attributes,
-                            Description = type.ToString()
-                        });
-                    }
-                }
+                var responseList = DescribeTypes(list);
 
                 if (list != null)
                 {
@@ -1883,20 +1871,9 @@ namespace TiaMcpServer.ModelContextProtocol
                 {
                     foreach (var t in allTypes)
                     {
-                        if (t != null && t.IsConsistent == false)
+                        if (!t.IsConsistent)
                         {
-                            var attrs = EngineeringAttributeReader.Read(t);
-                            inconsistentTypeInfos.Add(new ResponseTypeInfo
-                            {
-                                Name = t.Name,
-                                TypeName = t.GetType().Name,
-                                Namespace = t.Namespace,
-                                IsConsistent = t.IsConsistent,
-                                ModifiedDate = t.ModifiedDate,
-                                IsKnowHowProtected = t.IsKnowHowProtected,
-                                Attributes = attrs,
-                                Description = t.ToString()
-                            });
+                            inconsistentTypeInfos.Add(Describe(t));
                         }
                     }
                 }
@@ -1904,7 +1881,7 @@ namespace TiaMcpServer.ModelContextProtocol
                 // Send progress update after export completion
                 if (exportedTypes != null && progressToken != null)
                 {
-                    var exportedCount = exportedTypes.Count();
+                    var exportedCount = exportedTypes.Count;
                     await server.SendNotificationAsync("notifications/progress", new
                     {
                         Progress = exportedCount,
@@ -1916,29 +1893,8 @@ namespace TiaMcpServer.ModelContextProtocol
 
                 if (exportedTypes != null)
                 {
-                    var responseList = new List<ResponseTypeInfo>();
-                    var processedCount = 0;
-                    
-                    foreach (var type in exportedTypes)
-                    {
-                        if (type != null)
-                        {
-                            var attributes = EngineeringAttributeReader.Read(type);
-
-                            responseList.Add(new ResponseTypeInfo
-                            {
-                                Name = type.Name,
-                                TypeName = type.GetType().Name,
-                                Namespace = type.Namespace,
-                                IsConsistent = type.IsConsistent,
-                                ModifiedDate = type.ModifiedDate,
-                                IsKnowHowProtected = type.IsKnowHowProtected,
-                                Attributes = attributes,
-                                Description = type.ToString()
-                            });
-                        }
-                        processedCount++;
-                    }
+                    var responseList = DescribeTypes(exportedTypes);
+                    var processedCount = responseList.Count;
 
                     // Send final progress notification
                     if (progressToken != null)

@@ -49,6 +49,21 @@
             Assert.IsNotNull(deviceItem, $"No device item found at '{deviceItemPath}'");
         }
 
+        /// <remarks>
+        /// A description is read once and detached, so the attributes have to come with it. Before
+        /// the split the MCP layer held the live <c>Device</c> and read them itself, which worked
+        /// only while the project stayed open.
+        /// </remarks>
+        [TestMethod]
+        public void GetDevice_ExistingPath_DescriptionCarriesItsAttributes()
+        {
+            var device = AssemblyHooks.SharedPortal.GetDevice("PC-System_0");
+
+            Assert.IsNotNull(device, "No device found at 'PC-System_0'");
+            Assert.AreEqual("PC-System_0", device.Name);
+            Assert.IsTrue(device.Attributes.Count > 0, "No attribute was read");
+        }
+
         [TestMethod]
         public void GetDevice_UnknownPath_ReturnsNull()
         {

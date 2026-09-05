@@ -5,6 +5,101 @@
 
 ## ▶ RESUME HERE
 
+### F2 is closed — 2026-09-05
+
+**No Openness type crosses into `ModelContextProtocol/` any more.** Not a `using
+Siemens.Engineering`, not a type named in a signature, not an engineering object reaching the layer
+through a `var`. The finding that opened in the audit of 2026-09-02 and was half-closed on
+2026-09-03 is finished. On branch `work/portal-dtos-types`, uncommitted.
+
+```
+types — the mirror of the blocks
+  src/TiaMcpServer/Siemens/TypeDescription.cs   new  narrower than a block: a UDT has no language
+  src/TiaMcpServer/Siemens/TypeDescriber.cs     new  its own class; the two share not one property
+
+devices, software, projects and sessions
+  src/TiaMcpServer/Siemens/ObjectDescription.cs new  one type for four things that read the same
+  src/TiaMcpServer/Siemens/ObjectDescriber.cs   new  takes IEngineeringObject, the one place that fits
+
+  src/TiaMcpServer/Siemens/Portal.cs            mod  GetType(s), ExportType(s), GetDevice(s),
+                                                     GetDeviceItem, GetPlcSoftware, GetProjects,
+                                                     GetSessions describe; the finders are private
+  src/TiaMcpServer/ModelContextProtocol/McpServer.cs mod  the last nine translations, now two
+  src/TiaMcpServer/ModelContextProtocol/Responses.cs mod  ResponseTypeInfo carries its path
+  tests/.../Test2ProjectSession.cs, Test3Devices.cs, Test4Software.cs  mod  6 tests
+```
+
+**Everything is green.** Solution builds with **0 warnings**; governance **118/118**, specification
+**44/44**, TIA **154/158 in 8 m 58 s** with 4 skipped and 0 failing, and no orphan portal afterwards.
+
+**Two things worth keeping from how it went.** The type path walker was written as a copy of the
+block one *after* that one was fixed, so it inherited the fix rather than the defect: the root
+system group — "PLC data types" — is dropped, and
+`GetType_ExistingPath_DescriptionCarriesItsFullPath` proves it on a path two groups deep. And the
+one failure in the first full run was **the test, not the code**: `PLC_0` is a device *item* in that
+project, not a device. Worth stating plainly, because a test that fails for its own reasons is the
+one that teaches people to rerun until it passes.
+
+**One judgement call to review rather than accept.** `ObjectDescription` is a single type for a
+device, a device item, a PLC software and an open project, because what the portal reads about all
+four is the same three values. Four identical classes would have been ceremony. The moment one of
+them carries something the others cannot — a device's order number, say — it earns its own
+description instead of a nullable property here that means nothing for the other three.
+
+**And `Portal.cs` is split, in the same session and for the reason F2 had to come first.** It was
+3,770 lines against this repository's own limit of 300; it is now **381**, across sixteen files by
+responsibility:
+
+```
+Portal.cs                    381   the connection: attaching or starting, its state, disposing
+PortalProject.cs             335   opening, retrieving, creating, saving, closing
+PortalSession.cs             121   multiuser sessions
+PortalDevices.cs             247   devices, device items, adding one, compiling hardware
+PortalSoftware.cs            114   the PLC software and its compilation
+PortalBlocks.cs              454   blocks
+PortalTypes.cs               384   types
+PortalDocuments.cs           407   SIMATIC SD documents (.s7dcl/.s7res)
+PortalSourceCode.cs          116   WriteScl and the source snapshot
+PortalSimulation.cs          209   PLCSIM Advanced
+PortalNetwork.cs             144   PROFINET topology and the IO system
+PortalOpcUa.cs                83   OPC UA server interfaces
+PortalPathLookup.cs          291   resolving Group/Subgroup/Name
+PortalSoftwareContainer.cs   146   a software path to its container
+PortalRecursiveWalks.cs      110   the filtered hierarchy walks
+PortalProjectTree.cs         242   the project tree
+PortalSoftwareTree.cs        218   one software's tree
+```
+
+**A partial class rather than collaborating classes, deliberately.** All sixteen files work on the
+same three fields — the portal, the project and the session — and their lifetime is why this class
+exists: splitting that state across objects would multiply the places that can leave a zombie TIA
+Portal holding the licence. `CLAUDE.md` allows either shape; this is the one that does not touch
+state.
+
+**Four files are still over 300** — blocks, documents, types, project. Splitting further would
+separate an export method from its failure loop, which reads worse rather than better. The 300-line
+rule is about classes; here the class is one and the unit of reading is the area.
+
+**Nothing was lost, and that was checked rather than assumed**: the 117 members in `HEAD`'s
+`Portal.cs` against the 129 now spread across `Portal*.cs` — the twelve extra being F2's `Find*`
+methods — with an empty difference on the missing side. The `using` directives were pruned by the
+compiler, not by eye: `IDE0005` is an error here, so the whole using block was copied into each new
+file and the build was run in a loop until it stopped complaining. One `ICompilable` was pruned that
+was needed; the next build caught it, which a visual review would not have.
+
+**Verified against TIA Portal**: **154/158 in 7 m 53 s**, 4 skipped, 0 failing, no orphan process.
+
+**The next action.** `McpServer.cs` is around 2,100 lines and is the same problem, now with the same
+solution available: the MCP layer holds no Openness type any more, so `McpServerBlocks`,
+`McpServerTypes`, `McpServerDevices`, `McpServerSimulation` and `McpServerJobs` are a move of whole
+tools. `McpServerWrites.cs` shows the shape already, and the rule it enforces — a tool that changes
+anything lives with the guarded writes — is worth keeping visible as the file it is. After that,
+F5 and F6, which were waiting on F2.
+
+**Left running on the machine**: nothing.
+
+---
+
 ### 2026-09-05 — the first CI run, and it was right about both of us
 
 **Continuous integration had never actually run until pull request #13 opened it.** The workflow was

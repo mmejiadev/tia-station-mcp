@@ -46,6 +46,28 @@ namespace TiaMcpServer.Test
                 $"Compile reported {report.ErrorCount} error(s):\n{string.Join("\n", report.Errors)}");
         }
 
+        /// <remarks>
+        /// The PLC software is what every block and type tool is addressed through, and the tool
+        /// that describes it is now the only thing that touches the <c>PlcSoftware</c> object.
+        /// </remarks>
+        [TestMethod]
+        public void GetPlcSoftware_ExistingPath_DescribesIt()
+        {
+            var software = AssemblyHooks.SharedPortal.GetPlcSoftware(Settings.Project1PlcSoftwarePath0);
+
+            Assert.IsNotNull(software, $"No PLC software at '{Settings.Project1PlcSoftwarePath0}'");
+            Assert.IsFalse(string.IsNullOrEmpty(software.Name), "The software was described with no name");
+            Assert.IsTrue(software.Attributes.Count > 0, "No attribute was read");
+        }
+
+        [TestMethod]
+        public void GetPlcSoftware_UnknownPath_ReturnsNull()
+        {
+            var software = AssemblyHooks.SharedPortal.GetPlcSoftware("NoSuchDevice/NoSuchPlc");
+
+            Assert.IsNull(software, "An unknown path returned a software");
+        }
+
         [TestMethod]
         public void CompileSoftware_UnknownSoftwarePath_ThrowsNotFound()
         {
@@ -159,6 +181,46 @@ namespace TiaMcpServer.Test
 
             Assert.IsNotNull(types);
             Assert.IsTrue(types.Count > 0, "The project has UDTs but none were returned");
+        }
+
+        /// <remarks>
+        /// The path has to be the one a caller writes, which for this type is two groups deep. The
+        /// walker the description uses stops below the root system group; the one the preserve-path
+        /// export uses does not, and that difference is deliberate.
+        /// </remarks>
+        [TestMethod]
+        public void GetType_ExistingPath_DescriptionCarriesItsFullPath()
+        {
+            var type = AssemblyHooks.SharedPortal.GetType(Settings.Project1PlcSoftwarePath0, TypePath);
+
+            Assert.IsNotNull(type, $"No type found at '{TypePath}'");
+            Assert.AreEqual(TypePath, type.Path);
+        }
+
+        /// <remarks>
+        /// A description is read once and detached, so everything a caller needs must already be in
+        /// it: the type it came from is gone by the time anyone reads this.
+        /// </remarks>
+        [TestMethod]
+        public void GetType_ExistingPath_DescriptionIsComplete()
+        {
+            var type = AssemblyHooks.SharedPortal.GetType(Settings.Project1PlcSoftwarePath0, TypePath);
+
+            Assert.IsNotNull(type);
+            Assert.AreEqual("ML_SubstratState", type.Name);
+            Assert.IsFalse(string.IsNullOrEmpty(type.TypeName), "The Openness type name was not read");
+            Assert.IsTrue(type.Attributes.Count > 0, "No attribute was read");
+        }
+
+        [TestMethod]
+        public void GetTypes_NoRegex_EveryDescriptionHasAPath()
+        {
+            var types = AssemblyHooks.SharedPortal.GetTypes(Settings.Project1PlcSoftwarePath0, string.Empty);
+
+            Assert.IsTrue(types.Count > 0, "The project has UDTs but none were returned");
+            Assert.IsFalse(
+                types.Any(type => string.IsNullOrEmpty(type.Path)),
+                "Some type was described without its path");
         }
 
         [TestMethod]
