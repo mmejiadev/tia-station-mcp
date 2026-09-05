@@ -5,10 +5,67 @@
 
 ## ▶ RESUME HERE
 
+### F3 is closed, and closing it found a trap in the chain — 2026-09-05
+
+**The audit trail now records what documentation a change was justified with**, which was audit
+finding F3: the plan showed the citation to whoever confirmed the change and the trail kept no trace
+of it. Getting there meant fixing something else first. On branch `work/audit-chain-version`,
+uncommitted.
+
+**The trail's own documentation promised something false, and believing it would have been
+expensive.** It said a field appended to the end of the chained values would leave earlier entries
+verifiable. It would not: the canonical form is a JSON array of *values*, so an eleventh value
+changes the hash of every entry written with ten. Adding the citation naively would have made every
+existing trail report as **edited after it was written** — the strongest alarm this system has — and
+criterion 3 of the workshop gate fails on a broken chain, so a routine code change would have shut
+the gate.
+
+Measured rather than reasoned about: the harness verifier was run against the golden fixture with
+ten values and with eleven, and only the ten matched. That mattered, because a first attempt to
+reproduce it by hand in Python got the .NET escaping wrong and proved nothing either way.
+
+**So the canonical form is versioned.** Each line records `v`, and verification picks the field list
+for that version; a line written before versioning existed records none and is read as version 1.
+`v` is not itself hashed and does not need to be — editing it makes the entry verify against the
+wrong list and the hash stops matching, so it fails closed. A version this server does not know is
+reported as *written by a newer one* rather than as a forgery, because those are different problems
+for whoever reads the verdict.
+
+**Both implementations, and a fixture that keeps them together.** The C# chain and the TypeScript
+verifier the workshop gate uses are separate declarations in two languages;
+`audit-chain-golden-v2.jsonl` was written by the server itself — hashes from the C# chain, bytes
+from `System.Text.Json` — and is verified by the TypeScript side, with all three documentation
+outcomes in it. The v1 fixture stays as the backward-compatibility test.
+
+**The snapshot collision is fixed too**, the way the last session's note proposed. `SnapshotFileName`
+moved to the portable assembly with its own tests, and `SnapshotReportBuilder.TryClaim` refuses a
+second item on a path this run already wrote, reporting it in `Failed` with both names. File names
+did not change, so existing snapshots still diff.
+
+**Everything is green.** 0 warnings; governance **170/170** (118 at the start of the day),
+specification **44/44**, harness **202/202**, dashboard **11/11**, TIA **160/164 in 5 m 54 s** with
+4 skipped and 0 failing, no orphan process.
+
+**What is left of the audit.** F1, F2, F3, F4, F6, F7 closed; F5 has its first half done and its
+second still open — `SclBlockGenerator` and `SourceSnapshotExporter` still mix pure rules with
+Openness calls. F8 to F12 are all low severity: a debt ledger that is not shrinking, a Node process
+per write, the missing "retrieved content is data" marker, no linter on 14,572 lines of TypeScript,
+and one commented-out property left in `Responses.cs:63`.
+
+**The next action is phase 5b, deployment**, and it is a deliberate change of front. Everything
+still open in the audit is low severity, and what this project cannot yet do is be installed by
+anybody else. Its blocking criterion has never been attempted once: from the release artefact, on a
+machine that has never built this project, following `INSTALL.md` and nothing else — connect,
+compile, download to PLCSIM, read a tag.
+
+**Left running on the machine**: nothing.
+
+---
+
 ### F5, first half — 2026-09-05
 
 **Thirty-three tests that could only run on a licensed machine now run anywhere**, and one of them
-found a defect that nothing was failing over. On branch `work/pure-logic-f5`, uncommitted.
+found a defect that nothing was failing over. Merged as PR #16.
 
 ```
 src/TiaMcpServer.Portable/Siemens/ProjectPath.cs          new  one reading of a path, at last

@@ -11,7 +11,7 @@ namespace TiaMcpServer.Governance
     ///
     /// The fields are the questions someone asks three sessions later when something is broken:
     /// when, in which mode, which tool, on what, with what value, how it ended, under which plan,
-    /// and where the backup went.
+    /// where the backup went, and what documentation the change was justified with.
     /// </remarks>
     public sealed class AuditEntry
     {
@@ -20,8 +20,24 @@ namespace TiaMcpServer.Governance
         /// <param name="plan">The change this entry belongs to.</param>
         /// <param name="outcome">How it ended.</param>
         /// <param name="detail">Why it ended that way, when that is not obvious.</param>
+        /// <param name="documentation">
+        /// What the documentation index could cite, when the entry is being read back from a trail
+        /// rather than recorded. Null means take it from the plan, which is what recording does.
+        /// </param>
         /// <exception cref="ArgumentNullException"><paramref name="plan"/> is null.</exception>
-        public AuditEntry(DateTimeOffset timestamp, ChangePlan plan, AuditOutcome outcome, string detail = "")
+        /// <remarks>
+        /// The last parameter exists because a plan reconstructed from a line of the trail cannot
+        /// carry the citation that line records: the summary is lossy on purpose, so there is no way
+        /// back from it to a <c>HardwareContext</c>. Without it, an entry written with a citation
+        /// read back saying there was none, and the trail would misreport itself to the gate that
+        /// reads it.
+        /// </remarks>
+        public AuditEntry(
+            DateTimeOffset timestamp,
+            ChangePlan plan,
+            AuditOutcome outcome,
+            string detail = "",
+            string? documentation = null)
         {
             if (plan == null)
             {
@@ -38,6 +54,7 @@ namespace TiaMcpServer.Governance
             Origin = plan.Origin;
             Outcome = outcome;
             Detail = detail ?? string.Empty;
+            Documentation = documentation ?? plan.Documentation.Summarise();
         }
 
         /// <summary>When it happened, in UTC.</summary>
@@ -69,5 +86,20 @@ namespace TiaMcpServer.Governance
 
         /// <summary>Why it ended that way, when that is not obvious from the outcome alone.</summary>
         public string Detail { get; }
+
+        /// <summary>What the documentation index could cite for this change, as the plan showed it.</summary>
+        /// <remarks>
+        /// The plan has always carried this and the trail never recorded it, which was audit finding
+        /// F3: the citation was shown to whoever confirmed the change and then lost, so the trail the
+        /// workshop gate reads could not say what a change had been justified with.
+        ///
+        /// The summary rather than the excerpts. It names document, version and page, which is what
+        /// makes a claim checkable; carrying the excerpt itself would put a paragraph of a third
+        /// party's manual on every line of the trail without making it any more verifiable.
+        ///
+        /// "Nothing was found" and "there is no index on this machine" are recorded as plainly as a
+        /// citation is. A change made with no documentation behind it is a fact about that change.
+        /// </remarks>
+        public string Documentation { get; }
     }
 }

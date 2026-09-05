@@ -10,26 +10,38 @@ import { createHash } from 'node:crypto';
 export const AuditChainRoot = '';
 
 /**
- * The order the chain hashes an entry's values in. It may never be reordered.
+ * The order the chain hashes an entry's values in, per version of the canonical form.
  *
  * @remarks
- * The same list, in the same order, as `JsonlAuditTrail.ChainedFields`. The two are separate
- * declarations in two languages and nothing but this comment keeps them together: reordering one
- * makes every hash already written report as tampered with, which is the worst way to find out
- * that they have drifted apart.
+ * The same table, in the same order, as `JsonlAuditTrail.ChainedFieldsByVersion`. The two are
+ * separate declarations in two languages and nothing but this comment keeps them together:
+ * reordering one makes every hash already written report as tampered with, which is the worst way
+ * to find out that they have drifted apart.
+ *
+ * **A published list may never be edited - a field is added by adding a version.** The hash covers
+ * the values in order and nothing else, so an eleventh value changes the hash of an entry written
+ * with ten. Version 2 added `documentation` on 2026-09-05; version 1 stays because the trails
+ * written before it must keep verifying.
  */
-const ChainedFields = [
-  'timestamp',
-  'planId',
-  'mode',
-  'tool',
-  'target',
-  'value',
-  'backupPath',
-  'origin',
-  'outcome',
-  'detail'
-] as const;
+const ChainedFieldsByVersion: Readonly<Record<string, readonly string[]>> = {
+  '1': ['timestamp', 'planId', 'mode', 'tool', 'target', 'value', 'backupPath', 'origin', 'outcome', 'detail'],
+  '2': [
+    'timestamp',
+    'planId',
+    'mode',
+    'tool',
+    'target',
+    'value',
+    'backupPath',
+    'origin',
+    'outcome',
+    'detail',
+    'documentation'
+  ]
+};
+
+/** The version assumed for a line that names none, written before versioning existed. */
+const OriginalChainVersion = '1';
 
 /**
  * The characters `System.Text.Json` writes as a two-character escape.
@@ -213,7 +225,14 @@ function breakReason(record: Record<string, string>, expectedSequence: number, p
     return 'this entry does not point back to the one before it - the file was cut and re-joined';
   }
 
-  const values = ChainedFields.map((name) => field(record, name));
+  const version = field(record, 'v').length > 0 ? field(record, 'v') : OriginalChainVersion;
+  const chainedFields = ChainedFieldsByVersion[version];
+
+  if (chainedFields === undefined) {
+    return `this entry names chain version '${version}', which this reader does not know - it was written by a newer one`;
+  }
+
+  const values = chainedFields.map((name) => field(record, name));
 
   if (linkHash(expectedSequence, previousHash, values) !== field(record, 'hash')) {
     return "the entry's own values do not match its hash - it was edited after it was written";

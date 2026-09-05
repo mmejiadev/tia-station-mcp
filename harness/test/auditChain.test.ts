@@ -53,16 +53,31 @@ const EscapingVector = JSON.parse(readFileSync(join(Assets, 'audit-chain-escapin
  * out here — and the reason a verifier built on `JSON.stringify` would report line 1 of every trail
  * ever written as a forgery.
  */
-const TrailLines = readFileSync(join(Assets, 'audit-chain-golden.jsonl'), 'utf8')
-  .split('\n')
-  .map((text) => text.replace(/\r$/, ''))
-  .filter((text) => text.trim().length > 0);
+/** One fixture, as the lines the server wrote, whatever line ending the checkout gave it. */
+function linesOf(name: string): readonly string[] {
+  return readFileSync(join(Assets, name), 'utf8')
+    .split('\n')
+    .map((text) => text.replace(/\r$/, ''))
+    .filter((text) => text.trim().length > 0);
+}
+
+const TrailLines = linesOf('audit-chain-golden.jsonl');
 
 /** The entry with no chain fields, which the trail already held when chaining was added. */
 const UnattestedEntry = at(TrailLines, 0);
 
 /** The three chained entries. */
 const GoldenTrail: readonly string[] = TrailLines.slice(1);
+
+/**
+ * A trail written under version 2 of the canonical form, which added the citation.
+ *
+ * @remarks
+ * Written by the server itself, not by hand: the point of a golden fixture here is that the bytes
+ * came out of `System.Text.Json` and the hashes out of the C# chain, so this file failing is how
+ * the two implementations announce that they have drifted apart.
+ */
+const VersionTwoTrail: readonly string[] = linesOf('audit-chain-golden-v2.jsonl');
 
 describe('audit chain, against what .NET actually wrote', () => {
   it('builds the canonical form byte for byte as System.Text.Json does', () => {
@@ -175,6 +190,45 @@ describe('audit chain, tampered with', () => {
 
     assert.equal(report.brokenAtLine, 2);
     assert.match(report.reason, /stripped/);
+  });
+});
+
+describe('audit chain, across versions of the canonical form', () => {
+  it('accepts a trail the server wrote with the citation field', () => {
+    const report = verifyAuditChain(VersionTwoTrail);
+
+    assert.equal(report.intact, true, report.reason);
+    assert.equal(report.chained, 3);
+  });
+
+  it('still accepts the trail written before that field existed', () => {
+    // The reason versions exist at all: an eleventh value changes the hash of an entry written
+    // with ten, so without this the whole of a workshop's history would read as forged.
+    const report = verifyAuditChain(GoldenTrail);
+
+    assert.equal(report.intact, true, report.reason);
+  });
+
+  it('catches a citation edited after the fact', () => {
+    // The citation is inside the hash. A record of what justified a change that anybody could
+    // rewrite afterwards would justify nothing.
+    const edited = VersionTwoTrail.map((line, index) =>
+      index === 0 ? line.replace('page 47', 'page 48') : line);
+
+    const report = verifyAuditChain(edited);
+
+    assert.equal(report.intact, false);
+    assert.match(report.reason, /do not match its hash/);
+  });
+
+  it('names a version it does not know instead of calling it a forgery', () => {
+    const newer = VersionTwoTrail.map((line, index) =>
+      index === 0 ? line.replace('"v":"2"', '"v":"99"') : line);
+
+    const report = verifyAuditChain(newer);
+
+    assert.equal(report.intact, false);
+    assert.match(report.reason, /written by a newer one/);
   });
 });
 

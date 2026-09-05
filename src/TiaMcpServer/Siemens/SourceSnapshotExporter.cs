@@ -96,7 +96,7 @@ namespace TiaMcpServer.Siemens
 
             foreach (var nested in group.Groups)
             {
-                ExportBlockGroup(nested, Path.Combine(directory, MakeValidFileName(nested.Name)), report, cancellationToken);
+                ExportBlockGroup(nested, Path.Combine(directory, SnapshotFileName.For(nested.Name)), report, cancellationToken);
             }
         }
 
@@ -116,7 +116,12 @@ namespace TiaMcpServer.Siemens
                 return;
             }
 
-            var file = PrepareFile(directory, block.Name, extension);
+            var file = PrepareFile(directory, block.Name, extension, report);
+
+            if (file == null)
+            {
+                return;
+            }
 
             try
             {
@@ -142,7 +147,7 @@ namespace TiaMcpServer.Siemens
             // filed in user groups were silently missing from its exports.
             foreach (var nested in group.Groups)
             {
-                ExportTypeGroup(nested, Path.Combine(directory, MakeValidFileName(nested.Name)), report, cancellationToken);
+                ExportTypeGroup(nested, Path.Combine(directory, SnapshotFileName.For(nested.Name)), report, cancellationToken);
             }
         }
 
@@ -155,7 +160,12 @@ namespace TiaMcpServer.Siemens
                 return;
             }
 
-            var file = PrepareFile(directory, type.Name, TypeExtension);
+            var file = PrepareFile(directory, type.Name, TypeExtension, report);
+
+            if (file == null)
+            {
+                return;
+            }
 
             try
             {
@@ -179,13 +189,18 @@ namespace TiaMcpServer.Siemens
 
             foreach (var nested in group.Groups)
             {
-                ExportTagTableGroup(nested, Path.Combine(directory, MakeValidFileName(nested.Name)), report, cancellationToken);
+                ExportTagTableGroup(nested, Path.Combine(directory, SnapshotFileName.For(nested.Name)), report, cancellationToken);
             }
         }
 
         private void ExportTagTable(PlcTagTable table, string directory, SnapshotReportBuilder report)
         {
-            var file = PrepareFile(directory, table.Name, TagTableExtension);
+            var file = PrepareFile(directory, table.Name, TagTableExtension, report);
+
+            if (file == null)
+            {
+                return;
+            }
 
             try
             {
@@ -201,11 +216,21 @@ namespace TiaMcpServer.Siemens
             }
         }
 
-        private static FileInfo PrepareFile(string directory, string name, string extension)
+        /// <remarks>
+        /// Returns null when another item in this snapshot has already written to the same path.
+        /// Two TIA names can map to one file name, and the delete below used to make the second
+        /// item replace the first while the report claimed both were exported.
+        /// </remarks>
+        private static FileInfo? PrepareFile(string directory, string name, string extension, SnapshotReportBuilder report)
         {
-            Directory.CreateDirectory(directory);
+            var file = new FileInfo(Path.Combine(directory, SnapshotFileName.For(name) + extension));
 
-            var file = new FileInfo(Path.Combine(directory, MakeValidFileName(name) + extension));
+            if (!report.TryClaim(file, name))
+            {
+                return null;
+            }
+
+            Directory.CreateDirectory(directory);
 
             // Both GenerateSource and Export refuse to write over an existing file.
             if (file.Exists)
@@ -214,16 +239,6 @@ namespace TiaMcpServer.Siemens
             }
 
             return file;
-        }
-
-        private static string MakeValidFileName(string name)
-        {
-            foreach (var invalid in Path.GetInvalidFileNameChars())
-            {
-                name = name.Replace(invalid, '_');
-            }
-
-            return name;
         }
     }
 }
