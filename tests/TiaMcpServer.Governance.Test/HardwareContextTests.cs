@@ -54,7 +54,7 @@ namespace TiaMcpServer.Governance.Tests
             // Evidence attached to a plan that a later caller can append to is not evidence.
             var context = HardwareContext.Cited(new[] { Citation() });
 
-            Assert.IsInstanceOfType(context.Citations, typeof(ReadOnlyCollection<HardwareCitation>));
+            Assert.IsInstanceOfType<ReadOnlyCollection<HardwareCitation>>(context.Citations);
         }
 
         [TestMethod]

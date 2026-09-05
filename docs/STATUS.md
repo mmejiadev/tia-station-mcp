@@ -34,11 +34,22 @@ null `Value` where the getter's `?? string.Empty` returns an identifier that mat
 `PlanIdTests` now asserts that, so the suppression fails loudly if anyone accepts the offer.
 Governance is **118/118**.
 
-**What this leaves open, and it is a decision rather than a fix.** `latest-all` plus warnings-as-
-errors means any SDK the runner picks up can turn working code red without anyone touching it —
-twice in one afternoon so far. A `global.json` pinning the SDK, with `setup-dotnet` reading it
-through `global-json-file`, makes both machines compile with the same Roslyn. The price is that new
-analyzer rules stop arriving on their own. Not taken here: it is a policy change, not a correction.
+**A third round followed, and it is why the SDK is now pinned.** `CA2263` on
+`HardwareContextTests`, wanting the generic `Assert.IsInstanceOfType<T>`. Three failures in one
+afternoon, each a rule that exists on the runner and not on this machine, each found only by
+pushing: `AnalysisLevel=latest-all` plus warnings-as-errors means **the rule set is whatever SDK the
+runner happens to install**, and there is no way to enumerate it from here.
+
+`global.json` now pins **8.0.405**, the SDK this machine already has, with `rollForward: disable`,
+and `setup-dotnet` takes its version from that file instead of `8.0.x`. Both sides compile with the
+same Roslyn, so a build that is green here is green there. Raising the floor becomes a deliberate
+commit to `global.json` — validated locally, where the findings can be fixed in one pass, rather
+than discovered one push at a time. **Taken on 2026-09-05, on the user's decision**, with the cost
+stated: new analyzer rules no longer arrive on their own.
+
+The three fixes stay regardless of the pin, because all three were improvements: explicit
+accessibility on interface members, a justified suppression defended by a test, and the generic
+assertion overload.
 
 ---
 
