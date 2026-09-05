@@ -17,6 +17,6 @@ namespace TiaMcpServer.Governance
         /// UTC deliberately: an audit trail read across a daylight-saving boundary must still put
         /// its entries in the order they happened.
         /// </remarks>
-        DateTimeOffset UtcNow { get; }
+        public DateTimeOffset UtcNow { get; }
     }
 }

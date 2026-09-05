@@ -18,10 +18,10 @@ namespace TiaMcpServer.Governance
         /// <param name="tool">The tool about to write, for example <c>WriteScl</c>.</param>
         /// <param name="target">What it is about to write to.</param>
         /// <returns>The directory to export the previous state into. It exists on return.</returns>
-        string Allocate(string tool, string target);
+        public string Allocate(string tool, string target);
 
         /// <summary>Everything the registry holds, newest first.</summary>
         /// <returns>One record per backup taken.</returns>
-        IReadOnlyList<BackupRecord> List();
+        public IReadOnlyList<BackupRecord> List();
     }
 }

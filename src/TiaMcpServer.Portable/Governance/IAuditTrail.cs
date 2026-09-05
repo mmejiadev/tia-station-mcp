@@ -20,7 +20,7 @@ namespace TiaMcpServer.Governance
         /// <summary>Appends an entry.</summary>
         /// <param name="entry">The entry to record.</param>
         /// <exception cref="Siemens.PortalException">The entry could not be written.</exception>
-        void Append(AuditEntry entry);
+        public void Append(AuditEntry entry);
 
         /// <summary>Reads the trail back, oldest first.</summary>
         /// <returns>Every entry recorded so far.</returns>
@@ -28,6 +28,6 @@ namespace TiaMcpServer.Governance
         /// Reading is part of the contract, not a convenience: an audit trail nobody can read is
         /// not an audit trail, and the Workshop gate is a question asked of this data.
         /// </remarks>
-        IReadOnlyList<AuditEntry> Read();
+        public IReadOnlyList<AuditEntry> Read();
     }
 }

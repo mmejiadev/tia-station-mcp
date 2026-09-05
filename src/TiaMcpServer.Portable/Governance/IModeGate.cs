@@ -18,9 +18,9 @@
     public interface IModeGate
     {
         /// <summary>What this session may act on.</summary>
-        OperationMode Mode { get; }
+        public OperationMode Mode { get; }
 
         /// <summary>Who confirms a planned change in this session.</summary>
-        Confirmation RequiredConfirmation { get; }
+        public Confirmation RequiredConfirmation { get; }
     }
 }

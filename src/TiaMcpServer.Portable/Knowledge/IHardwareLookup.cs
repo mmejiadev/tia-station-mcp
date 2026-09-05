@@ -20,6 +20,6 @@
         /// <summary>Looks up what the documentation says about a question.</summary>
         /// <param name="question">What to ask, in the words of the change being planned.</param>
         /// <returns>Excerpts, an honest not-found, or an unavailable carrying the reason.</returns>
-        HardwareContext Describe(string question);
+        public HardwareContext Describe(string question);
     }
 }

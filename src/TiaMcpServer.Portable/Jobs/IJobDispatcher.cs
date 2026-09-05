@@ -16,6 +16,6 @@ namespace TiaMcpServer.Jobs
     {
         /// <summary>Runs the work somewhere other than here, and returns at once.</summary>
         /// <param name="work">What to run.</param>
-        void Dispatch(Action work);
+        public void Dispatch(Action work);
     }
 }

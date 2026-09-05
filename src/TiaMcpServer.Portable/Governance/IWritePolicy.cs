@@ -13,6 +13,6 @@
         /// <param name="mode">The mode the session is in.</param>
         /// <param name="target">The full path being written to.</param>
         /// <returns>The decision and its reason.</returns>
-        PolicyDecision Decide(OperationMode mode, string target);
+        public PolicyDecision Decide(OperationMode mode, string target);
     }
 }
