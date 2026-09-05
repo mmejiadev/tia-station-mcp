@@ -5,6 +5,56 @@
 
 ## ▶ RESUME HERE
 
+### McpServer.cs is split too — 2026-09-05
+
+**2,176 lines against this repository's limit of 300; now 369, across ten files.** Same move as
+`Portal`, made possible by the same thing: with no Openness type in this layer, splitting it was a
+move of whole tools rather than a rearrangement of a tangle. On branch `work/mcpserver-split`,
+uncommitted, on top of a `main` that already carries PR #14.
+
+```
+McpServer.cs            369   the connection, the session's state, the services the tools share
+McpServerProject.cs     296   what is open, its tree, its snapshots and backups
+McpServerDevices.cs     206   hardware and the software on it
+McpServerBlocks.cs      430   reading and exporting blocks
+McpServerTypes.cs       338   reading and exporting types
+McpServerDocuments.cs   234   SIMATIC SD documents, and the .s7res check
+McpServerSimulation.cs  194   reading PLCSIM Advanced
+McpServerNetwork.cs     111   PROFINET topology and OPC UA interfaces
+McpServerJobs.cs        107   polling a long operation
+McpServerCell.cs         86   expanding a cell specification into SCL
+McpServerWrites.cs     1176   everything that changes anything -- untouched
+```
+
+**`McpServerWrites.cs` was deliberately not touched, and it is the one file here whose boundary is
+not about size.** A tool that changes anything calls `GuardedTool.Run`, names its target through
+`ChangeTarget` and gets a test in `Test16GuardedWrites`; a write tool that forgets the guard passes
+every other test in the suite. Keeping reads and writes in separate files means a new write tool
+that lands anywhere else is a review finding on sight. Splitting that file by area would trade that
+signal for shorter files, which is the wrong way round.
+
+**`[McpServerToolType]` lives on one partial only.** It may appear once per class, and the SDK finds
+the tools in the other nine files through it regardless of where they are written. Copying it into
+each new file was the one thing that did not compile, and it failed loudly — CS0579 — rather than
+quietly registering nothing.
+
+**Checked rather than assumed.** 68 members before, the same 68 after, with an empty difference both
+ways. **59 tools, and that count is not from reading the source**: the harness's `toolContract` test
+starts the built server over stdio and asks it what tools it has, so the registration survived the
+split in the only way that matters. Governance **118/118**, specification **44/44**, harness
+**198/198**, TIA **154/158 in 7 m 31 s** with 4 skipped and 0 failing, no orphan process, 0 warnings.
+
+**The next action.** Both oversized files are done, so the size rule in `CLAUDE.md` is met
+everywhere it was being broken. What is left of the audit is **F5 and F6**, which were blocked on F2
+and are now unblocked, and **F3 and F8 to F12**, which are smaller. The other open front is
+**phase 5b, deployment** — the release artefact, the precondition check that fails closed, and
+`INSTALL.md` followed from the top on a machine that has never built this project. That phase is
+what turns this from something that runs here into something that can be handed over.
+
+**Left running on the machine**: nothing.
+
+---
+
 ### F2 is closed — 2026-09-05
 
 **No Openness type crosses into `ModelContextProtocol/` any more.** Not a `using
