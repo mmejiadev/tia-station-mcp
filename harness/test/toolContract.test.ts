@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import { McpServerConnection } from '../src/mcpClient.ts';
-import { resolveServerExecutable } from '../src/serverLocation.ts';
+import { resolveServerExecutable, serverExecutableAbsence } from '../src/serverLocation.ts';
 import { findContractBreaches, HarnessToolUsage } from '../src/toolContract.ts';
 
 /**
@@ -14,8 +14,11 @@ import { findContractBreaches, HarnessToolUsage } from '../src/toolContract.ts';
  *
  * It needs no TIA Portal: listing tools never reaches the Openness API. A second here replaces a
  * minute and a half of nothing.
+ *
+ * It does need the server to be built, which a hosted runner cannot do, so it says so and skips
+ * rather than failing there. See `serverExecutableAbsence`.
  */
-describe('the harness and the server agree', () => {
+describe('the harness and the server agree', { skip: serverExecutableAbsence() }, () => {
   let connection: McpServerConnection;
 
   before(async () => {

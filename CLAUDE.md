@@ -86,6 +86,24 @@ McpServer  ──►  Portal  ──►  Openness  ──►  Siemens.Engineerin
 
 If a task seems to require breaking this, the task is wrong. Ask first.
 
+### The rule is a build error, not a convention
+
+The repository is two assemblies, and the split is where the rule stops depending on anyone
+remembering it:
+
+| Assembly | Holds | May reference Openness |
+|---|---|---|
+| `src/TiaMcpServer.Portable/` | `Governance/`, `Knowledge/`, `Spec/`, `Jobs/`, the error model, `GuardedTool`, `OpennessGate` | **No** |
+| `src/TiaMcpServer/` | `Siemens/`, `McpServer`, `Program` | Yes — it is the adapter |
+
+`TiaMcpServer.Portable` **must never reference `TiaMcpServer`**, and no package reference of its
+may drag in the Openness resolver. That resolver locates `Siemens.Engineering.dll` from an installed
+TIA Portal at *build* time, so anything that reaches it needs a licensed machine to compile — which
+is how the safety tests came to be uncheckable anywhere else.
+
+Adding the reference back would not fail any build. It would quietly move 149 safety tests off
+continuous integration, which is why the rule is written here rather than left to be noticed.
+
 ## Size and shape
 
 | Rule | Limit |
@@ -190,8 +208,8 @@ if (!block.IsConsistent)
 # The governance layer — fail closed by construction
 
 Everything above is style. This section is correctness, and it applies to
-`src/TiaMcpServer/Governance/` above all, because a careless default there is not ugly code,
-it is a safety hole.
+`src/TiaMcpServer.Portable/Governance/` above all, because a careless default there is not ugly
+code, it is a safety hole.
 
 ## Anything not foreseen refuses
 
@@ -276,8 +294,10 @@ The separation is the requirement, not a preference. `TiaMcpServer.Test` starts 
 `[AssemblyInitialize]`, so every test in that assembly pays for one whether it needs it or not —
 and cannot run at all on a machine without TIA Portal. **Governance tests must run without TIA
 Portal**, because a safety rule that can only be checked on a licensed machine is a safety rule
-that stops being checked. Nothing in that project may take a dependency that needs TIA at run
-time.
+that stops being checked. Nothing in that project may take a dependency that needs TIA Portal at
+run time — **or at build time**, which is the harder half and the one that was broken until
+2026-09-02. It references `TiaMcpServer.Portable` and never `TiaMcpServer`; see the dependency
+rule above. The same holds for `tests/TiaMcpServer.Spec.Test/`.
 
 ---
 

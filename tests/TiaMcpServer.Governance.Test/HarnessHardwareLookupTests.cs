@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.IO;
 using TiaMcpServer.Knowledge;
 
@@ -64,6 +65,42 @@ namespace TiaMcpServer.Governance.Tests
             StringAssert.Contains(context.Reason, "no documentation index", StringComparison.Ordinal);
         }
 
+        [TestMethod]
+        public void Describe_ALookupThatStartsAndThenHangs_GivesUpAtItsTimeout()
+        {
+            // The timeout used to be unreachable in exactly this case, which is the likeliest way
+            // for the lookup to fail: standard output was read with ReadToEnd, which returns only
+            // when the child closes the pipe, so a child that started and then hung was waited on
+            // for ever and the write tool that asked never answered. Found in the audit of
+            // 2026-09-02. The script below starts, holds its output open and never exits.
+            var script = HangingScript();
+
+            try
+            {
+                var lookup = new HarnessHardwareLookup(script, AnIndexThatExists(), TimeSpan.FromSeconds(2));
+                var clock = Stopwatch.StartNew();
+
+                var context = lookup.Describe("anything at all");
+
+                clock.Stop();
+
+                if (context.Reason.IndexOf("could not be started", StringComparison.Ordinal) >= 0)
+                {
+                    Assert.Inconclusive("No Node on this machine, so a hanging lookup cannot be started.");
+                }
+
+                Assert.AreEqual(HardwareContextOutcome.Unavailable, context.Outcome, context.Summarise());
+                StringAssert.Contains(context.Reason, "did not answer within", StringComparison.Ordinal);
+                Assert.IsTrue(
+                    clock.Elapsed < TimeSpan.FromSeconds(30),
+                    $"the timeout did not bound the wait: it took {clock.Elapsed}");
+            }
+            finally
+            {
+                File.Delete(script);
+            }
+        }
+
         private static HarnessHardwareLookup LookupOrInconclusive()
         {
             var script = Path.Combine(RepositoryRoot(), "harness", "src", "knowledge", "hardwareLookup.ts");
@@ -80,6 +117,25 @@ namespace TiaMcpServer.Governance.Tests
             }
 
             return new HarnessHardwareLookup(script, index, Patience);
+        }
+
+        /// <summary>A script that starts, keeps its output open and never exits.</summary>
+        /// <returns>The path it was written to.</returns>
+        private static string HangingScript()
+        {
+            var path = Path.Combine(Path.GetTempPath(), $"hanging-lookup-{Guid.NewGuid():N}.mjs");
+
+            // No output and no exit: the interval keeps the event loop alive for ever.
+            File.WriteAllText(path, "setInterval(() => {}, 1000);" + Environment.NewLine);
+
+            return path;
+        }
+
+        /// <summary>Any file that exists, so the lookup gets as far as starting a process.</summary>
+        /// <returns>The path.</returns>
+        private static string AnIndexThatExists()
+        {
+            return Path.Combine(RepositoryRoot(), "TiaMcpServer.sln");
         }
 
         /// <summary>Walks up from the test binary until the solution file says this is the root.</summary>

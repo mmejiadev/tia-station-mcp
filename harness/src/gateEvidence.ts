@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { readAuditTrail } from './auditTrail.ts';
+import { readAuditChain, readAuditTrail } from './auditTrail.ts';
 import type { GateEvidence } from './gate.ts';
 import type { RunStatistics } from './telemetry.ts';
 import { readReviewRecord } from './workshopReview.ts';
@@ -40,6 +40,7 @@ export function gatherEvidence(store: RunStore, paths: EvidencePaths): GateEvide
     runs: store.runStatistics(),
     unfinishedIterations: store.countUnfinishedIterations(),
     audit: readAuditTrail(paths.auditPath),
+    chain: readAuditChain(paths.auditPath),
     backupExists: existsSync,
     review: readReviewRecord(paths.reviewPath)
   };

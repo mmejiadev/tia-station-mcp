@@ -144,11 +144,10 @@ namespace TiaMcpServer.Test
 
         private static string ExpandCell(string cellFile)
         {
-            var expander = new SclTemplateExpander();
             var cell = CellSpecificationFile.Load(Path.Combine(_repositoryRoot, "spec", "cells", cellFile));
 
-            var station = expander.Expand(ReadPattern("station.scl.tmpl"), cell);
-            var coordinator = expander.Expand(ReadPattern("coordinator.scl.tmpl"), cell);
+            var station = SclTemplateExpander.Expand(ReadPattern("station.scl.tmpl"), cell);
+            var coordinator = SclTemplateExpander.Expand(ReadPattern("coordinator.scl.tmpl"), cell);
 
             // One source, both blocks: WriteScl generates every block a source declares, and the
             // coordinator cannot compile before the station type it instantiates exists.

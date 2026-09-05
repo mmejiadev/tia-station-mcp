@@ -1,9 +1,547 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-08-29**
+> Last updated: **2026-09-05**
 
 ## ▶ RESUME HERE
+
+### 2026-09-05 — the first CI run, and it was right about both of us
+
+**Continuous integration had never actually run until pull request #13 opened it.** The workflow was
+written on 2026-09-02 and the note beside it said, honestly, that a hosted runner had not yet proved
+anything. It has now, and it failed twice for two different reasons — neither of which any local
+build or test run could have found.
+
+**The harness job: seven tests that cannot run on a runner, failing instead of saying so.**
+`mcpClient.test.ts` and `toolContract.test.ts` start the real `TiaMcpServer.exe`. A hosted runner
+cannot build it — that is the same Openness-at-build-time constraint the safety job exists for — so
+`resolveServerExecutable` threw inside their `before` hook, and the runner reported seven cancelled
+tests and a red build. `serverExecutableAbsence` now asks the same question without throwing, and
+both suites carry `{ skip: ... }` with the reason. On a machine that has built the solution they
+still run: **198 of 198 here, 191 with the executable hidden, exit code 0 both ways.**
+
+**The safety job: two style rules this machine's compiler does not enforce.** `IDE0040` on eleven
+interface members, then `IDE0032` on `PlanId._value`. Both are errors here by policy —
+`.editorconfig` sets `dotnet_style_require_accessibility_modifiers = always:error` and
+`Directory.Build.props` sets `TreatWarningsAsErrors` — and neither fires locally, because
+`AnalysisLevel` is `latest-all` and **the rule set is whatever the SDK in use happens to ship**. The
+runner installs the newest 8.0.x; this machine has 8.0.405.
+
+The interface members were given their modifiers. `IDE0032` was **suppressed with a justification
+and a test**, which is the one case where suppressing beats complying: `PlanId` is a struct, so
+`default(PlanId)` runs no constructor, and the auto property the analyzer offers would hand back a
+null `Value` where the getter's `?? string.Empty` returns an identifier that matches nothing.
+`PlanIdTests` now asserts that, so the suppression fails loudly if anyone accepts the offer.
+Governance is **118/118**.
+
+**A third round followed, and it is why the SDK is now pinned.** `CA2263` on
+`HardwareContextTests`, wanting the generic `Assert.IsInstanceOfType<T>`. Three failures in one
+afternoon, each a rule that exists on the runner and not on this machine, each found only by
+pushing: `AnalysisLevel=latest-all` plus warnings-as-errors means **the rule set is whatever SDK the
+runner happens to install**, and there is no way to enumerate it from here.
+
+`global.json` now pins **8.0.405**, the SDK this machine already has, with `rollForward: disable`,
+and `setup-dotnet` takes its version from that file instead of `8.0.x`. Both sides compile with the
+same Roslyn, so a build that is green here is green there. Raising the floor becomes a deliberate
+commit to `global.json` — validated locally, where the findings can be fixed in one pass, rather
+than discovered one push at a time. **Taken on 2026-09-05, on the user's decision**, with the cost
+stated: new analyzer rules no longer arrive on their own.
+
+The three fixes stay regardless of the pin, because all three were improvements: explicit
+accessibility on interface members, a justified suppression defended by a test, and the generic
+assertion overload.
+
+---
+
+### Where the work stopped — 2026-09-03, end of session
+
+**The second half of F2 is under way: `PlcBlock` no longer leaves the portal layer, and
+`ModelContextProtocol/` no longer contains a single `using Siemens.Engineering`.** Everything is in
+the working tree and nothing is committed; the branch is `work/portable-split-and-audit`, whose
+twelve earlier commits are pushed and ahead of `main`.
+
+```
+the block descriptions
+  src/TiaMcpServer/Siemens/BlockDescription.cs        new  what a block is, once it is detached
+  src/TiaMcpServer/Siemens/BlockGroupDescription.cs   new  a group and everything under it
+  src/TiaMcpServer/Siemens/ObjectAttribute.cs         new  one attribute, read rather than referenced
+  src/TiaMcpServer/Siemens/BlockDescriber.cs          new  the translation, in the layer that may do it
+  src/TiaMcpServer/Siemens/EngineeringAttributeReader.cs new  moved down from Helper.cs
+  src/TiaMcpServer/IsExternalInit.cs                  new  so a DTO can be immutable on net48
+
+the option that was an Openness enum in the MCP layer
+  src/TiaMcpServer/Siemens/ImportDocumentOption.cs    new  string to ImportDocumentOptions, with the aliases
+  tests/TiaMcpServer.Test/Test23ImportOptions.cs      new  8 cases, one of them the refusal
+
+the layers themselves
+  src/TiaMcpServer/Siemens/Portal.cs                  mod  GetBlock, GetBlocks, GetBlockHierarchy,
+                                                           ExportBlock(s), ImportBlocksFromDocuments
+                                                           all return descriptions; the finders are private
+  src/TiaMcpServer/ModelContextProtocol/McpServer.cs  mod  eight copies of the same translation, now one
+  src/TiaMcpServer/ModelContextProtocol/McpServerWrites.cs mod  passes the option as a word, maps PortalException
+  src/TiaMcpServer/ModelContextProtocol/Responses.cs  mod  ObjectAttribute, BlockGroupDescription, Path
+  src/TiaMcpServer/ModelContextProtocol/Helper.cs     del  its two methods now live in the portal layer
+  src/TiaMcpServer/ModelContextProtocol/Types.cs      del  Attribute shadowed System.Attribute; gone
+  tests/TiaMcpServer.Test/Test4Software.cs            mod  4 tests on what a description must carry
+```
+
+**Everything is green.** Solution builds with **0 warnings**; governance **113/113**, specification
+**44/44**, TIA **148/152 in 6 m 08 s** with 4 skipped and 0 failing, and no orphan portal process
+afterwards — the process list was checked, not assumed.
+
+**A new test found a real defect rather than confirming the refactor.**
+`GetBlock("1_Tests/FC_Block_1")` described that block with the path
+`Program blocks/1_Tests/FC_Block_1`, which no tool accepts as input: the inherited group walker
+tests the *original* group for `PlcBlockSystemGroup` instead of the one it has climbed to, so it
+never stops below the root. The suggestions that `ExportBlock` offers on a not-found path came from
+that same call, so every "Did you mean" it has ever printed was unusable. `GetBlockPath` now walks
+with `GetUserBlockGroupPath` and stops at the system group. `GetPlcBlockGroupPath` was deliberately
+left as it is: it lays out the directories of a preserve-path export, where the extra folder is
+harmless and changing it would move every file an existing snapshot already wrote.
+
+**A test that passes by not running is worse than one that fails.** The first version of
+`Test23ImportOptions` named `ImportDocumentOptions` in a `[DataRow]` and in a method signature.
+VSTest reads that metadata while discovering tests, before `AssemblyInitialize` has resolved
+Openness, so the whole class was skipped with a message in the log and a green summary. The options
+travel through those tests as strings now.
+
+**The next action, exactly.** The same treatment for what is left, in this order, one Portal method
+at a time with its `Test<Area>` case: **types** (`GetType`, `GetTypes`, `ExportType`, `ExportTypes`
+— the mirror image of the blocks, so `TypeDescription` and a `TypeDescriber` alongside the ones
+written today), then **devices** (`GetDevice`, `GetDeviceItem`, `GetDevices`), then
+**project and session** (`GetProjects`, `GetSessions`, `GetPlcSoftware`). Those nine methods still
+hand Openness objects to `McpServer.cs`, which reads them through
+`EngineeringAttributeReader.Read` — the reference is gone from the `using` list but the objects
+still cross, and F2 is not closed until they do not.
+
+**Left running on the machine at the end of the session**: nothing.
+
+---
+
+### Where the work stopped — 2026-09-02, end of session
+
+**Everything below is in the working tree and nothing is committed.** `main` is at `83918a1` and the
+tree has not been staged. Twenty-one paths, in three groups that could be three commits:
+
+```
+knowledge layer, stage 3 and the extraction repair
+  harness/knowledge-eval/questions.json          new   34 answerable + 20 unanswerable
+  harness/src/knowledge/retrievalGate.ts         new   the judging, pure and testable
+  harness/src/knowledge/retrievalReport.ts       new   npm run knowledge:gate
+  harness/src/knowledge/pageText.ts              new   the control-character repair
+  harness/test/retrievalGate.test.ts             new   13 tests
+  harness/test/pageText.test.ts                  new   10 tests
+  harness/src/knowledge/pdfPages.ts              mod   applies the repair on extraction
+  harness/package.json                           mod   knowledge:gate script
+  docs/KNOWLEDGE-LAYER.md                        mod   stage 3 marked done
+
+audit finding F1 — the data race
+  src/TiaMcpServer/Governance/ChangePlanStore.cs  mod  one lock, and why not a concurrent collection
+  src/TiaMcpServer/Governance/JsonlAuditTrail.cs  mod  appends serialised; VerifyChain tightened
+  tests/.../ConcurrentWriteTests.cs               new  5 tests; all 5 fail without the locks
+
+audit findings F7 and F4 — CI, the hash chain, and the gate that reads it
+  .github/workflows/ci.yml                        new  208 tests on every push
+  src/TiaMcpServer/Governance/AuditChain.cs       new  hashing, canonical form
+  src/TiaMcpServer/Governance/AuditChainReport.cs new  what a check found
+  tests/.../AuditChainTests.cs                    new  10 tests, each tampers then checks
+  harness/src/auditChain.ts                       new  the same chain, verified in TypeScript
+  harness/test/auditChain.test.ts                 new  14 tests against fixtures .NET wrote
+  harness/test/assets/audit-chain-golden.jsonl    new  a chained trail, from System.Text.Json
+  harness/test/assets/audit-chain-escaping.json   new  the escaping vector, same provenance
+  harness/src/auditTrail.ts                       mod  readAuditChain
+  harness/src/gateEvidence.ts                     mod  the chain is gathered with the entries
+  harness/src/gate.ts                             mod  criterion 3 fails on a broken chain
+  harness/test/gate.test.ts                       mod  2 tests: broken chain, unattested history
+
+audit finding F2, first half — the assembly split
+  src/TiaMcpServer.Portable/**                    new  everything that never touches Openness
+  src/TiaMcpServer/TiaMcpServer.csproj            mod  references it; the four folders left
+  tests/*.Test/*.csproj                           mod  they reference Portable, not TiaMcpServer
+  .github/workflows/ci.yml                        mod  a third job: 149 safety tests, no TIA
+  CLAUDE.md, README.md, docs/ROADMAP.md           mod  the paths and the dependency rule
+
+audit of 2026-09-02 - eight fixes, one finding left open
+  src/TiaMcpServer.Portable/Siemens/NameFilter.cs  new  a caller's regex, bounded and validated
+  tests/.../NameFilterTests.cs                     new  4 tests, one runs (a+)+$ and demands it end
+  src/TiaMcpServer.Portable/Governance/GuardedWrite.cs  mod  a Study-mode audit failure is reported
+  src/TiaMcpServer.Portable/Governance/TargetPattern.cs mod  anchored exactly
+  src/TiaMcpServer.Portable/Knowledge/HarnessHardwareLookup.cs mod  the timeout now bounds a hang
+  src/TiaMcpServer/Siemens/Portal.cs               mod  7 regex sites through NameFilter
+  src/TiaMcpServer/ModelContextProtocol/McpServerWrites.cs mod  3 empty catches, now logged
+  tests/.../GuardedWriteTests.cs, WritePolicyTests.cs, HarnessHardwareLookupTests.cs  mod  4 tests
+  harness/src/knowledge/pdfPages.ts                mod  destroys the loading task, not the document
+  harness/package.json, package-lock.json          mod  pdfjs 6.3.289, and npm audit fix
+  src/TiaMcpServer/TiaMcpServer.csproj             mod  off the previews; the CVE pinned
+
+docs/STATUS.md                                    mod  this file
+```
+
+**Everything is green.** Solution builds with **0 warnings**; governance **113/113** and
+specification **44/44**, none skipped; the TIA suite **136/140 in 5 m 56 s**, 4 skipped and 0
+failing, with no orphan portal process afterwards; harness **198/198**; dashboard **11/11** plus a
+clean `vite build`; both typechecks clean. **Zero known vulnerabilities** in NuGet and npm, where
+there were four this morning.
+
+**The TIA suite was run after the audit changed `Portal.cs`, and it exercises the change rather than
+merely surviving it.** `GetBlocks_Regex_ReturnsMatchingBlocks` runs `^F.+` and the empty filter
+against a real project, and `GetBlocks_RegexMatchingNothing_ReturnsEmptyList` runs `^NoSuchBlockName$`
+— so `NameFilter` is proved on the matching path, the non-matching path and the match-everything
+path, through Openness. What no test covers is the single-block lookup with regex characters in the
+name; that path is compiled and reasoned about, not exercised.
+
+The retrieval gate reports 91% precision over n=34 and 95%
+abstention over n=20, and the workshop gate reports 4 of 5 criteria met —
+criterion 5, the in-person review, is the one left.
+
+**The next action, exactly.** The second half of **F2**: Openness types still cross into the MCP
+layer. `Portal` returns `PlcBlock`, `PlcType`, `Device`, `PlcSoftware`, `PlcBlockGroup` and
+`ProjectBase` from about fifteen public methods, and `McpServer.cs` reads their properties at
+roughly forty sites, so `ModelContextProtocol/` keeps four `using Siemens.Engineering` that
+`CLAUDE.md` forbids. Removing them means giving those methods DTO return types — the translation
+`Helper.cs` already does, moved to where it belongs. **Attack it one Portal method at a time**, each
+with its `Test<Area>` case, rather than as one change: this is inherited code, and the suite that
+would catch a mistake takes ten minutes and needs the licensed machine in front of you.
+
+**F4 and the first half of F2 are closed** as of this session. F5 and F6 depend on what is left of
+F2; F3 and F8 to F12 are smaller.
+
+**Left running on the machine at the end of the session**: nothing. The TIA suite closed its portal,
+and the process list was checked rather than assumed.
+
+---
+
+**2026-09-02, evening — a full audit of the repository. Eight things fixed, and the worst of them
+was a comment that promised something the code did not do.**
+
+**The finding that matters most is in the governance layer, which is otherwise the best code here.**
+`CLAUDE.md` says a failed audit write refuses the action in Workshop Mode and, in Study Mode,
+proceeds *and reports* — "either way it is visible". The Study-Mode `catch` was **empty**, under a
+comment claiming the failure was "reported through the outcome". Nothing reported it. Entries could
+go missing from the trail that the workshop gate reads to decide whether a machine may be switched
+on, and criterion 2 counts silent failures it could not see. The mechanism to fix it was already
+written and unused: `ChangeOutcome.Applied` takes a `detail` nobody passed. `Record` now returns the
+reason instead of swallowing it, and all four paths carry it; on the throwing path it rides in
+`Exception.Data`. **The existing test passed with and without the bug** — it asserted only that the
+write still ran — which is why two new ones name the rule directly.
+
+**The timeout on the hardware lookup did not bound the failure it was written for.**
+`StandardOutput.ReadToEnd()` returns only when the child closes the pipe, so a Node process that
+started and then hung never reached the `WaitForExit` below it, and the write tool that asked for a
+citation waited for ever. Both pipes are now drained asynchronously. Proved by mutation: with the old
+code the new test does not finish and VSTest aborts a blocked test host.
+
+**A caller's regular expression could freeze the whole server.** Seven sites compiled `regexName`
+with no match timeout, inside the Openness gate — so `(a+)+$` does not slow a listing down, it stops
+every other tool in the process from reaching TIA Portal, silently. Three of those sites also caught
+`Exception` and *skipped the item*, returning a short list that looked complete; two returned `null`,
+which reads as "no such block". `NameFilter` validates, compiles with one second of patience, and
+refuses with `InvalidParams` — which is what a mistyped bracket is.
+
+**The whitelist matched a string it was never shown.** `TargetPattern` anchored with `^`/`$`, and in
+.NET `$` also matches before a trailing newline. No escalation was found — allow and deny behave the
+same way — but exactness is the whole product here. Now `\A` and `\z`.
+
+**Four vulnerabilities, now none.** `Microsoft.Bcl.Memory 9.0.5` (GHSA-73j8-2gch-69rq, CVSS 7.5,
+denial of service) arrives through the MCP SDK and is pinned to 10.0.11 until that SDK is upgraded.
+`pdfjs-dist` carried arbitrary JavaScript execution on opening a malicious PDF, which is precisely
+what the knowledge layer ingests; it went to 6.3.289 and **the extraction is byte-identical across
+all three manuals**, so the index needs no rebuild. That upgrade also exposed a real leak:
+`PDFDocumentProxy.destroy` was removed in pdfjs 6, and destroying the loading task is what releases
+the worker. `fast-uri` and `qs` were fixed by `npm audit fix`.
+
+**Two production libraries were running on .NET 10 previews** — `Microsoft.Extensions.Hosting` and
+`System.Text.Json` — with 10.0.11 stable available and `net48`-compatible, checked in the `.nuspec`
+before the change.
+
+**And the one deliberately left open.** `Portal.cs` is 3558 lines and `McpServer.cs` 2346, against
+the repository's own limit of 300. That is the same problem as the second half of F2 — Openness
+types cross into the MCP layer because `Portal` hands them over — and breaking it apart in an audit
+would trade a known, contained problem for an unknown one. It is the first recommendation instead.
+
+**What must not be updated**: `Siemens.Collaboration.Net.TiaPortal.Packages.Openness` offers 21.0,
+which is for TIA Portal V21. This project targets V20. Here "the latest version" is the wrong answer.
+
+**Verified against TIA Portal afterwards**: 136/140, 4 skipped, 0 failing, 5 m 56 s, no orphan
+process — the same result as before the audit, from a suite that really does drive the changed
+filter code.
+
+The full report is an artifact rather than a repository document, for the same reason the August one
+was: it is a point-in-time review, not a living rule. What became a rule is in the code and its tests.
+
+---
+
+**2026-09-02, later — the safety rules now run on continuous integration, and the first half of F2
+is what put them there.**
+
+`TiaMcpServer.Portable` is a new assembly holding everything in the server that never touches TIA
+Portal: `Governance/`, `Knowledge/`, `Spec/`, `Jobs/`, the error model, `GuardedTool`,
+`ChangeTarget`, `OpennessGate`, `OpennessLease` and `SimulationTagValueParser`. Both test projects
+reference it and no longer reference `TiaMcpServer`. **Governance 105/105 and specification 44/44 —
+149 tests — build and run against an assembly whose dependency graph contains the word "Siemens"
+zero times**, which was checked rather than assumed: `project.assets.json` and the output folder
+were both searched.
+
+**The audit's own claim about F2 was too small, and so was this document's.** Moving only
+`Governance/` and `Knowledge/` would have left `JobStoreTests`, `OpennessGateTests`,
+`GuardedToolTests` and the whole of `Spec.Test` behind — 53 of the 149 — because they cover files
+that would have stayed in the assembly that needs a licence to compile. Every one of those files
+turned out to be free of Openness too; `JobStore` only mentions it in a comment. So the cut is
+wider, and it is still clean.
+
+**Two analyzer findings were fixed rather than suppressed**, because the new project has no debt
+ledger and is not going to grow one. `PortalErrorCode` and `PortalException` came from upstream
+with no XML doc and now have it, including why the standard exception constructors are deliberately
+absent: they would build a failure with no error code, and the default value of that enum is
+`NotFound`, so a caller that forgot the code would report every failure as a missing item.
+`SclTemplateExpander` held no instance state and is now static, which removed a pointless `new` at
+sixteen call sites.
+
+**What the CI job cannot prove from here.** It has not run: the only machine available has TIA
+Portal installed, so "builds without TIA Portal" is shown structurally — no Siemens package in the
+graph, no Siemens assembly in the output — and the first push is what proves it end to end. The job
+is deliberately two `dotnet test` invocations rather than `dotnet build TiaMcpServer.sln`, which
+would fail on the resolver, correctly.
+
+**The rule that keeps it true is in `CLAUDE.md`**, because nothing enforces it: pointing the test
+projects back at `TiaMcpServer` would break no build and would silently take 149 safety tests off
+continuous integration.
+
+---
+
+**2026-09-02 — F4 is finished. The workshop gate now verifies the hash chain it used to ignore, and
+the hard part was not the hashing.**
+
+Criterion 3 read the audit trail and checked that every recorded backup was still on disk. It never
+looked at the hashes the server chains the trail with, so **a trail with an entry rewritten, or one
+removed, reported MET**. The chain made tampering detectable in August; this is what detects it.
+
+`harness/src/auditChain.ts` recomputes what `JsonlAuditTrail` wrote: sequence, `prev`, SHA-256 over
+the canonical JSON array of
+`[seq, prev, timestamp, planId, mode, tool, target, value, backupPath, origin, outcome, detail]`.
+`readAuditChain` reads the file, `gatherEvidence` gathers the verdict beside the entries, and
+criterion 3 fails on a broken chain. The gate that says shut in a terminal and the one in the
+browser share that gathering, so they cannot disagree.
+
+**The hard part was that `JSON.stringify` and `System.Text.Json` do not produce the same bytes**,
+and the hash is taken over bytes. The .NET default encoder escapes `<`, `>`, `&`, `'`, `"`, `+` and
+a backtick, escapes every non-ASCII character, and writes its hexadecimal in upper case; JavaScript
+escapes almost none of that. **Every entry ever written carries a plus sign** — it is the `+` of the
+timestamp's UTC offset — so the obvious implementation would have reported line 1 of every trail in
+existence as a forgery.
+
+**That was measured, not reasoned about.** Every code point from U+0000 to U+00FF was serialised
+through `System.Text.Json.dll` in `src/TiaMcpServer/bin/Debug/net48/` — the assembly the server
+itself is built against, loaded into PowerShell — and the escaping was read off the result. The two
+fixtures under `harness/test/assets/` were produced the same way and are committed as .NET wrote
+them: the tests assert against bytes from the other side of the boundary, not against what the
+TypeScript happens to produce.
+
+**14 tests on the TypeScript side and 10 on the C#, and they were checked by breaking the code.**
+Making the escaping match `JSON.stringify` fails 11 of the 14; removing the stripped-chain guard
+fails the two tests that name it, in both languages; making criterion 3 ignore the chain again fails
+exactly the gate test that names it. Every mutation was reverted and the suites re-run green:
+harness **198/198**, governance **105/105**, both typechecks clean, solution **0 warnings**.
+
+**The harness found a hole in the C# verifier, and the C# verifier was tightened to match.**
+`JsonlAuditTrail.VerifyChain` used to skip any line with no `hash` field wherever it sat and count
+it as history from before chaining, so the cheapest forgery of all was to edit an entry and then
+delete its chain fields. **Unattested history can only be a prefix of the file** — chaining was
+switched on once, and everything written afterwards carries it — so both verifiers now refuse a line
+with no chain fields once the chain has begun, in the same words.
+
+**How big the hole actually was, measured rather than asserted.** The mutation test says it
+precisely, and the first version of this entry overstated it. Stripping an entry *in the middle* was
+caught even by the old code, but by accident and with the wrong diagnosis: the **next** entry was
+reported as removed or inserted, because its sequence no longer followed, which sends a person to
+the one line that is genuine. Stripping the **last** entry was missed outright — nothing follows it
+to leave a gap, and the trail reported intact. There is now a test for each, on both sides.
+
+Writing the second verifier is what found this. Neither implementation checks the other by accident:
+they were built from the same specification in different languages, and the disagreement was the
+whole value.
+
+**What it says about the real trail today**: 386 recorded backups all present, the chain intact over
+**0** entries, and **8206** earlier entries that predate chaining and are not attested. That is
+honest and it is also nearly empty: the server has not written a line since chaining shipped, so
+nothing is attested yet. The first real run changes that.
+
+---
+
+**2026-08-29, late — an external audit was run over the whole repository, and its first finding was
+a real data race on the write path. It is fixed, and the fix is proved.**
+
+The audit raised twelve findings. The one that mattered was **F1**: `ChangePlanStore` held its
+pending plans in a plain `Dictionary` with no lock, and `JsonlAuditTrail` appended with no lock,
+while both are singletons reached from two threads:
+
+```
+StartAsJob -> JobStore.Start -> Task.Run(work)     thread pool
+   -> GuardedWrite.Propose -> _plans.Add(...)
+ApplyChange                                        protocol thread
+   -> GuardedWrite.Confirm -> _plans.Take(id)
+```
+
+**This was not theoretical, and the proof is the point.** Five concurrency tests were written, the
+locks were then removed, and the suite was run again: **all five failed, none passed.** Two of the
+failures say exactly what was at stake:
+
+- `Add` threw `ArgumentException: destination array is not long enough` from inside
+  `Dictionary.Resize` — the dictionary corrupting its own storage rather than failing cleanly. In
+  the server that is a hang, holding the TIA Portal licence.
+- `Take` handed **the same plan to more than one thread on 7 of 200 rounds**. In production that is
+  one human approval executing an approved change twice.
+
+**A lock, not a concurrent collection**, and the reason is in the class doc: `Take` is a lookup, a
+removal and an expiry check that have to happen together, and `Pending` has to describe one moment.
+A `ConcurrentDictionary` makes each operation atomic and leaves both of those compound operations
+racy. Nothing runs while the lock is held — `Take` hands the work out and it is executed outside, so
+a slow compile never blocks another thread.
+
+**Green**: solution builds with **0 warnings**, governance tests **95/95** (90 before, 5 new), none
+skipped.
+
+**The other findings, in the order they should be taken.** F7 continuous integration (327 of 453
+tests need no TIA Portal and nothing runs them automatically today), F4 hash-chaining the audit
+trail so tampering is detectable rather than merely discouraged, F2 the four `using
+Siemens.Engineering` in the MCP layer that `CLAUDE.md` forbids, then F5 and F6, which depend on F2.
+F3, F8 to F12 are smaller. The full report is an artifact rather than a repository document, because
+it is a point-in-time review and not a living rule.
+
+**F7 is done, and building it corrected the audit's own arithmetic.** `.github/workflows/ci.yml`
+runs the harness and the dashboard on every push: typechecks, **193 tests**, and the dashboard bundle
+— because a dashboard that type-checks and then fails to bundle is broken for everyone but the person
+running the dev server. Both jobs were executed locally, step for step, before the file was written.
+
+The audit claimed 327 tests could run on a hosted runner. **That was wrong, and the reason matters.**
+`TiaMcpServer.csproj` references the Openness resolver, which locates `Siemens.Engineering.dll` from
+an installed TIA Portal at *build* time, and both C# test projects reference that assembly. So the
+139 governance and spec tests need no TIA Portal to **run** — that separation is real and holds — but
+they cannot be **built** without one.
+
+**Which weakens a stated safety property.** `CLAUDE.md` says a safety rule that can only be checked
+on a licensed machine is a rule that stops being checked, and that is the situation today in
+practice. It is fixable: `Governance/` and `Knowledge/` contain **no `using Siemens.Engineering` at
+all**, and `PortalException` is a plain exception. Extracting them into an assembly that does not
+reference the resolver would put every safety rule in the repository onto a hosted runner. That is
+now the strongest argument for doing F2.
+
+The workflow does not declare a self-hosted Windows job. A job whose runner does not exist queues
+forever and reports nothing, which is worse than a gap that says what it is.
+
+**F4 — the audit trail is now chained, and tampering is detectable.** Every line carries a sequence
+number, the hash of the previous line, and its own SHA-256 over both plus its ten values. Editing an
+entry breaks its own hash; removing one leaves a gap in the sequence; cutting and re-joining the file
+breaks the back-pointer. Eight tests, and **each one tampers first and checks second** — a chain that
+has never been shown to catch a forgery is decoration.
+
+Two decisions worth recording:
+
+- **The hash is taken over a canonical JSON array, not over the line's text.** Two serialisers can
+  order keys differently and produce different bytes for the same record, which would report
+  tampering that never happened — the worst possible failure for a check whose only value is that
+  people believe it.
+- **It detects, it does not prevent**, and it does not stop somebody who recomputes the whole chain.
+  That needs a key this machine does not have and a place to keep it that is not this machine. The
+  class says so rather than implying more.
+
+**Run against the real trail**: 8 206 existing entries, appended to and verified —
+*"chain intact over 1 entry; 8 206 earlier entries predate chaining and are not attested."* History
+is reported as unattested rather than rewritten to look verified, and every existing reader still
+parses the lines.
+
+**Green**: solution **0 warnings**, governance **103/103** (95 before, 8 new), none skipped.
+
+**Next action.** F4 has a second half: the workshop gate reads the trail in TypeScript, so criterion
+3 still reports MET on a file whose chain is broken. Verifying the chain in `harness/src/auditTrail.ts`
+and folding it into that criterion is what turns *detectable* into *detected*. After that, F2 — which
+now carries the argument above as well as its own.
+
+**2026-08-29, night — the retrieval gate is built, it opened, and it caught a defect in stage 1 on
+the way.**
+
+The brief says *do not proceed past this stage without it*, so this was the next thing after stage 2.
+Fifty questions, two metrics, two thresholds fixed **before anything was measured**.
+
+```
+MET      citation precision: 90% of n=30, 70% required
+MET      correct abstention: 95% of n=20, 90% required
+```
+
+**The thresholds were written in the cold**, the way `RequiredCompleteRuns` was: 70% precision, 90%
+abstention. Abstention is the harder of the two on purpose — the brief says staying silent well is
+what makes a retriever trustworthy — and a test asserts that ordering, so it cannot be inverted by a
+diff. Both must be met, with no averaging between them.
+
+**The ground truth comes from the documents, not from the retriever.** Pages were sampled across the
+three manuals and read; the questions were written from that text without the search ever being
+consulted, because authoring them by asking the index would approve it by construction. The runner
+re-checks every recorded page and phrase against the corpus before scoring, and **refuses to report a
+rate** if any has drifted.
+
+**The one abstention failure is worth naming.** Asked about a **UR20** — right manufacturer, a robot
+the indexed manual does not cover — it quoted the UR5e manual instead of staying silent. Brand-level
+near misses are the residual weakness, and they are the class most likely to mislead somebody who
+trusts the name on the citation. The three precision misses are all table-heavy pages: a C4000 pin
+assignment and two DSBC ordering tables.
+
+**The defect, and it is a real one.** Writing the ground truth turned up something no query can work
+around: **PDF extraction leaves control characters inside tokens.** `EN ISO 13855` is stored as
+`EN ISO 13855`, `IEC 61496-1` as `IEC 61496D1`. Measured: **1 626 occurrences on 165 of
+538 pages**, all of it in C4000 (1 229) and DSBC (397); the UR5e manual has none.
+
+That corrupts precisely what the lexical half of the search was built for. The stage 1 note justifies
+the trigram vector by its ability to match `6ES7214-1AG40` against `6ES7 214-1AG40-0XB0` — and a
+standard number split by a control character defeats BM25 tokenisation and trigrams alike. **An exact
+technical reference into those two documents cannot match today.** It is a **stage 1 ingestion
+defect**, it is written down rather than quietly fixed, and the 90% above was measured with it
+present — so the number is honest and probably pessimistic.
+
+**Green**: harness **172/172** (159 before, 13 new), typecheck clean. The server and the dashboard are
+untouched by this stage.
+
+**Then the control characters were fixed, and the fix exposed a hole in the questions.**
+
+`repairPageText` runs on every page as it leaves the extractor. A control character **between two
+digits is removed** — there it is splitting one number — and anywhere else it becomes a space, where
+it stands in for a separator and joining the words would manufacture a token the document does not
+contain. The rule is read off this corpus rather than derived from the PDF specification, and each of
+its ten tests is one of the cases it was read off.
+
+**It does not guess, deliberately.** The same `U+0002` stands for a space in `VDMA 24562` and for a
+hyphen in `NF E 49-003.1`. Putting the hyphen back would be authoring text into a corpus whose entire
+value is that it is quoted verbatim, so the hyphen stays lost and the reference becomes findable,
+which is the half that can be had honestly. The leftover `IEC 61496D1` — a `D` where a hyphen belongs
+— is the same class of fault and is left alone for the same reason.
+
+Index rebuilt from the three PDFs: **0 control characters over 538 pages**, and `EN ISO 13855` is one
+token again.
+
+**And then the gate reported exactly the same two numbers, 90% and 95%.** A repair of 1 626
+corruptions that moves no metric is a fact about the *questions*, not about the repair: not one of
+the fifty depended on an exact standard number — the very thing the trigram vector exists for. Four
+bare-reference questions were added and checked against the index as it was before the repair:
+
+| question | before | after |
+|---|---|---|
+| `EN ISO 13855` | UR5e p84, C4000 p72, C4000 p10 | **C4000 p40** |
+| `EN ISO 13857` | UR5e p84, C4000 p72 | **C4000 p40** |
+| `IEC 61508` | **not found** | **C4000 p72** |
+| `VDMA 24562` | **not found** | **DSBC p2** |
+
+Four misses became four hits:
+
+```
+MET      citation precision: 91% of n=34, 70% required
+MET      correct abstention: 95% of n=20, 90% required
+```
+
+**Green after the repair**: harness **182/182** (172 before, 10 new), typecheck clean.
+
+**Next action.** Stages 0, 2b, 4 and 5 of the knowledge layer are unauthorised and stage 3 no longer
+blocks them. Otherwise: the API budget is roughly €3.5 and only Haiku 4.5 fits
+a publishable model sample; phase 5b is deployment; and criterion 5, the review with the teacher, is
+still the only thing between this project and an answered workshop gate.
 
 **2026-08-29, later — stage 2 of the knowledge layer is built: a change plan now cites the manual.**
 

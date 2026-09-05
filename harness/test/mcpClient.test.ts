@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import { McpServerConnection } from '../src/mcpClient.ts';
-import { resolveServerExecutable } from '../src/serverLocation.ts';
+import { resolveServerExecutable, serverExecutableAbsence } from '../src/serverLocation.ts';
 
 /**
  * The harness can talk to the server.
@@ -10,8 +10,11 @@ import { resolveServerExecutable } from '../src/serverLocation.ts';
  * needs no TIA Portal: starting the server, listing its tools and asking which mode the session is
  * in never reaches the Openness API. A test here that needed a portal would be a test nobody could
  * run while writing the loop.
+ *
+ * It does need the server to be built, which a hosted runner cannot do, so it says so and skips
+ * rather than failing there. See `serverExecutableAbsence`.
  */
-describe('McpServerConnection', () => {
+describe('McpServerConnection', { skip: serverExecutableAbsence() }, () => {
   let connection: McpServerConnection;
 
   before(async () => {

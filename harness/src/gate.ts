@@ -1,4 +1,5 @@
-import { isKnownOutcome, type AuditReadResult } from './auditTrail.ts';
+import { describeAuditChain, type AuditChainReport } from './auditChain.ts';
+import { isKnownOutcome, type AuditEntry, type AuditReadResult } from './auditTrail.ts';
 import type { RunStatistics } from './telemetry.ts';
 
 /**
@@ -42,6 +43,15 @@ export type GateEvidence = {
   /** Iterations recorded with no outcome at all. */
   readonly unfinishedIterations: number;
   readonly audit: AuditReadResult;
+  /**
+   * Whether the audit trail's own hash chain still holds.
+   *
+   * @remarks
+   * Beside the entries rather than inside them: the entries say what was written, and this says
+   * whether what was written was afterwards edited. Reading a trail answers the first question
+   * whatever the second one turns out to be.
+   */
+  readonly chain: AuditChainReport;
   /** Whether a backup path recorded in the audit is actually on disk. */
   readonly backupExists: (path: string) => boolean;
   /** The in-person review, or undefined when none has been recorded. */
@@ -143,11 +153,23 @@ function noSilentFailures(evidence: GateEvidence): Criterion {
 }
 
 /**
- * Criterion 3: every write that saved previous state can still be found on disk.
+ * Criterion 3: the audit is complete — every recorded backup is on disk, and the trail says what it
+ * said when it was written.
  *
  * @remarks
- * Only entries that were actually applied are checked. A refused change never exported anything, so
- * demanding a backup for it would make the criterion permanently unmeetable by working correctly.
+ * Only entries that were actually applied are checked for a backup. A refused change never exported
+ * anything, so demanding a backup for it would make the criterion permanently unmeetable by working
+ * correctly.
+ *
+ * The chain is the half that was missing until 2026-09-02, and its absence was not a small gap. The
+ * server hash-chains the trail so that editing it is detectable, and this criterion read the trail
+ * without ever checking those hashes — so a trail with an entry quietly rewritten, or one removed,
+ * reported *met*. A criterion answered from evidence nobody verified is worth what the evidence is
+ * worth, and the evidence is a text file.
+ *
+ * Entries written before chaining existed are reported, not failed on: a chain can only vouch for
+ * what it covered, and refusing history that predates it would make the criterion unmeetable for a
+ * reason nobody could fix.
  */
 function completeAudit(evidence: GateEvidence): Criterion {
   const applied = evidence.audit.entries.filter(
@@ -157,13 +179,19 @@ function completeAudit(evidence: GateEvidence): Criterion {
 
   return {
     number: 3,
-    name: 'complete audit: every recorded backup is on disk',
-    met: missing.length === 0,
-    evidence:
-      missing.length === 0
-        ? `${applied.length} recorded backup(s), all present`
-        : `${missing.length} of ${applied.length} recorded backup(s) are gone, first: ${missing[0]?.backupPath}`
+    name: 'complete audit: every recorded backup is on disk and the trail was not edited',
+    met: missing.length === 0 && evidence.chain.intact,
+    evidence: `${describeBackups(applied.length, missing)}; ${describeAuditChain(evidence.chain)}`
   };
+}
+
+/** The backup half of criterion 3, in a sentence. */
+function describeBackups(recorded: number, missing: readonly AuditEntry[]): string {
+  if (missing.length === 0) {
+    return `${recorded} recorded backup(s), all present`;
+  }
+
+  return `${missing.length} of ${recorded} recorded backup(s) are gone, first: ${missing[0]?.backupPath}`;
 }
 
 /**

@@ -135,6 +135,36 @@ namespace TiaMcpServer.Governance.Tests
         }
 
         [TestMethod]
+        public void Propose_InStudy_WhenTheAuditTrailCannotBeWritten_SaysSoInTheOutcome()
+        {
+            // CLAUDE.md: in Study Mode a failed audit write proceeds *and reports*. Until the audit
+            // of 2026-09-02 only the first half was true - the catch block was empty and its
+            // comment claimed a report that nothing produced, so a run could lose entries with
+            // nobody told. The test above passes either way, which is exactly why this one exists.
+            var guard = GuardFor(OperationMode.Study, new UnwritableAuditTrail());
+
+            var outcome = guard.Propose(Request(AllowedTarget), () => "written", Now);
+
+            StringAssert.Contains(
+                outcome.Detail,
+                "audit trail could not be written",
+                "an audit failure nobody is told about is a silent failure",
+                StringComparison.Ordinal);
+        }
+
+        [TestMethod]
+        public void Propose_InStudy_WhenTheTrailIsWritable_ReportsNothingExtra()
+        {
+            // The other side of it: a working trail must not decorate every successful write with
+            // a warning, or the warning stops meaning anything.
+            var guard = GuardFor(OperationMode.Study, new RecordingAuditTrail());
+
+            var outcome = guard.Propose(Request(AllowedTarget), () => "written", Now);
+
+            Assert.AreEqual(string.Empty, outcome.Detail);
+        }
+
+        [TestMethod]
         public void Run_WhenTheWorkThrows_RecordsTheFailureBeforeRethrowing()
         {
             // The change that failed halfway is the one somebody will need to find later, and the

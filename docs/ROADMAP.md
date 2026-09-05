@@ -151,7 +151,7 @@ A new layer, respecting the existing dependency rule:
 McpServer  -->  Governance  -->  Portal  -->  Openness
 ```
 
-`src/TiaMcpServer/Governance/`:
+`src/TiaMcpServer.Portable/Governance/`:
 
 | File | Responsibility |
 |---|---|

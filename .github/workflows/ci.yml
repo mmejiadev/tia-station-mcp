@@ -1,0 +1,136 @@
+# Continuous integration.
+#
+# What this runs, and what it deliberately cannot.
+#
+# The harness and the dashboard are Node and TypeScript and depend on nothing outside npm, so
+# almost all of their 208 tests run on a standard GitHub runner on every push. That includes the
+# workshop gate, the retrieval gate and the whole measurement layer.
+#
+# The exception is the seven that start the real server -- mcpClient and toolContract. They need
+# TiaMcpServer.exe to exist, and a hosted runner cannot build it for the same reason the safety job
+# exists at all. Those two suites skip here, with the reason printed, rather than failing: a suite
+# that cannot be checked on this machine reporting red would train everyone to ignore the colour.
+# They run on any machine that has built the solution, which is where they are meant to run.
+#
+# **The safety rules run here too, as of 2026-09-02**, and getting them here was the point of
+# splitting TiaMcpServer.Portable out of TiaMcpServer. The governance and specification tests never
+# needed TIA Portal to *run* -- that separation is a CLAUDE.md requirement and it always held. What
+# they needed was TIA Portal to *build*: TiaMcpServer.csproj references the Openness resolver, which
+# locates Siemens.Engineering.dll from an installed TIA Portal V20 at build time, and both test
+# projects referenced that assembly. So the tests that check every safety rule in the repository
+# could only be built on a licensed machine -- which CLAUDE.md names, in as many words, as a safety
+# rule that stops being checked.
+#
+# They now reference TiaMcpServer.Portable, which references no Siemens package at all. If a change
+# ever pulls Openness back into that assembly, this job stops finding a runner it can build on, and
+# that is the intended alarm rather than an accident.
+#
+# What still cannot run here is everything that drives TIA Portal: TiaMcpServer.Test starts a portal
+# in [AssemblyInitialize]. To add it once a Windows machine with TIA Portal V20 is registered as a
+# self-hosted runner, add a job with `runs-on: [self-hosted, windows, tia-portal]` calling
+# `dotnet build TiaMcpServer.sln` and `dotnet test`. It is not written here because a job whose
+# runner does not exist queues forever and reports nothing, which is worse than an honest gap.
+
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+# A second push to the same branch cancels the first: nobody needs the result of a commit that has
+# already been replaced.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  harness:
+    name: Harness — types, tests, gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pinned to 24 rather than to the engines floor of 22.9: the harness runs TypeScript through
+      # node directly, with no build step and no loader flag, which needs a runtime that strips
+      # types on its own.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: harness/package-lock.json
+
+      - name: Install
+        working-directory: harness
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: harness
+        run: npm run typecheck
+
+      - name: Test
+        working-directory: harness
+        run: npm test
+
+  dashboard:
+    name: Dashboard — types, tests, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install
+        working-directory: dashboard
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: dashboard
+        run: npm run typecheck
+
+      - name: Test
+        working-directory: dashboard
+        run: npm test
+
+      # The build is here and not only the typecheck: a dashboard that type-checks and then fails
+      # to bundle is broken for everybody except the person running the dev server.
+      - name: Build
+        working-directory: dashboard
+        run: npm run build
+
+  safety:
+    name: Safety — governance and specification, with no TIA Portal
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # net48, so the runner's .NET Framework targeting pack does the compiling; the SDK is only
+      # the driver. windows-latest ships both.
+      #
+      # The version comes from global.json rather than from '8.0.x', and that is not tidiness.
+      # Directory.Build.props sets AnalysisLevel=latest-all and turns every warning into an error,
+      # so the rule set is whatever the SDK in use happens to ship: asking for the newest 8.0.x
+      # meant the runner enforced rules the developer's SDK does not have, and code that built
+      # clean locally failed here three times in one afternoon -- IDE0040, then IDE0032, then
+      # CA2263. Pinning makes both machines compile with the same Roslyn. Raising the floor is then
+      # a deliberate commit to global.json, validated locally before it can turn CI red.
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      # Two projects rather than the solution, and that is the assertion this job exists to make:
+      # a runner with no TIA Portal can build and run every safety rule in the repository. Building
+      # the solution here would fail on the Openness resolver, which is correct and is why the
+      # portal-facing half is not named.
+      - name: Governance
+        run: dotnet test tests/TiaMcpServer.Governance.Test/TiaMcpServer.Governance.Test.csproj
+
+      - name: Specification
+        run: dotnet test tests/TiaMcpServer.Spec.Test/TiaMcpServer.Spec.Test.csproj
