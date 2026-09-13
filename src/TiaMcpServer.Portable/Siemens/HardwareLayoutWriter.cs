@@ -27,6 +27,7 @@ namespace TiaMcpServer.Siemens
         private const string Separator = " | ";
         private const string BuiltIn = "built-in";
         private const string Plugged = "plugged";
+        private const string NoAddresses = "<none>";
 
         /// <summary>Writes the module layout under a snapshot root.</summary>
         /// <param name="rootDirectory">The snapshot root.</param>
@@ -47,7 +48,7 @@ namespace TiaMcpServer.Siemens
         {
             var builder = new StringBuilder();
 
-            builder.AppendLine("# module | slot | type | how");
+            builder.AppendLine("# module | slot | type | how | addresses");
 
             // Grouped by station and then by slot, which is the order somebody reads a rack in.
             // Sorting by the module's own path instead would interleave DI_1, DI_10 and DI_2, and
@@ -64,7 +65,8 @@ namespace TiaMcpServer.Siemens
                     module.DevicePath,
                     module.PositionNumber.ToString(CultureInfo.InvariantCulture),
                     module.TypeIdentifier,
-                    module.IsBuiltIn ? BuiltIn : Plugged));
+                    module.IsBuiltIn ? BuiltIn : Plugged,
+                    module.Addresses.Length == 0 ? NoAddresses : module.Addresses));
             }
 
             builder.AppendLine(string.Format(CultureInfo.InvariantCulture, "# {0} module(s)", modules.Count));

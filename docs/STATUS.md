@@ -5,6 +5,49 @@
 
 ## ▶ RESUME HERE
 
+### A plugged card now has an address, and the unit was not in the signature — 2026-09-13
+
+**Seventy-three tools.** `GetIoAddresses` reads what every module of a rack occupies in the process
+image, as `%I` and `%Q` spans, and `SetModuleAddress` moves one range to another start byte. This is
+the half of plugging a card that the program can see: a tag bound to `%I0.0` reads whichever module
+starts at byte 0, so until today a card could be plugged and then addressed only by luck.
+
+**`Address.Length` is in bits, and nothing but running it could have said so.** A 32-channel input
+card reports 32, not 4. The unit appears in no signature, no type and no name, and reading bits as
+bytes would have understated every range eightfold — a four-byte card printed as one byte, and every
+span beside it wrong. `Test28Addresses` asserts 32 against a real card, so the day it changes,
+something fails and says which.
+
+**Only the start moves.** The length belongs to the module — a 32-channel card occupies four bytes
+and no argument changes that — and offering to set it would invite a range describing hardware that
+does not exist. A module with two ranges of the same kind is refused rather than guessed at, with
+both starts printed.
+
+**The read covers the whole rack, not one module, because the question is never about one card.**
+"Where can this one go" is answered by what the others already occupy. It is aimed the way
+`GetPlugLocations` is and goes through the same `Items` enumeration, so the two reads describe one
+rack between them rather than two that look alike.
+
+**The backup grew a column rather than staying a receipt.** `hardware/modules.txt` now records each
+module's spans beside its slot and order number: a backup taken before an address moves that does
+not contain the address is a record of everything except the thing being changed. The snapshot
+carries the same file, so a card silently moved from `%I0.0` to `%I64.0` shows up in a diff.
+
+**Everything is green.** 0 warnings; specification **44/44**, governance **185/185**, TIA
+**229/233 in 14 m 7 s** with 4 skipped and 0 failing, no orphan portal process. README now says 73
+tools: 43 that read, 30 that write, 29 of those through the guard.
+
+**Uncommitted.** The branch `work/phase-7-addresses` holds this work; `main` carries phase 6 and the
+first slice of phase 7 through PRs #20 and #21.
+
+**The next action.** What is left of phase 7: `PlugCopy`, `PlugMove` and `DeviceItem.Delete` —
+unplugging is destructive and gets its own decision about backups — and then parameters through
+`SetAttribute`: cycle, start-up, protection.
+
+**Left running on the machine**: nothing.
+
+---
+
 ### Phase 7 begins: the server can build a rack — 2026-09-13
 
 **Seventy-one tools.** `GetPlugLocations` reads a rack slot by slot and `PlugModule` puts a module

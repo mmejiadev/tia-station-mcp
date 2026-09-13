@@ -482,6 +482,11 @@ device can be created from an order number and nothing can be done to it afterwa
   answers. Nothing is replaced, and plugging the same module twice reports the one that is there.
   The backup taken is the module layout — `hardware/modules.txt`, which a snapshot now carries too,
   because a program on a rack with a different input card is a different system.
+- ~~Where a module lives in the process image~~ — done: `GetIoAddresses` reads the input and output
+  ranges of a whole rack as `%I`/`%Q` spans, and `SetModuleAddress` moves one of them. Only the
+  start moves; the length belongs to the module. `Address.Length` is **in bits** — measured, since
+  the unit is in no signature — and `hardware/modules.txt` now carries the spans, because a backup
+  taken before an address moves has to contain the address.
 - `PlugCopy`, `PlugMove` and `DeviceItem.Delete`: still to do. Unplugging is a destructive write
   and gets its own decision, like editing a tag did.
 - Parameters through `SetAttribute`: cycle, start-up, protection, whatever a device exposes.

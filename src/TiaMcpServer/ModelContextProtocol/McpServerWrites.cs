@@ -151,6 +151,48 @@ namespace TiaMcpServer.ModelContextProtocol
             }
         }
 
+        [McpServerTool(Name = "SetModuleAddress"), Description("Move one address range of a module to another start byte, so the program can address it at a known place. Take the module path and the range from GetIoAddresses. Only the start moves: the length belongs to the module. An address overlapping another module's is refused, and setting the one it already has changes nothing. The module layout, addresses included, is recorded to the backup registry first.")]
+        public static ResponseMessage SetModuleAddress(
+            [Description("modulePath: the module, as GetIoAddresses names it")] string modulePath,
+            [Description("ioType: which range to move, 'Input' or 'Output'")] string ioType,
+            [Description("startAddress: the byte the range should start at, e.g. 0 for %I0.0")] int startAddress)
+        {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
+            try
+            {
+                var target = ChangeTarget.Program(modulePath);
+                var backupDirectory = Backups.Allocate("SetModuleAddress", target);
+                var request = new Governance.ChangeRequest("SetModuleAddress", target, $"{ioType} at {startAddress}")
+                    .WithBackup(backupDirectory);
+
+                return GuardedTool.Run(
+                    GuardedWrites,
+                    request,
+                    () =>
+                    {
+                        var moved = Portal.SetModuleAddress(modulePath, ioType, startAddress, backupDirectory);
+
+                        return new ResponseMessage
+                        {
+                            Message = $"'{modulePath}' {moved.IoType} occupies {moved.Span}",
+                            Meta = new JsonObject
+                            {
+                                ["timestamp"] = DateTime.Now,
+                                ["success"] = true,
+                                ["startAddress"] = moved.StartAddress
+                            }
+                        };
+                    },
+                    () => new ResponseMessage());
+            }
+            catch (TiaMcpServer.Siemens.PortalException pex)
+            {
+                throw ToMcpException(pex, $"Failed to move the {ioType} range of '{modulePath}' to {startAddress}");
+            }
+        }
+
         [McpServerTool(Name = "PlugModule"), Description("Plug a module into one slot of the rack a device item sits in: an IO card, a power supply, a communications processor. Take the slot and the order number from GetPlugLocations. Nothing is replaced: a slot holding something else is refused, and plugging the same module into the same slot twice reports the one that is there. The module layout is recorded to the backup registry first. Compile the hardware afterwards, or a download writes a configuration that no longer matches the station.")]
         public static ResponseMessage PlugModule(
             [Description("deviceItemPath: a device item in the rack, e.g. 'PLC_0'. Its neighbours are the slots.")] string deviceItemPath,
