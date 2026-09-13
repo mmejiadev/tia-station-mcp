@@ -5,6 +5,59 @@
 
 ## ▶ RESUME HERE
 
+### Phase 7 begins: the server can build a rack — 2026-09-13
+
+**Seventy-one tools.** `GetPlugLocations` reads a rack slot by slot and `PlugModule` puts a module
+in one, which is the line between editing a station somebody else built and building one. Until
+today a device could be created from an order number and nothing could be done to it afterwards.
+
+**The read returns free and occupied slots as one list, and that is the whole design.** A caller
+shown only the free positions cannot tell a rack it has already filled from a rack that refuses
+everything, and the order number to copy for another card like the one in slot 2 is printed in that
+same row. `CanPlugNew` is asked before `PlugNew` for the matching reason: Openness reports every
+refusal as one generic failure, and "the slot is taken" and "this rack does not accept that module"
+need different answers, so the refusal names the free slots.
+
+**Running it found two things, both of which are TIA's behaviour rather than ours.**
+
+First, **the modules of a rack are `HardwareObject.Items`, not `HardwareObject.DeviceItems`.** The
+container's `DeviceItems` came back empty while `GetPlugLocations` was reporting slot 1 as taken, so
+the first version of the reader printed a rack in which the CPU itself did not appear. Nothing in
+the signature distinguishes the two collections; only running it does.
+
+Second, **a free slot is not a slot that accepts a given module.** Slot 0 of an S7-1500 rack reads
+as free and refuses an input card, because it belongs to the power supply. That is not a defect in
+the read — it is why the refusal lists the free slots instead of claiming to know which mistake was
+made — but it does mean a test wanting somewhere to put an IO card has to ask for one after the CPU.
+
+**The backup had to be a new file, and it turned into the third thing a snapshot holds.** A hardware
+write recorded against the network table would be a receipt for a change that table does not
+describe, so `hardware/modules.txt` now records every module, its slot and its order number — and
+`ExportSourceSnapshot` writes it too. The program says what runs, the network table says where it
+talks, and this says what it runs on: the same blocks on a rack with a different input card are a
+different system, and nothing in the export would have shown it.
+
+**One rule about paths moved rather than being copied.** Two readers now build device paths, and the
+rule that a device name containing a separator cannot be part of one lives in
+`ProjectPath.AddressableDeviceName`, where both ask for it. A rule two callers spell separately is a
+rule that holds until somebody edits one of them — which is how the same defect was found twice in
+this repository already.
+
+**Everything is green.** 0 warnings; specification **44/44**, governance **184/184**, TIA
+**217/221 in 11 m 59 s** with 4 skipped and 0 failing, no orphan portal process. README's tool count
+was stale and now reads 71: 42 that read, 29 that write, 28 of those through the guard.
+
+**Uncommitted, and it is the user's to commit.** The branch `work/phase-6-network-and-tags` holds
+subnets, tag tables, PROFINET names and this first slice of phase 7, all in the working tree.
+
+**The next action.** The rest of phase 7: `PlugCopy`, `PlugMove` and `DeviceItem.Delete` — unplugging
+is destructive and gets its own decision, like editing a tag did — and then parameters through
+`SetAttribute`: cycle, start-up, protection.
+
+**Left running on the machine**: nothing.
+
+---
+
 ### PROFINET names close phase 6, and one attribute nothing could have verified — 2026-09-13
 
 **Sixty-nine tools, and phase 6 is done.** `SetProfinetDeviceName` writes the name an IO controller

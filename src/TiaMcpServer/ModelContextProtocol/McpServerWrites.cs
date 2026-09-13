@@ -151,6 +151,51 @@ namespace TiaMcpServer.ModelContextProtocol
             }
         }
 
+        [McpServerTool(Name = "PlugModule"), Description("Plug a module into one slot of the rack a device item sits in: an IO card, a power supply, a communications processor. Take the slot and the order number from GetPlugLocations. Nothing is replaced: a slot holding something else is refused, and plugging the same module into the same slot twice reports the one that is there. The module layout is recorded to the backup registry first. Compile the hardware afterwards, or a download writes a configuration that no longer matches the station.")]
+        public static ResponseMessage PlugModule(
+            [Description("deviceItemPath: a device item in the rack, e.g. 'PLC_0'. Its neighbours are the slots.")] string deviceItemPath,
+            [Description("typeIdentifier: what to plug, as Openness names it, e.g. 'OrderNumber:6ES7 521-1BL00-0AB0/V2.1'")] string typeIdentifier,
+            [Description("moduleName: name for the module in the project, e.g. 'DI 32x24VDC'")] string moduleName,
+            [Description("positionNumber: the slot, as GetPlugLocations numbers them")] int positionNumber)
+        {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
+            try
+            {
+                var module = new TiaMcpServer.Siemens.ModuleToPlug(typeIdentifier, moduleName, positionNumber);
+
+                var target = ChangeTarget.Program(deviceItemPath);
+                var backupDirectory = Backups.Allocate("PlugModule", target);
+                var request = new Governance.ChangeRequest("PlugModule", target, module.TypeIdentifier)
+                    .WithBackup(backupDirectory);
+
+                return GuardedTool.Run(
+                    GuardedWrites,
+                    request,
+                    () =>
+                    {
+                        var plugged = Portal.PlugModule(deviceItemPath, module, backupDirectory);
+
+                        return new ResponseMessage
+                        {
+                            Message = $"'{plugged}' is in slot {positionNumber} of the rack holding '{deviceItemPath}'",
+                            Meta = new JsonObject
+                            {
+                                ["timestamp"] = DateTime.Now,
+                                ["success"] = true,
+                                ["moduleName"] = plugged
+                            }
+                        };
+                    },
+                    () => new ResponseMessage());
+            }
+            catch (TiaMcpServer.Siemens.PortalException pex)
+            {
+                throw ToMcpException(pex, $"Failed to plug '{typeIdentifier}' into slot {positionNumber} of the rack holding '{deviceItemPath}'");
+            }
+        }
+
         [McpServerTool(Name = "SetProfinetDeviceName"), Description("Set the PROFINET device name of one network node. Take devicePath and nodeName straight from GetNetworkTopology, which prints both plus the name each node holds now. This is not the address: an IO controller resolves the name over DCP at start-up, so a device whose project name differs from the name held by the hardware never joins its IO system, at any address. TIA generates the name from the interface by default and this turns that generation off. A PROFINET name is a DNS label: lowercase letters, digits and hyphens, no underscores and no spaces. The current layout is recorded to the backup registry first, and the stored name is read back rather than echoed.")]
         public static ResponseMessage SetProfinetDeviceName(
             [Description("devicePath: path of the device item owning the interface, as GetNetworkTopology prints it")] string devicePath,

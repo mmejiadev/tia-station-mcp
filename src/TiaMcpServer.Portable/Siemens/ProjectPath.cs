@@ -70,6 +70,27 @@ namespace TiaMcpServer.Siemens
             return SegmentsOf(groupPath);
         }
 
+        /// <summary>The device's name when it can appear in a path, and nothing when it cannot.</summary>
+        /// <param name="name">The device name, as Openness gives it.</param>
+        /// <returns>The name, or an empty string.</returns>
+        /// <remarks>
+        /// **A name containing the separator cannot be part of a separator-joined path.** A hardware
+        /// station is called <c>S7-1500/ET200MP-Station_3</c> by Openness -- a name TIA Portal's own
+        /// IDE never shows -- and joining it with '/' produces something no reader can split back:
+        /// four segments where the first two are one name. Dropping it is not a loss, because the
+        /// lookup already matches the device item for exactly these devices.
+        ///
+        /// It lives here rather than in one reader because more than one reader builds device paths
+        /// now, and a rule about paths that two callers spell separately is a rule that holds until
+        /// somebody edits one of them.
+        /// </remarks>
+        public static string AddressableDeviceName(string name)
+        {
+            var given = name ?? string.Empty;
+
+            return given.IndexOf(Separator) >= 0 ? string.Empty : given;
+        }
+
         /// <summary>Builds a path from a parent path and a name.</summary>
         /// <param name="parent">The parent path, or empty when the name sits at the top level.</param>
         /// <param name="name">The name to append.</param>

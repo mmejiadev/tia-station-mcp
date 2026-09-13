@@ -47,7 +47,7 @@ namespace TiaMcpServer.Siemens
 
                 var program = new SourceSnapshotExporter(software, _logger).ExportSnapshot(targetDirectory, cancellationToken);
 
-                return WithNetworkTopology(program, targetDirectory);
+                return WithHardwareLayout(WithNetworkTopology(program, targetDirectory), targetDirectory);
             }
             catch (Exception ex)
             {

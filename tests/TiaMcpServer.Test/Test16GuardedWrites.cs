@@ -190,6 +190,19 @@ namespace TiaMcpServer.Test
             AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
         }
 
+        /// <remarks>
+        /// Plugging a module changes what the station is made of, which is as far from a read as a
+        /// write gets: the hardware configuration downloaded afterwards is a different one.
+        /// </remarks>
+        [TestMethod]
+        public void PlugModule_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.PlugModule(
+                Settings.Project1PlcSoftwarePath0, "OrderNumber:6ES7 521-1BL00-0AB0/V2.1", "DI 32x24VDC HF_1", 2);
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
         [TestMethod]
         public void CreateTagTable_WithNoPolicy_IsRefused()
         {
