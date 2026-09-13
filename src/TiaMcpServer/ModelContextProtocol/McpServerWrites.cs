@@ -193,6 +193,149 @@ namespace TiaMcpServer.ModelContextProtocol
             }
         }
 
+        [McpServerTool(Name = "UnplugModule"), Description("Remove a module from its rack. This destroys it: the backup records the slot, the order number and the addresses it occupied - enough for PlugModule and SetModuleAddress to put an identical card back - but NOT parameters somebody set on it in TIA Portal, which are lost. The same record comes back in the answer. A built-in item cannot be unplugged, and the CPU is refused: removing it would take the program with it.")]
+        public static ResponseMessage UnplugModule(
+            [Description("modulePath: the module to remove, as GetPlugLocations names it")] string modulePath)
+        {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
+            try
+            {
+                var target = ChangeTarget.Program(modulePath);
+                var backupDirectory = Backups.Allocate("UnplugModule", target);
+                var request = new Governance.ChangeRequest("UnplugModule", target, modulePath)
+                    .WithBackup(backupDirectory);
+
+                return GuardedTool.Run(
+                    GuardedWrites,
+                    request,
+                    () => DescribeRemoval(Portal.UnplugModule(modulePath, backupDirectory), modulePath),
+                    () => new ResponseMessage());
+            }
+            catch (TiaMcpServer.Siemens.PortalException pex)
+            {
+                throw ToMcpException(pex, $"Failed to unplug '{modulePath}'");
+            }
+        }
+
+        /// <remarks>
+        /// The answer carries the recipe for putting the module back, not just the news that it is
+        /// gone. The backup file holds the same record, and a caller that has to go and find a file
+        /// to undo the last thing it did will not find it.
+        /// </remarks>
+        private static ResponseMessage DescribeRemoval(TiaMcpServer.Siemens.ModuleInfo removed, string modulePath)
+        {
+            var putItBack = removed.Addresses.Length == 0
+                ? "."
+                : $", then SetModuleAddress to {removed.Addresses}.";
+
+            return new ResponseMessage
+            {
+                Message = $"'{modulePath}' removed from slot {removed.PositionNumber}. To put it back: " +
+                          $"PlugModule with '{removed.TypeIdentifier}' in slot {removed.PositionNumber}" + putItBack,
+                Meta = new JsonObject
+                {
+                    ["timestamp"] = DateTime.Now,
+                    ["success"] = true,
+                    ["typeIdentifier"] = removed.TypeIdentifier,
+                    ["positionNumber"] = removed.PositionNumber,
+                    ["addresses"] = removed.Addresses
+                }
+            };
+        }
+
+        [McpServerTool(Name = "MoveModule"), Description("Move a module to another slot of the rack it is in, keeping the module and everything set on it - which is what makes this better than unplugging and plugging again. Nothing is displaced: a slot with something in it is refused. Addresses do not follow a module, so read GetIoAddresses afterwards. The layout is recorded to the backup registry first.")]
+        public static ResponseMessage MoveModule(
+            [Description("modulePath: the module to move, as GetPlugLocations names it")] string modulePath,
+            [Description("positionNumber: the slot to move it to, free, as GetPlugLocations numbers them")] int positionNumber)
+        {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
+            try
+            {
+                var target = ChangeTarget.Program(modulePath);
+                var backupDirectory = Backups.Allocate("MoveModule", target);
+                var request = new Governance.ChangeRequest("MoveModule", target, DescribeSlot(positionNumber))
+                    .WithBackup(backupDirectory);
+
+                return GuardedTool.Run(
+                    GuardedWrites,
+                    request,
+                    () =>
+                    {
+                        var moved = Portal.MoveModule(modulePath, positionNumber, backupDirectory);
+
+                        return new ResponseMessage
+                        {
+                            Message = $"'{moved}' is in slot {positionNumber} now",
+                            Meta = new JsonObject
+                            {
+                                ["timestamp"] = DateTime.Now,
+                                ["success"] = true,
+                                ["moduleName"] = moved
+                            }
+                        };
+                    },
+                    () => new ResponseMessage());
+            }
+            catch (TiaMcpServer.Siemens.PortalException pex)
+            {
+                throw ToMcpException(pex, $"Failed to move '{modulePath}' to slot {positionNumber}");
+            }
+        }
+
+        [McpServerTool(Name = "CopyModule"), Description("Copy a module into a free slot of the rack it is in. The copy carries the original's parameters, which is the point: a card configured once can be repeated. TIA chooses the copy's name and it is read back rather than asked for. A slot with something in it is refused. The layout is recorded to the backup registry first.")]
+        public static ResponseMessage CopyModule(
+            [Description("modulePath: the module to copy, as GetPlugLocations names it")] string modulePath,
+            [Description("positionNumber: the free slot to copy it into, as GetPlugLocations numbers them")] int positionNumber)
+        {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
+            try
+            {
+                var target = ChangeTarget.Program(modulePath);
+                var backupDirectory = Backups.Allocate("CopyModule", target);
+                var request = new Governance.ChangeRequest("CopyModule", target, DescribeSlot(positionNumber))
+                    .WithBackup(backupDirectory);
+
+                return GuardedTool.Run(
+                    GuardedWrites,
+                    request,
+                    () =>
+                    {
+                        var copy = Portal.CopyModule(modulePath, positionNumber, backupDirectory);
+
+                        return new ResponseMessage
+                        {
+                            Message = $"'{modulePath}' copied into slot {positionNumber} as '{copy}'",
+                            Meta = new JsonObject
+                            {
+                                ["timestamp"] = DateTime.Now,
+                                ["success"] = true,
+                                ["moduleName"] = copy
+                            }
+                        };
+                    },
+                    () => new ResponseMessage());
+            }
+            catch (TiaMcpServer.Siemens.PortalException pex)
+            {
+                throw ToMcpException(pex, $"Failed to copy '{modulePath}' into slot {positionNumber}");
+            }
+        }
+
+        /// <remarks>
+        /// A plan records what a change was aimed at, and a slot number is that for these two. The
+        /// culture is fixed because an audit trail read on another machine must say the same thing.
+        /// </remarks>
+        private static string DescribeSlot(int positionNumber)
+        {
+            return "slot " + positionNumber.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
         [McpServerTool(Name = "PlugModule"), Description("Plug a module into one slot of the rack a device item sits in: an IO card, a power supply, a communications processor. Take the slot and the order number from GetPlugLocations. Nothing is replaced: a slot holding something else is refused, and plugging the same module into the same slot twice reports the one that is there. The module layout is recorded to the backup registry first. Compile the hardware afterwards, or a download writes a configuration that no longer matches the station.")]
         public static ResponseMessage PlugModule(
             [Description("deviceItemPath: a device item in the rack, e.g. 'PLC_0'. Its neighbours are the slots.")] string deviceItemPath,
