@@ -18,12 +18,18 @@
         /// True when it is part of the device rather than plugged into it, which is why it cannot
         /// be unplugged.
         /// </param>
-        public ModuleInfo(string devicePath, int positionNumber, string typeIdentifier, bool isBuiltIn)
+        /// <param name="addresses">
+        /// What the module occupies in the process image, as spans. Empty for the many items that
+        /// occupy nothing, and carried here because a backup taken before an address is moved has
+        /// to contain the address it is moving.
+        /// </param>
+        public ModuleInfo(string devicePath, int positionNumber, string typeIdentifier, bool isBuiltIn, string addresses = "")
         {
             DevicePath = devicePath;
             PositionNumber = positionNumber;
             TypeIdentifier = typeIdentifier;
             IsBuiltIn = isBuiltIn;
+            Addresses = addresses;
         }
 
         /// <summary>Full path of the module in the project.</summary>
@@ -37,5 +43,8 @@
 
         /// <summary>True when it is part of the device rather than plugged into it.</summary>
         public bool IsBuiltIn { get; }
+
+        /// <summary>What the module occupies in the process image, or empty when it occupies nothing.</summary>
+        public string Addresses { get; }
     }
 }

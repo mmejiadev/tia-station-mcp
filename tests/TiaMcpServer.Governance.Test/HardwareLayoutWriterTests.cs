@@ -75,9 +75,9 @@ namespace TiaMcpServer.Governance.Tests
         [TestMethod]
         public void Write_AModule_RecordsEveryColumnItWasGiven()
         {
-            HardwareLayoutWriter.Write(_root, new[] { new ModuleInfo("PLC_1/DI_1", 2, "OrderNumber:6ES7 521-1BL00-0AB0/V2.1", false) });
+            HardwareLayoutWriter.Write(_root, new[] { new ModuleInfo("PLC_1/DI_1", 2, "OrderNumber:6ES7 521-1BL00-0AB0/V2.1", false, "Input %I0.0..%I3.7") });
 
-            Assert.AreEqual("PLC_1/DI_1 | 2 | OrderNumber:6ES7 521-1BL00-0AB0/V2.1 | plugged", Rows().Single());
+            Assert.AreEqual("PLC_1/DI_1 | 2 | OrderNumber:6ES7 521-1BL00-0AB0/V2.1 | plugged | Input %I0.0..%I3.7", Rows().Single());
         }
 
         /// <remarks>
@@ -91,6 +91,19 @@ namespace TiaMcpServer.Governance.Tests
             HardwareLayoutWriter.Write(_root, new[] { new ModuleInfo("PLC_1/PROFINET interface_1", 1, "System:Device.Interface", true) });
 
             StringAssert.Contains(Rows().Single(), "built-in", StringComparison.Ordinal);
+        }
+
+        /// <remarks>
+        /// Most items occupy nothing — an interface, a port, the rack itself — and a blank column
+        /// would read as an address somebody forgot to record rather than as no address at all.
+        /// The distinction is what makes this file usable as the backup of an address change.
+        /// </remarks>
+        [TestMethod]
+        public void Write_AModuleThatOccupiesNoAddress_SaysSoRatherThanLeavingItBlank()
+        {
+            HardwareLayoutWriter.Write(_root, new[] { Module("PLC_1/CPU", 1) });
+
+            StringAssert.Contains(Rows().Single(), "<none>", StringComparison.Ordinal);
         }
 
         [TestMethod]

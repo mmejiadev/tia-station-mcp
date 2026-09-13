@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Logging;
 using Siemens.Engineering.HW;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace TiaMcpServer.Siemens
 {
@@ -53,6 +54,20 @@ namespace TiaMcpServer.Siemens
             return modules;
         }
 
+        /// <remarks>
+        /// Its own ranges, not those of the channels nested inside it. The nested items get rows of
+        /// their own in the same file, and repeating their addresses on the parent would double
+        /// every range in a diff of it.
+        /// </remarks>
+        private static string DescribeAddresses(DeviceItem deviceItem, string path)
+        {
+            var spans = IoAddressReader.Read(deviceItem, path)
+                .Where(range => range.ModulePath == path)
+                .Select(range => $"{range.IoType} {range.Span}");
+
+            return string.Join(", ", spans);
+        }
+
         private static void Collect(DeviceItem deviceItem, string parentPath, List<ModuleInfo> modules)
         {
             var path = ProjectPath.Join(parentPath, deviceItem.Name);
@@ -61,7 +76,8 @@ namespace TiaMcpServer.Siemens
                 path,
                 deviceItem.PositionNumber,
                 deviceItem.TypeIdentifier ?? string.Empty,
-                deviceItem.IsBuiltIn));
+                deviceItem.IsBuiltIn,
+                DescribeAddresses(deviceItem, path)));
 
             foreach (var nested in deviceItem.DeviceItems)
             {

@@ -191,6 +191,18 @@ namespace TiaMcpServer.Test
         }
 
         /// <remarks>
+        /// Moving an address changes what the program reads at %I0.0, which is a write whether or
+        /// not any module moved with it.
+        /// </remarks>
+        [TestMethod]
+        public void SetModuleAddress_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.SetModuleAddress(Settings.Project1PlcSoftwarePath0, "Input", 64);
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        /// <remarks>
         /// Plugging a module changes what the station is made of, which is as far from a read as a
         /// write gets: the hardware configuration downloaded afterwards is a different one.
         /// </remarks>

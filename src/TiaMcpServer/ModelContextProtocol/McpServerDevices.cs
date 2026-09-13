@@ -51,6 +51,39 @@ namespace TiaMcpServer.ModelContextProtocol
             }
         }
 
+        [McpServerTool(Name = "GetIoAddresses"), Description("List what every module in a rack occupies in the process image: its input and output ranges, as %I and %Q spans. Read this before binding a tag to an address and before moving one: a tag bound to %I0.0 reads whichever module starts at byte 0, and an address that overlaps another module's is refused.")]
+        public static ResponseNetworkTopology GetIoAddresses(
+            [Description("deviceItemPath: a device item in the rack, e.g. 'PLC_0'")] string deviceItemPath)
+        {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
+            try
+            {
+                var ranges = Portal.GetIoAddresses(deviceItemPath);
+
+                var lines = ranges
+                    .Select(range => $"{range.ModulePath} | {range.IoType} | {range.Span} | {range.LengthInBits} bit")
+                    .ToList();
+
+                return new ResponseNetworkTopology(lines)
+                {
+                    Message = ranges.Count == 0
+                        ? $"Nothing in the rack around '{deviceItemPath}' occupies an address"
+                        : $"{ranges.Count} address range(s) in the rack around '{deviceItemPath}'",
+                    Meta = new JsonObject
+                    {
+                        ["timestamp"] = DateTime.Now,
+                        ["success"] = true
+                    }
+                };
+            }
+            catch (TiaMcpServer.Siemens.PortalException pex)
+            {
+                throw ToMcpException(pex, $"Failed to read the addresses around '{deviceItemPath}'");
+            }
+        }
+
         [McpServerTool(Name = "GetPlugLocations"), Description("List the slots of the rack a device item sits in: which are free and what is plugged into the rest, with each module's order number. Read this before plugging anything. A free slot is not the same as a slot that accepts a given module, and the order number to copy is the one printed here for a module like it.")]
         public static ResponseNetworkTopology GetPlugLocations(
             [Description("deviceItemPath: a device item in the rack, e.g. 'PLC_0'. Its neighbours are the slots.")] string deviceItemPath)
