@@ -79,9 +79,23 @@ namespace TiaMcpServer.Governance.Tests
         [TestMethod]
         public void Write_ANode_RecordsEveryColumnItWasGiven()
         {
-            NetworkTopologyWriter.Write(_root, new[] { new NetworkNodeInfo("PLC_1", "X1", "Ethernet", "192.168.0.1", "PN/IE_1") });
+            NetworkTopologyWriter.Write(_root, new[] { new NetworkNodeInfo("PLC_1", "X1", "Ethernet", "192.168.0.1", "PN/IE_1", "cell-plc-1") });
 
-            Assert.AreEqual("PLC_1 | X1 | Ethernet | 192.168.0.1 | PN/IE_1", Rows().Single());
+            Assert.AreEqual("PLC_1 | X1 | Ethernet | 192.168.0.1 | PN/IE_1 | cell-plc-1", Rows().Single());
+        }
+
+        /// <remarks>
+        /// A PROFINET device name is what an IO controller resolves before it talks IP, so a
+        /// snapshot that records the address and not the name records half of what decides which
+        /// machine answers. Most nodes have no such name -- a PROFIBUS node cannot -- and the file
+        /// says so rather than leaving a column that reads like an unfilled field.
+        /// </remarks>
+        [TestMethod]
+        public void Write_ANodeWithNoProfinetName_SaysSoRatherThanLeavingItBlank()
+        {
+            NetworkTopologyWriter.Write(_root, new[] { new NetworkNodeInfo("PLC_1", "X1", "Profibus", "2", "DP_1") });
+
+            StringAssert.Contains(Rows().Single(), "<none>", StringComparison.Ordinal);
         }
 
         [TestMethod]

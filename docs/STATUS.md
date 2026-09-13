@@ -1,9 +1,157 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-09-05**
+> Last updated: **2026-09-13**
 
 ## ▶ RESUME HERE
+
+### PROFINET names close phase 6, and one attribute nothing could have verified — 2026-09-13
+
+**Sixty-nine tools, and phase 6 is done.** `SetProfinetDeviceName` writes the name an IO controller
+resolves over DCP before it talks IP, and `GetNetworkTopology` now prints the name every node holds,
+as a sixth column. Until today an interface could be put on the right subnet at the right address
+and still never join its IO system, because the one property that decides which physical station
+answers could only be typed into TIA Portal by hand.
+
+**It is not a second spelling of the address, and the tool description says so.** A controller looks
+the name up first and addresses IP afterwards; a station whose project name differs from the name
+burned into the hardware stays dark, and the diagnostic for it points nowhere near the name. That is
+why the name went into the snapshot as well: `network/topology.txt` recording the address but not
+the name recorded half of what decides which machine answers, and a rename would have produced an
+identical file.
+
+**Setting a name turns off TIA's automatic naming, and that is not a separate decision.** TIA
+derives the device name from the interface unless told not to, and a name written while it is
+deriving does not survive. So `ProfinetDeviceNaming` clears `PnDeviceNameAutoGeneration` first and
+then writes, in that order, every time.
+
+**The one thing here that no amount of reading could check is the spelling of an Openness
+attribute.** `PnDeviceName` is not in any signature — it is a string looked up in an attribute bag —
+so a typo would not fail a build, would not throw, and would return an empty name for every node for
+ever. `GetNetworkTopology_ThePlcProfinetInterface_CarriesADeviceName` is the test that measures it:
+the fixture PLC has a generated PROFINET name before anybody sets one, so an empty column means the
+attribute is wrong rather than the project bare. It passed on the first run, which is what makes the
+rest of the feature believable. A node that has no such attribute is told which attributes it does
+have, for the same reason: "not a PROFINET node" sends somebody back to TIA Portal to find out which
+of its interfaces is.
+
+**One rule of CLAUDE.md is bent, deliberately.** `NetworkNodeInfo` now takes six constructor
+parameters, past the limit of four. A parameter object for a six-field immutable DTO would be three
+layers to read one row of a table, which the rule's own closing note says not to do. The sixth is
+optional and defaults to empty, because most nodes genuinely have no PROFINET name.
+
+**Everything is green.** 0 warnings; specification **44/44**, governance **171/171**, TIA
+**205/209 in 15 m 14 s** with 4 skipped and 0 failing, no orphan portal process.
+
+**Uncommitted, and it is the user's to commit.** The working tree holds three slices of phase 6 —
+subnets, tag tables and now PROFINET names — on `main`. They belong on a branch and in a pull
+request before anything else is built on them.
+
+**The next action.** Phase 7, the big one: `HardwareObject.PlugNew`, `CanPlugNew`,
+`GetPlugLocations` and `DeviceItem.Delete` — racks, modules, IO cards. Today a device can be created
+from an order number and nothing can be done to it afterwards.
+
+**Left running on the machine**: nothing.
+
+---
+
+### Tag tables, and a silence in TIA Portal worth knowing about — 2026-09-05
+
+**Sixty-eight tools, and phase 6 is done but for PROFINET device names.** `GetTagTables` and
+`GetTags` read the names a program uses; `CreateTagTable`, `CreateTag` and `CreateConstant` author
+them. They have been exported since the snapshot existed and could not be created until today, so a
+program this server generated could only refer to tags somebody had typed into TIA Portal by hand.
+
+**Everything is aimed with a path.** A tag is `Default tag table/Start`, or `Cell/IO/Start` when the
+table sits in a group — the table is part of the tag's identity, and a bare name would land it in
+whichever table the code happened to pick. `TagDefinition` refuses a bare name before anything
+opens, and creating a table creates the groups above it, because a caller building a program from
+nothing should not have to discover the missing group by failing.
+
+**Nothing overwrites.** Creating the same tag twice reports the one that is there, which is the
+idempotence every write here owes its callers; a name held by something *different* is refused with
+both spellings named. Tags and constants share one namespace, so the refusal says which of the two
+holds the name — Openness reports that collision as a generic failure, and a caller told only
+"creation failed" goes and looks at the data type.
+
+**Then the measuring found something that is not our bug and matters more than one.** A test written
+to prove that a misspelt data type is refused found that **Openness stores it**: `NotAType` was
+accepted, saved, and listed back verbatim. The test was rewritten to expect the compiler to catch
+it, and **the compiler does not either** — `CompileSoftware` answered success with "No block was
+compiled. All blocks are up-to-date". A software compile compiles blocks; it does not validate tag
+tables.
+
+So a typo in a data type produces a tag that exists, lists and exports, in a project that says it is
+fine. The server does **not** refuse it, and that is deliberate: it has no list of the types this
+CPU accepts — a program's own PLC data types and arrays are among them — and inventing one would
+refuse valid input, which is worse. What it does instead is say so in `CreateTag`'s own description,
+so the caller copies a spelling from `GetTags` rather than inventing one. The test asserts the
+silence, so that the day TIA Portal starts catching it, something fails and says so.
+
+**Everything is green.** 0 warnings; specification **44/44**, governance **170/170**, harness
+**214/214**, TIA **197/201 in 9 m 16 s** with 4 skipped and 0 failing, no orphan portal process.
+
+**The next action.** PROFINET device names close phase 6. Then phase 7, which is the big one:
+`HardwareObject.PlugNew` and the rest of building a station — racks, modules, IO cards — where today
+a device can be created from an order number and nothing can be done to it afterwards.
+
+**Left running on the machine**: nothing.
+
+---
+
+### Subnets, and the same defect found a second time — 2026-09-05
+
+**Sixty-three tools.** `GetSubnets` reads the wires of a project, `CreateSubnet` makes one from an
+interface, `ConnectDeviceToSubnet` attaches an interface to one that exists. That is the second
+slice of phase 6, and with it the network can be built rather than only read: an address, a subnet,
+an IO system, a device on it.
+
+**The subnet's network type is not a parameter, and that is a design decision worth keeping.**
+`Node.CreateAndConnectToSubnet` creates the kind of subnet that node can join, so an Ethernet
+interface makes an Ethernet subnet and a PROFIBUS card makes a PROFIBUS one. The alternative,
+`SubnetComposition.Create`, takes a type identifier string nobody can produce without looking it up.
+PROFIBUS therefore arrived with PROFINET rather than after it — the same thing that happened with
+`CreateIoSystem`, for the same reason.
+
+**Neither write rewires.** An interface already on a subnet is refused rather than moved, because
+moving one is how a working network silently becomes a broken one. The single exception is
+reconnecting an interface to the subnet it is already on, which changes nothing and therefore
+succeeds: Openness throws for it, and a write that cannot be run twice is a write no retry can
+recover.
+
+**Then it was run, and the failure of the previous session had happened again in new types.**
+`GetSubnets` read `Project.Subnets` and the topology reported an interface on
+`PC-internes Subnetz_1` — a PC station's internal subnet, which belongs to the station and is not in
+the project's composition. So one read tool printed a subnet the tool beside it swore did not exist,
+and `ConnectDeviceToSubnet` would have answered "no subnet called that" while naming a list that
+could never contain it.
+
+**The fix is not a special case, it is one enumeration.** `SubnetLookup` is the project's
+composition unioned with every subnet reachable from a device's interfaces, and **both the read and
+the writes ask it**. What `GetSubnets` lists is what `ConnectDeviceToSubnet` can find, by
+construction rather than by care. The pattern to remember: when a read tool and a write tool have to
+agree on a set of names, they get one enumeration, not two that look alike.
+
+**The test that caught it asserts exactly that agreement** — every subnet the topology names is a
+subnet `GetSubnets` lists. It is the same shape as the test that caught the path defect yesterday,
+and it is the shape worth repeating: two tools, one vocabulary, one assertion.
+
+**A second test of mine was simply wrong**, which is worth writing down. It tried to prove that an
+interface on one subnet cannot be moved to another by creating two PROFIBUS subnets from two cards,
+and the second card resolved to the first one's node. The rule is now checked with the PLC and one
+new subnet, which needs nothing the fixture does not already have.
+
+**Everything is green.** 0 warnings; specification **44/44**, governance **170/170**, harness
+**214/214** including the contract check against the built server, TIA **178/182 in 8 m 20 s** with
+4 skipped and 0 failing, no orphan portal process.
+
+**The next action.** The rest of phase 6: tag tables, tags and constants
+(`PlcTagTableComposition.Create`, `PlcTagComposition.Create`) — exported today and impossible to
+author — and PROFINET device names.
+
+**Left running on the machine**: nothing.
+
+---
 
 ### Phase 6 begun, and running it once found two older defects — 2026-09-05
 

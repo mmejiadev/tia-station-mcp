@@ -117,7 +117,8 @@ namespace TiaMcpServer.Siemens
                     node.Name,
                     DescribeNetworkType(node.NodeType),
                     ReadAddress(node),
-                    node.ConnectedSubnet?.Name ?? string.Empty));
+                    node.ConnectedSubnet?.Name ?? string.Empty,
+                    ProfinetDeviceNaming.Read(node)));
             }
         }
 

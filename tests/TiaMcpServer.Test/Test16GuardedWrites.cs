@@ -161,6 +161,65 @@ namespace TiaMcpServer.Test
             AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
         }
 
+        /// <remarks>
+        /// A PROFINET device name decides which physical station answers a controller, so renaming
+        /// one is a write in the fullest sense: it can point an IO system at a different machine
+        /// without changing a single address.
+        /// </remarks>
+        [TestMethod]
+        public void SetProfinetDeviceName_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.SetProfinetDeviceName(Settings.Project1PlcSoftwarePath0, "PROFINET interface_1", "cell-plc");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void CreateSubnet_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.CreateSubnet(Settings.Project1PlcSoftwarePath0, "PROFINET interface_1", "Cell_PN");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void ConnectDeviceToSubnet_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.ConnectDeviceToSubnet(Settings.Project1PlcSoftwarePath0, "PROFINET interface_1", "Cell_PN");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void CreateTagTable_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.CreateTagTable(Settings.Project1PlcSoftwarePath0, "Cell/IO");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        /// <remarks>
+        /// A tag is a name the program compiles against, so creating one is a write like any other.
+        /// It is also the one whose arguments are validated before the guard is asked — the path is
+        /// parsed to build the definition — which is why this test uses a well-formed one: a
+        /// refusal for a bad path would pass while proving nothing about the guard.
+        /// </remarks>
+        [TestMethod]
+        public void CreateTag_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.CreateTag(Settings.Project1PlcSoftwarePath0, "Default tag table/Start", "Bool", "%I0.0");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void CreateConstant_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.CreateConstant(Settings.Project1PlcSoftwarePath0, "Default tag table/CYCLE", "Int", "500");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
         [TestMethod]
         public void DownloadToSimulation_WithNoPolicy_IsRefused()
         {

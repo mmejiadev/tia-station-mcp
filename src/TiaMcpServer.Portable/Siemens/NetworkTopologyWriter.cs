@@ -23,6 +23,7 @@ namespace TiaMcpServer.Siemens
         private const string FileName = "network/topology.txt";
         private const string Separator = " | ";
         private const string Unconnected = "<not connected>";
+        private const string Unnamed = "<none>";
 
         /// <summary>Writes the topology under a snapshot root.</summary>
         /// <param name="rootDirectory">The snapshot root.</param>
@@ -43,7 +44,7 @@ namespace TiaMcpServer.Siemens
         {
             var builder = new StringBuilder();
 
-            builder.AppendLine("# device | interface | type | address | subnet");
+            builder.AppendLine("# device | interface | type | address | subnet | profinet name");
 
             var ordered = nodes
                 .OrderBy(node => node.DevicePath, System.StringComparer.Ordinal)
@@ -57,7 +58,8 @@ namespace TiaMcpServer.Siemens
                     node.InterfaceName,
                     node.NetworkType,
                     node.Address,
-                    node.IsConnected ? node.SubnetName : Unconnected));
+                    node.IsConnected ? node.SubnetName : Unconnected,
+                    node.ProfinetDeviceName.Length == 0 ? Unnamed : node.ProfinetDeviceName));
             }
 
             builder.AppendLine(string.Format(CultureInfo.InvariantCulture, "# {0} interface(s)", nodes.Count));

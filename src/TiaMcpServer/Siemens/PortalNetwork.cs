@@ -145,13 +145,12 @@ namespace TiaMcpServer.Siemens
 
             try
             {
-                if (string.IsNullOrWhiteSpace(nodeName) || string.IsNullOrWhiteSpace(address))
+                if (string.IsNullOrWhiteSpace(address))
                 {
-                    throw new PortalException(PortalErrorCode.InvalidParams, "nodeName and address are required");
+                    throw new PortalException(PortalErrorCode.InvalidParams, "address is required");
                 }
 
-                var deviceItem = RequireDeviceItemForWrite(deviceItemPath, backupDirectory);
-                var node = RequireNode(deviceItem, deviceItemPath, nodeName);
+                var node = RequireNodeForWrite(deviceItemPath, nodeName, backupDirectory);
 
                 SetAddress(node, address);
 

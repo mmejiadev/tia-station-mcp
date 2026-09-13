@@ -17,18 +17,25 @@
         /// <param name="networkType">Ethernet, Profibus and so on.</param>
         /// <param name="address">The node's address on its subnet.</param>
         /// <param name="subnetName">The subnet it is attached to, or empty when unconnected.</param>
+        /// <param name="profinetDeviceName">
+        /// The PROFINET device name, or empty when the node has none. It carries a default because
+        /// most nodes have none: a PROFIBUS node cannot have one, and neither can a plain Ethernet
+        /// interface.
+        /// </param>
         public NetworkNodeInfo(
             string devicePath,
             string interfaceName,
             string networkType,
             string address,
-            string subnetName)
+            string subnetName,
+            string profinetDeviceName = "")
         {
             DevicePath = devicePath;
             InterfaceName = interfaceName;
             NetworkType = networkType;
             Address = address;
             SubnetName = subnetName;
+            ProfinetDeviceName = profinetDeviceName;
         }
 
         /// <summary>Full path of the device item owning the interface.</summary>
@@ -48,6 +55,16 @@
         /// anything, which is a common reason a download or an IO connection fails.
         /// </summary>
         public string SubnetName { get; }
+
+        /// <summary>
+        /// The PROFINET device name, or empty when the node has none.
+        /// </summary>
+        /// <remarks>
+        /// Not a second name for the same thing as the address. An IO controller resolves this
+        /// name over DCP at start-up and only then talks IP, so a device whose project name differs
+        /// from the one held by the hardware never joins its IO system, whatever its address says.
+        /// </remarks>
+        public string ProfinetDeviceName { get; }
 
         /// <summary>True when the interface is attached to a subnet.</summary>
         public bool IsConnected => !string.IsNullOrEmpty(SubnetName);
