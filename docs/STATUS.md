@@ -5,6 +5,47 @@
 
 ## ▶ RESUME HERE
 
+### Phase 7 closes: a rack can be taken apart, and what a backup cannot restore is written down — 2026-09-13
+
+**Seventy-six tools.** `UnplugModule`, `MoveModule` and `CopyModule` finish the hardware slice.
+Racks can now be built, read, addressed and taken apart, which is the whole of what phase 7 set out
+to do apart from parameters.
+
+**The decision unplugging needed, taken and written into the tool description.** `hardware/modules.txt`
+records a module's slot, its order number and the addresses it occupied — exactly what `PlugModule`
+and `SetModuleAddress` need to put an identical card back, and the removal answers with that recipe
+so nobody has to go and find the file. It does **not** record parameters set by hand in TIA Portal,
+because this server does not write them and a record of settings nothing can restore would be a
+promise it cannot keep. A test puts the card back from the returned record rather than asserting the
+text looks right.
+
+**Two refusals that are ours, not TIA's.** A built-in item is part of the device and cannot be
+unplugged at all. The CPU *can* be, and is refused: removing it takes the program with it, which is
+a decision about the whole station and not one a tool named after modules should be able to take by
+accident.
+
+**Moving is not unplugging and plugging again, which is why both exist.** A move keeps the module
+and everything configured on it; the pair loses all of it. A copy carries the original's parameters
+too — a card configured once and repeated is exactly what a four-station cell is made of — and TIA
+names the copy itself, so the name is read back rather than assumed. Neither displaces anything: a
+slot with something in it is refused with the occupant named.
+
+**Everything is green.** 0 warnings; specification **44/44**, governance **185/185**, TIA
+**244/248 in 11 m 25 s** with 4 skipped and 0 failing, no orphan portal process. README says 76
+tools: 43 that read, 33 that write, 32 of those through the guard.
+
+**Uncommitted.** The branch `work/phase-7-unplug` holds this; `main` carries phases 6 and the rest
+of 7 through PRs #20, #21 and #22.
+
+**The next action.** Parameters through `SetAttribute` — cycle, start-up, protection — which is what
+is left of phase 7 and also what would let a removal record more than it does today. After that,
+phase 8: `CrossReferenceService.GetCrossReferences`, which answers *who calls this block* before a
+model rewrites it.
+
+**Left running on the machine**: nothing.
+
+---
+
 ### A plugged card now has an address, and the unit was not in the signature — 2026-09-13
 
 **Seventy-three tools.** `GetIoAddresses` reads what every module of a rack occupies in the process

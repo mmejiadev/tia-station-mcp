@@ -64,6 +64,106 @@ namespace TiaMcpServer.Siemens
             return plugged.Name;
         }
 
+        /// <summary>Moves a module that is already in a rack to another slot of it.</summary>
+        /// <param name="module">The module to move.</param>
+        /// <param name="modulePath">Its path, for the messages.</param>
+        /// <param name="positionNumber">The slot to move it to.</param>
+        /// <returns>The name the module carries afterwards.</returns>
+        /// <exception cref="PortalException">
+        /// The target slot is taken, the rack will not take the module there, or TIA refused.
+        /// </exception>
+        /// <remarks>
+        /// A move keeps the module and its parameters and changes only where it sits, which is what
+        /// makes it worth having beside unplug-and-plug-again: the pair of those loses everything
+        /// that was set on the card. Its addresses do not follow it — a slot does not decide an
+        /// address — so GetIoAddresses is still where the answer is afterwards.
+        /// </remarks>
+        public string Move(DeviceItem module, string modulePath, int positionNumber)
+        {
+            var container = PlugLocationReader.RequireContainer(module);
+
+            if (module.PositionNumber == positionNumber)
+            {
+                return module.Name;
+            }
+
+            RequireSlotIsFree(container, positionNumber, modulePath);
+
+            if (!container.CanPlugMove(module, positionNumber))
+            {
+                throw new PortalException(
+                    PortalErrorCode.InvalidParams,
+                    $"The rack will not take '{modulePath}' in slot {positionNumber}. Free slots: {FreeSlots(container)}.");
+            }
+
+            var moved = container.PlugMove(module, positionNumber);
+
+            _logger?.LogInformation("{Module} moved to slot {Slot}", modulePath, positionNumber);
+
+            return moved.Name;
+        }
+
+        /// <summary>Copies a module that is already in a rack into a free slot of it.</summary>
+        /// <param name="module">The module to copy.</param>
+        /// <param name="modulePath">Its path, for the messages.</param>
+        /// <param name="positionNumber">The slot to copy it into.</param>
+        /// <returns>The name the copy was given.</returns>
+        /// <exception cref="PortalException">
+        /// The target slot is taken, the rack will not take the module there, or TIA refused.
+        /// </exception>
+        /// <remarks>
+        /// A copy carries the original's parameters with it, which is the whole point: a cell with
+        /// four identical stations is configured once and copied three times. The name is TIA's to
+        /// choose — it appends a number — so it is read back rather than asked for.
+        /// </remarks>
+        public string Copy(DeviceItem module, string modulePath, int positionNumber)
+        {
+            var container = PlugLocationReader.RequireContainer(module);
+
+            RequireSlotIsFree(container, positionNumber, modulePath);
+
+            if (!container.CanPlugCopy(module, positionNumber))
+            {
+                throw new PortalException(
+                    PortalErrorCode.InvalidParams,
+                    $"The rack will not take a copy of '{modulePath}' in slot {positionNumber}. Free slots: {FreeSlots(container)}.");
+            }
+
+            var copy = container.PlugCopy(module, positionNumber);
+
+            _logger?.LogInformation("{Module} copied into slot {Slot} as {Copy}", modulePath, positionNumber, copy.Name);
+
+            return copy.Name;
+        }
+
+        /// <remarks>
+        /// Neither a move nor a copy displaces anything. The target slot is checked here rather
+        /// than left to CanPlugMove, because "that slot is taken by X" and "this rack does not
+        /// accept that module" are the two mistakes behind almost every refusal and Openness
+        /// reports them identically.
+        /// </remarks>
+        private static void RequireSlotIsFree(HardwareObject container, int positionNumber, string modulePath)
+        {
+            var occupant = OccupantOf(container, positionNumber);
+
+            if (occupant == null)
+            {
+                return;
+            }
+
+            throw new PortalException(
+                PortalErrorCode.InvalidState,
+                $"Slot {positionNumber} already holds '{occupant.Name}', so '{modulePath}' is not going there. " +
+                "Nothing here displaces a module: unplug it first, or pick a free slot.");
+        }
+
+        private static string FreeSlots(HardwareObject container)
+        {
+            var free = string.Join(", ", FreePositions(container));
+
+            return free.Length == 0 ? "none" : free;
+        }
+
         /// <remarks>
         /// Plugging the same module into the same slot twice is the retry every write here has to
         /// survive, so it reports what is there instead of failing. A slot holding something

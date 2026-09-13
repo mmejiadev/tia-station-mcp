@@ -84,6 +84,101 @@ namespace TiaMcpServer.Siemens
             }
         }
 
+        /// <summary>Unplugs a module from its rack.</summary>
+        /// <param name="modulePath">The module, as GetPlugLocations names it.</param>
+        /// <param name="backupDirectory">Where the layout is recorded first. Required.</param>
+        /// <returns>What was removed, in the shape needed to plug it back.</returns>
+        /// <exception cref="PortalException">
+        /// No project is open, the path does not resolve, the item is built in or is the CPU, or
+        /// TIA Portal refused.
+        /// </exception>
+        /// <remarks>
+        /// The one operation here that destroys something. What the backup restores and what it
+        /// does not is stated in <see cref="ModuleRemover"/>, and the same record comes back to the
+        /// caller so that putting the module back needs no file at all.
+        /// </remarks>
+        public ModuleInfo UnplugModule(string modulePath, string backupDirectory)
+        {
+            _logger?.LogInformation("Unplugging {Module}...", modulePath);
+
+            try
+            {
+                var deviceItem = RequireDeviceItemForHardwareWrite(modulePath, backupDirectory);
+
+                return new ModuleRemover(_logger).Remove(deviceItem, modulePath);
+            }
+            catch (Exception ex)
+            {
+                throw DecorateHardwareFailure(ex, modulePath, backupDirectory, "UnplugModule");
+            }
+        }
+
+        /// <summary>Moves a module to another slot of the rack it is in.</summary>
+        /// <param name="modulePath">The module, as GetPlugLocations names it.</param>
+        /// <param name="positionNumber">The slot to move it to.</param>
+        /// <param name="backupDirectory">Where the layout is recorded first. Required.</param>
+        /// <returns>The name the module carries afterwards.</returns>
+        /// <exception cref="PortalException">
+        /// No project is open, the path does not resolve, the slot is taken, or the rack will not
+        /// take the module there.
+        /// </exception>
+        public string MoveModule(string modulePath, int positionNumber, string backupDirectory)
+        {
+            _logger?.LogInformation("Moving {Module} to slot {Slot}...", modulePath, positionNumber);
+
+            try
+            {
+                var deviceItem = RequireDeviceItemForHardwareWrite(modulePath, backupDirectory);
+
+                return new ModulePlugger(_logger).Move(deviceItem, modulePath, positionNumber);
+            }
+            catch (Exception ex)
+            {
+                throw DecorateHardwareFailure(ex, modulePath, backupDirectory, "MoveModule");
+            }
+        }
+
+        /// <summary>Copies a module into a free slot of the rack it is in.</summary>
+        /// <param name="modulePath">The module to copy, as GetPlugLocations names it.</param>
+        /// <param name="positionNumber">The slot to copy it into.</param>
+        /// <param name="backupDirectory">Where the layout is recorded first. Required.</param>
+        /// <returns>The name TIA gave the copy, read back rather than chosen.</returns>
+        /// <exception cref="PortalException">
+        /// No project is open, the path does not resolve, the slot is taken, or the rack will not
+        /// take the copy there.
+        /// </exception>
+        public string CopyModule(string modulePath, int positionNumber, string backupDirectory)
+        {
+            _logger?.LogInformation("Copying {Module} into slot {Slot}...", modulePath, positionNumber);
+
+            try
+            {
+                var deviceItem = RequireDeviceItemForHardwareWrite(modulePath, backupDirectory);
+
+                return new ModulePlugger(_logger).Copy(deviceItem, modulePath, positionNumber);
+            }
+            catch (Exception ex)
+            {
+                throw DecorateHardwareFailure(ex, modulePath, backupDirectory, "CopyModule");
+            }
+        }
+
+        /// <remarks>
+        /// The single decoration point for the hardware writes, in the shape the error model asks
+        /// for: context attached once, right before the rethrow, and never at the throw site.
+        /// </remarks>
+        private PortalException DecorateHardwareFailure(Exception ex, string modulePath, string backupDirectory, string operation)
+        {
+            var pex = ex as PortalException ?? new PortalException(PortalErrorCode.WriteFailed, $"{operation} failed: {ex.Message}", null, ex);
+
+            pex.Data["modulePath"] = modulePath;
+            pex.Data["backupDirectory"] = backupDirectory;
+
+            _logger?.LogError(pex, "{Operation} failed for {ModulePath}", operation, modulePath);
+
+            return pex;
+        }
+
         /// <summary>
         /// Adds the module layout to a program snapshot.
         /// </summary>

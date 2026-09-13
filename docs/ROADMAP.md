@@ -487,8 +487,13 @@ device can be created from an order number and nothing can be done to it afterwa
   start moves; the length belongs to the module. `Address.Length` is **in bits** — measured, since
   the unit is in no signature — and `hardware/modules.txt` now carries the spans, because a backup
   taken before an address moves has to contain the address.
-- `PlugCopy`, `PlugMove` and `DeviceItem.Delete`: still to do. Unplugging is a destructive write
-  and gets its own decision, like editing a tag did.
+- ~~`PlugCopy`, `PlugMove` and `DeviceItem.Delete`~~ — done: `UnplugModule`, `MoveModule`,
+  `CopyModule`. The decision unplugging needed: the backup restores slot, order number and
+  addresses — enough to plug an identical card back, and the removal answers with that recipe — but
+  **not** parameters set by hand in TIA Portal, which this server does not write and therefore
+  cannot restore. The tool says so. A built-in item cannot be unplugged and the CPU is refused:
+  removing it takes the program with it. Moving keeps the module and everything set on it, which is
+  what makes it different from unplugging and plugging again.
 - Parameters through `SetAttribute`: cycle, start-up, protection, whatever a device exposes.
 - Importing GSD/GSDML for third-party devices.
 

@@ -191,6 +191,35 @@ namespace TiaMcpServer.Test
         }
 
         /// <remarks>
+        /// The destructive one. A policy that says nothing about the target has to refuse it like
+        /// any other write — more so, since this is the only tool in the server that removes
+        /// something a person would have to rebuild by hand.
+        /// </remarks>
+        [TestMethod]
+        public void UnplugModule_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.UnplugModule("DI 32x24VDC HF_1");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void MoveModule_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.MoveModule("DI 32x24VDC HF_1", 3);
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void CopyModule_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.CopyModule("DI 32x24VDC HF_1", 3);
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        /// <remarks>
         /// Moving an address changes what the program reads at %I0.0, which is a write whether or
         /// not any module moved with it.
         /// </remarks>
