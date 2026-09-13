@@ -1,5 +1,4 @@
 ﻿using Microsoft.Extensions.Logging;
-using Siemens.Engineering.SW;
 using System;
 using System.Collections.Generic;
 
@@ -56,17 +55,6 @@ namespace TiaMcpServer.Siemens
             {
                 throw DecorateOpcUaFailure(ex, softwarePath, "ExportOpcUaInterface");
             }
-        }
-
-        private PlcSoftware RequireSoftware(string softwarePath)
-        {
-            if (IsProjectNull())
-            {
-                throw new PortalException(PortalErrorCode.InvalidState, "Open a project first");
-            }
-
-            return FindPlcSoftware(softwarePath)
-                ?? throw new PortalException(PortalErrorCode.NotFound, $"PLC software not found: {softwarePath}");
         }
 
         private PortalException DecorateOpcUaFailure(Exception ex, string softwarePath, string operation)

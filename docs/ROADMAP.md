@@ -453,10 +453,22 @@ The smallest of these and the one that removes a pain already felt. Today a down
 works if the CPU's address in the project matches the virtual controller's, and **there is no tool
 that sets an address** — it has to be typed into TIA Portal by hand.
 
-- Setting a node's address, creating subnets, PROFIBUS alongside PROFINET, PROFINET device names.
-- Creating and editing tag tables, tags and constants: `PlcTagTableComposition.Create`,
-  `PlcTagComposition.Create`. They are exported today and cannot be authored, and a program without
-  tags is half a program.
+- ~~Setting a node's address~~ — done: `SetDeviceAddress`.
+- ~~Creating subnets and connecting interfaces to them~~ — done: `GetSubnets`, `CreateSubnet`,
+  `ConnectDeviceToSubnet`. PROFIBUS came with them rather than after them, because a subnet's
+  network type is taken from the interface instead of being a parameter.
+- ~~Creating tag tables, tags and constants~~ — done: `GetTagTables`, `GetTags`, `CreateTagTable`,
+  `CreateTag`, `CreateConstant`. A caveat measured while doing it: **Openness stores a data type
+  that does not exist, and a software compile does not catch it**, because it compiles blocks and
+  not tag tables. The tool description says so; the server does not refuse, because it cannot tell
+  an unknown type from a valid one.
+- ~~PROFINET device names~~ — done: `SetProfinetDeviceName`, and `GetNetworkTopology` now prints the
+  name each node holds. It is not a second spelling of the address: a controller resolves the name
+  over DCP at start-up, so a device whose project name differs from the one in the hardware never
+  joins its IO system, at any address. Setting one turns off the automatic naming TIA does from the
+  interface, because a name written while that is on does not survive.
+- Editing an existing tag — changing a type or an address — is deliberately not here. Nothing in
+  this phase overwrites; that is a separate decision with a backup story of its own.
 
 ### Phase 7 — Building the station
 

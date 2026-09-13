@@ -232,7 +232,7 @@ namespace TiaMcpServer.ModelContextProtocol
         }
 
         /// <summary>
-        /// One line per interface, as <c>device | interface | type | address | subnet</c>. An empty
+        /// One line per interface, as <c>device | interface | type | address | subnet | profinet name</c>. An empty
         /// subnet means the interface is wired to nothing, which is a common and otherwise silent
         /// reason a download or an IO connection fails.
         /// </summary>
