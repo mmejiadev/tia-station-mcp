@@ -75,6 +75,22 @@ namespace TiaMcpServer.Test
         }
 
         [TestMethod]
+        public void ExportSourceSnapshot_RetrievedProject_RecordsWhatTheStationIsMadeOf()
+        {
+            AssemblyHooks.SharedPortal.RetrieveProject(Settings.Project1ArchivePath, Path.Combine(_testDirectory, "project"));
+            var snapshotDirectory = Path.Combine(_testDirectory, "snapshot");
+
+            var result = AssemblyHooks.SharedPortal.ExportSourceSnapshot(Settings.Project1PlcSoftwarePath0, snapshotDirectory);
+
+            // The third thing a snapshot has to hold. The program says what runs, the topology says
+            // where it talks, and this says what it runs on: the same blocks on a rack with a
+            // different input card are a different system.
+            CollectionAssert.Contains(result.Exported.ToList(), "hardware/modules.txt");
+            var modules = File.ReadAllText(Path.Combine(snapshotDirectory, "hardware", "modules.txt"));
+            StringAssert.Contains(modules, Settings.Project1PlcSoftwarePath0, "The layout does not record the PLC");
+        }
+
+        [TestMethod]
         public void ExportSourceSnapshot_RunTwice_ProducesAnIdenticalTopologyFile()
         {
             AssemblyHooks.SharedPortal.RetrieveProject(Settings.Project1ArchivePath, Path.Combine(_testDirectory, "project"));

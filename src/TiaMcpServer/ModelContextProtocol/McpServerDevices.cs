@@ -3,6 +3,7 @@ using ModelContextProtocol.Server;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using System.Text.Json.Nodes;
 using TiaMcpServer.Siemens;
 
@@ -48,6 +49,51 @@ namespace TiaMcpServer.ModelContextProtocol
             {
                 throw new McpException($"Unexpected error retrieving device info from '{devicePath}': {ex.Message}", ex, McpErrorCode.InternalError);
             }
+        }
+
+        [McpServerTool(Name = "GetPlugLocations"), Description("List the slots of the rack a device item sits in: which are free and what is plugged into the rest, with each module's order number. Read this before plugging anything. A free slot is not the same as a slot that accepts a given module, and the order number to copy is the one printed here for a module like it.")]
+        public static ResponseNetworkTopology GetPlugLocations(
+            [Description("deviceItemPath: a device item in the rack, e.g. 'PLC_0'. Its neighbours are the slots.")] string deviceItemPath)
+        {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
+            try
+            {
+                var slots = Portal.GetPlugLocations(deviceItemPath);
+
+                var lines = slots.Select(DescribeSlot).ToList();
+
+                var free = slots.Count(slot => slot.IsFree);
+
+                return new ResponseNetworkTopology(lines)
+                {
+                    Message = free == 0
+                        ? $"{slots.Count} slot(s) around '{deviceItemPath}', none free"
+                        : $"{slots.Count} slot(s) around '{deviceItemPath}', {free} free",
+                    Meta = new JsonObject
+                    {
+                        ["timestamp"] = DateTime.Now,
+                        ["success"] = true
+                    }
+                };
+            }
+            catch (TiaMcpServer.Siemens.PortalException pex)
+            {
+                throw ToMcpException(pex, $"Failed to read the rack around '{deviceItemPath}'");
+            }
+        }
+
+        /// <remarks>
+        /// A free slot prints its label rather than an empty column, because the label is what the
+        /// rack calls the position and is often the only hint that it is reserved for a power
+        /// supply or an interface module.
+        /// </remarks>
+        private static string DescribeSlot(TiaMcpServer.Siemens.PlugLocationInfo slot)
+        {
+            return slot.IsFree
+                ? $"{slot.PositionNumber} | <free> | {(slot.Label.Length == 0 ? "<unlabelled>" : slot.Label)}"
+                : $"{slot.PositionNumber} | {slot.OccupantName} | {slot.OccupantTypeIdentifier}";
         }
 
         [McpServerTool(Name = "GetDeviceItemInfo"), Description("Get info from a device item from the current project/session")]
