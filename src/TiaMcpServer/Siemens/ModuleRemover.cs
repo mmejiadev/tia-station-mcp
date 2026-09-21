@@ -15,11 +15,15 @@ namespace TiaMcpServer.Siemens
     /// What the backup can and cannot restore, stated plainly because the caller is entitled to
     /// know before it deletes: `hardware/modules.txt` records the module's slot, its order number
     /// and the addresses it occupied, which is exactly what <c>PlugModule</c> and
-    /// <c>SetModuleAddress</c> need to put an identical card back. It does **not** record
-    /// parameters set on the module — a filter time, a diagnostic setting, a channel's
-    /// configuration — because nothing in this server writes them yet and a record of settings
-    /// nobody can restore would be a promise it cannot keep. Unplugging a module that somebody
-    /// parameterised by hand in TIA Portal loses that work, and the tool description says so.
+    /// <c>SetModuleAddress</c> need to put an identical card back. Since `SetDeviceParameter`
+    /// exists, the backup also holds the module's parameters — `hardware/parameters/` — so a
+    /// filter time or a diagnostic setting can be put back with it. That was not true when this
+    /// class was written, and the reason it was not is worth keeping: a record of settings nothing
+    /// could restore would have been a promise the tool could not keep.
+    ///
+    /// What still does not come back is anything Openness does not expose as a writable attribute.
+    /// The record says which those were — it keeps the read-only ones too — so the loss is visible
+    /// rather than silent.
     ///
     /// The same result is returned to the caller, so putting the module back does not require
     /// finding the backup file at all.

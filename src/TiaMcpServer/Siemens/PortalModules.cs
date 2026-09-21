@@ -105,6 +105,10 @@ namespace TiaMcpServer.Siemens
             {
                 var deviceItem = RequireDeviceItemForHardwareWrite(modulePath, backupDirectory);
 
+                // The parameters go into the backup too, and only here. Every other write leaves
+                // the module in place, so its settings survive; this one makes them unreachable.
+                RecordParameters(deviceItem, modulePath, backupDirectory);
+
                 return new ModuleRemover(_logger).Remove(deviceItem, modulePath);
             }
             catch (Exception ex)
