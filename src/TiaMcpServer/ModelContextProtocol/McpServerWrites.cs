@@ -193,7 +193,49 @@ namespace TiaMcpServer.ModelContextProtocol
             }
         }
 
-        [McpServerTool(Name = "UnplugModule"), Description("Remove a module from its rack. This destroys it: the backup records the slot, the order number and the addresses it occupied - enough for PlugModule and SetModuleAddress to put an identical card back - but NOT parameters somebody set on it in TIA Portal, which are lost. The same record comes back in the answer. A built-in item cannot be unplugged, and the CPU is refused: removing it would take the program with it.")]
+        [McpServerTool(Name = "SetDeviceParameter"), Description("Set one parameter of a device item: cycle time, start-up behaviour, protection level, whatever GetDeviceParameters lists. Write the value as text - it is converted to the type the parameter already holds, and an enumeration is refused with the words it accepts. A read-only parameter is refused before TIA is asked. The item's parameters are recorded to the backup registry first. Compile the hardware afterwards: a parameter change that is not compiled is not downloaded.")]
+        public static ResponseMessage SetDeviceParameter(
+            [Description("deviceItemPath: the device item, e.g. 'PLC_0'")] string deviceItemPath,
+            [Description("parameterName: the parameter, spelled as GetDeviceParameters prints it")] string parameterName,
+            [Description("value: the new value as text, e.g. 'true', '150', or a word from the list the refusal prints")] string value)
+        {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
+            try
+            {
+                var target = ChangeTarget.Program(deviceItemPath);
+                var backupDirectory = Backups.Allocate("SetDeviceParameter", target);
+                var request = new Governance.ChangeRequest("SetDeviceParameter", target, $"{parameterName}={value}")
+                    .WithBackup(backupDirectory);
+
+                return GuardedTool.Run(
+                    GuardedWrites,
+                    request,
+                    () =>
+                    {
+                        var applied = Portal.SetDeviceParameter(deviceItemPath, parameterName, value, backupDirectory);
+
+                        return new ResponseMessage
+                        {
+                            Message = $"'{applied.Name}' of '{deviceItemPath}' is {TiaMcpServer.Siemens.ParameterValueFormatter.Format(applied.Value)} now",
+                            Meta = new JsonObject
+                            {
+                                ["timestamp"] = DateTime.Now,
+                                ["success"] = true,
+                                ["value"] = TiaMcpServer.Siemens.ParameterValueFormatter.Format(applied.Value)
+                            }
+                        };
+                    },
+                    () => new ResponseMessage());
+            }
+            catch (TiaMcpServer.Siemens.PortalException pex)
+            {
+                throw ToMcpException(pex, $"Failed to set '{parameterName}' of '{deviceItemPath}'");
+            }
+        }
+
+        [McpServerTool(Name = "UnplugModule"), Description("Remove a module from its rack. This destroys it: the backup records the slot, the order number and the addresses it occupied - enough for PlugModule and SetModuleAddress to put an identical card back - and its parameters, which SetDeviceParameter can set again on the new card. A setting Openness does not expose as a writable parameter is lost, and the recorded parameters show which those were. The slot, order number and addresses come back in the answer. A built-in item cannot be unplugged, and the CPU is refused: removing it would take the program with it.")]
         public static ResponseMessage UnplugModule(
             [Description("modulePath: the module to remove, as GetPlugLocations names it")] string modulePath)
         {

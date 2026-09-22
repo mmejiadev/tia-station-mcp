@@ -5,6 +5,74 @@
 
 ## ▶ RESUME HERE
 
+### Parameters, and a debt written this morning paid the same day — 2026-09-13
+
+**Seventy-eight tools.** `GetDeviceParameters` lists what a device item can actually be told to do
+and `SetDeviceParameter` sets one: cycle, start-up behaviour, protection level, whatever the device
+exposes. Openness keeps device settings in an attribute bag rather than as typed properties, so one
+pair of tools covers everything instead of one tool per setting.
+
+**The type comes from the value that is there now, not from the caller.** An MCP caller can only
+send text unambiguously, and `SetAttribute` takes an object and decides afterwards whether it liked
+it. So `ParameterValueParser` converts text to the type the attribute already holds, and a failure
+names that type — or, for an enumeration, the words it accepts, which are spellings that appear in
+no documentation a model has read. It lives in the portable assembly, so ten governance tests cover
+the conversion without TIA Portal anywhere near it.
+
+**A read-only attribute is refused before TIA is asked.** Most of what a device reports describes it
+rather than configures it, and Openness answers that mistake with the same failure it gives for a
+misspelt name. The refusal here says which it was, and a missing name comes back with the ones that
+look like it.
+
+**And the debt from this morning is paid.** `ModuleRemover` had to admit in writing that a removal
+could not record a module's parameters, because nothing could read them into a form that outlives
+the project. Now it can, so `UnplugModule` records them — and `Test30Parameters` proves it by
+unplugging a card and finding its parameters in the backup. The class doc says what changed and why
+it was honest to admit it at the time.
+
+**Everything is green.** 0 warnings; specification **44/44**, governance **195/195**, TIA
+**255/259 in 11 m 19 s** with 4 skipped and 0 failing, no orphan portal process. README says 78
+tools: 44 that read, 34 that write, 33 of those through the guard.
+
+**One decision worth keeping.** `ObjectAttribute` was moved to the portable assembly so the backup
+writer could be tested there, and moved straight back: the portable project does not suppress
+CA1711 and adding the suppression would have put new debt into the one project whose ledger is
+short. The writer went to the adapter instead, and the logic worth testing — the conversion — is
+what stayed portable.
+
+**A review on 2026-09-14 found a number written ten times larger, and fixed it before it shipped.**
+`ParameterValueParser` used `Convert.ChangeType`, which admits a thousands separator: measured, it
+reads '0,5' as 5. This machine is `es-ES`, so `GetDeviceParameters` printed a half as 0,5, and a
+caller copying that into `SetDeviceParameter` would have set five and read it back as a success.
+The parser now takes the narrow styles `SimulationTagValueParser` already learnt to use, and a new
+`ParameterValueFormatter` prints values invariant in the read, the write's answer and the backup.
+The same review fixed three smaller things: Openness is handed the attribute's own spelling rather
+than the caller's case, the parameter record takes the resolved item instead of quietly skipping
+when a second lookup finds nothing, and `UnplugModule`'s description no longer says parameters are
+lost. `GetDeviceParameters` moved to `McpServerParameters.cs`, because it had pushed
+`McpServerDevices.cs` past 300 lines. One thing is left as a guess and says so: Siemens documents no
+exception for `SetAttribute`, so every failure of it is still reported as a refused value.
+Build: 0 warnings, and everything is now measured rather than assumed — 2026-09-21:
+specification **44/44**, governance **199/199** in 8 s, TIA **256/260 in 21 m 20 s** with
+4 skipped, 0 failing and no orphan portal process. The fourteen tests of
+`ParameterValueParser` and `ParameterValueFormatter` pass, including the one that names the
+bug — `Parse_ADecimalWrittenWithAComma_IsRefusedRatherThanReadAsThousands`. `Test30Parameters`
+ran too: the suite went from 259 tests to 260 and from 255 passing to 256, so the new TIA test
+was executed and not skipped. The run took twice as long as the 11 m the unplug slice measured;
+nothing was changed to explain it, so it is written down rather than explained away.
+
+**Uncommitted, on a branch.** The unplug slice reached `main` through PR #23; this one sits in the
+working tree of `work/phase-7-parameters`, verified and waiting for its commit and pull request.
+
+**The next action, chosen: phase 8.** `CrossReferenceService.GetCrossReferences` answers *who calls
+this block*, which is the question to ask before a model rewrites one, and offline watch and force
+tables belong with it. Phase 7's last item — importing GSD/GSDML for third-party devices — is left
+deliberately: it is worth doing only if the cell carries third-party devices.
+
+**Left running on the machine**: nothing.
+
+---
+
 ### Phase 7 closes: a rack can be taken apart, and what a backup cannot restore is written down — 2026-09-13
 
 **Seventy-six tools.** `UnplugModule`, `MoveModule` and `CopyModule` finish the hardware slice.

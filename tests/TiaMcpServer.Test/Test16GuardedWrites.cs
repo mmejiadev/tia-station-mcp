@@ -190,6 +190,14 @@ namespace TiaMcpServer.Test
             AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
         }
 
+        [TestMethod]
+        public void SetDeviceParameter_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.SetDeviceParameter(Settings.Project1PlcSoftwarePath0, "SomeParameter", "true");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
         /// <remarks>
         /// The destructive one. A policy that says nothing about the target has to refuse it like
         /// any other write — more so, since this is the only tool in the server that removes

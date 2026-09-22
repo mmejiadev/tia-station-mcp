@@ -494,7 +494,12 @@ device can be created from an order number and nothing can be done to it afterwa
   cannot restore. The tool says so. A built-in item cannot be unplugged and the CPU is refused:
   removing it takes the program with it. Moving keeps the module and everything set on it, which is
   what makes it different from unplugging and plugging again.
-- Parameters through `SetAttribute`: cycle, start-up, protection, whatever a device exposes.
+- ~~Parameters through `SetAttribute`~~ — done: `GetDeviceParameters` lists what a device item can
+  actually be told to do, and `SetDeviceParameter` sets one. The value arrives as text and is
+  converted to the type the parameter already holds, so an enumeration is refused with the words it
+  takes — spellings that appear in no documentation a model has read. A read-only attribute is
+  refused before TIA is asked, which is the commonest mistake with an attribute bag. It also closed
+  the gap `UnplugModule` had to admit to: a removal now records the module's parameters.
 - Importing GSD/GSDML for third-party devices.
 
 This is what turns the server from "it edits a project somebody else built" into "it builds one".
