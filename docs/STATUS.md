@@ -1,9 +1,53 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-09-13**
+> Last updated: **2026-09-22**
 
 ## ▶ RESUME HERE
+
+### Phase 8 opens: a block can be asked who calls it — 2026-09-22
+
+**Seventy-nine tools.** `GetCrossReferences` answers *who calls this block*, which is the question
+to ask before rewriting one. A model handed a block's source sees everything the block does and
+nothing about what depends on it, so the one change it cannot judge alone — renaming a parameter,
+dropping an output, reordering an interface — is exactly the one it is most likely to make.
+
+**Three lists, not one.** What uses the block, what the block uses, and everything else. The third
+is the one worth explaining: Openness has thirteen relations and two of them are those, so a
+reference filed under any of the other eleven would vanish if the report kept only the two it
+recognises — and an empty "used by" list is precisely the answer a caller acts on before deleting
+something. Dropping it would be the read-side version of a silent default, so it is kept and named
+by whatever relation TIA reported.
+
+**Two things were guesses this morning and are measurements now.** Openness offers both
+`Location.Name` and `Location.ReferenceLocation` as candidates for *where* a use happens, and the
+documentation separates them by no more than the wording of one sentence; `ReferenceLocation` was
+taken and a test asserts a real call carries one, so the wrong choice would have failed loudly
+rather than printed a blank column. The direction was the other: `Uses` and `UsedBy` are one letter
+apart in the source and opposite in meaning, and both ends of the same call are asserted separately.
+
+**The relation under test is built, not found.** `Test31CrossReferences` writes two blocks through
+SCL, one calling the other, compiles, and then asks. A test that looked for a call inside
+`TestProject1` would have been measuring what the sample project happens to contain. The program is
+compiled first because cross-reference data is derived rather than stored; whether the compile is
+strictly required was not isolated, and the class doc says so instead of implying it was.
+
+**Everything is green.** 0 warnings; governance **205/205 in 6 s**, TIA **261/265 in 19 m 29 s**
+with 4 skipped, 0 failing and no orphan portal process. The suite went from 260 tests to 265 and
+from 256 passing to 261, so all five new TIA tests were executed and none was skipped. README says
+79 tools: 45 that read, 34 that write.
+
+**Blocks only, deliberately.** Tags and types offer the same Openness service and deserve the same
+tool, but each is its own measurement and this slice is about calls.
+
+**Uncommitted, on a branch.** `work/phase-8-crossrefs`, cut from `main` after PR #24 merged phase 7.
+
+**The next action.** The rest of phase 8: watch and force tables, created offline. After that,
+phase 9 — reading a real CPU over OPC UA, which reads and does not command.
+
+**Left running on the machine**: nothing.
+
+---
 
 ### Parameters, and a debt written this morning paid the same day — 2026-09-13
 
