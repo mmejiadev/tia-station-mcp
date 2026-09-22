@@ -185,7 +185,7 @@ machine that produced it, and nothing phones home.
 ## What this adds on top of the base
 
 Built on [heilingbrunner/tiaportal-mcp](https://github.com/heilingbrunner/tiaportal-mcp) (MIT), from
-which we inherit the architecture, code conventions and error model. **78 tools**, 44 that read and 34 in
+which we inherit the architecture, code conventions and error model. **79 tools**, 45 that read and 34 in
 the file that changes things — 33 of which go through the guard, the thirty-fourth being the
 confirmation step of the guard itself.
 

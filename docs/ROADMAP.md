@@ -506,9 +506,13 @@ This is what turns the server from "it edits a project somebody else built" into
 
 ### Phase 8 — Knowing what uses what
 
-`CrossReferenceService.GetCrossReferences` answers *who calls this block*, which is exactly the
-question to ask **before** rewriting it. For a loop where a model edits code it did not write, this
-is worth more than its size suggests. Watch and force tables, created offline, belong here too.
+- ~~`CrossReferenceService.GetCrossReferences`~~ — done: `GetCrossReferences` answers *who calls
+  this block*, which is exactly the question to ask **before** rewriting it. For a loop where a
+  model edits code it did not write, this is worth more than its size suggests. The answer comes in
+  three lists: what uses the block and breaks if its interface changes, what the block uses, and
+  every other relation Openness reports — because it has thirteen of them, and dropping the eleven
+  that are neither would tell a caller that a block in use is used by nobody.
+- Watch and force tables, created offline, belong here too.
 
 ### Phase 9 — Reading a real PLC, over OPC UA
 
