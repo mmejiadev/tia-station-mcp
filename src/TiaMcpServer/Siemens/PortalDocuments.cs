@@ -5,7 +5,6 @@ using Siemens.Engineering.SW.Blocks;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 
 namespace TiaMcpServer.Siemens
 {
@@ -19,7 +18,21 @@ namespace TiaMcpServer.Siemens
     /// </remarks>
     public partial class Portal
     {
-        // TIA portal crashes when exporting blocks as documents, :-(
+        /// <summary>
+        /// Exports every block whose name matches as SIMATIC SD documents (.s7dcl/.s7res).
+        /// </summary>
+        /// <remarks>
+        /// Inconsistent blocks are exported too. SimaticML export refuses them, but SIMATIC SD export
+        /// does not (measured on TIA Portal V20, 2026-09-24), and a document is the only way to read a
+        /// block that does not compile. The caller learns which ones they are from IsConsistent in
+        /// the result, never by their absence. A block that fails to export is left out and logged;
+        /// the others are still exported.
+        /// </remarks>
+        /// <param name="softwarePath">Full path to the PLC software.</param>
+        /// <param name="exportPath">Directory the documents are written to.</param>
+        /// <param name="regexName">Name or regular expression selecting the blocks; empty for all.</param>
+        /// <param name="preservePath">Mirror the block group structure below the export directory.</param>
+        /// <returns>The blocks exported, or null when no project is open or TIA Portal is older than V20.</returns>
         public IReadOnlyList<BlockDescription>? ExportBlocksAsDocuments(string softwarePath, string exportPath, string regexName = "", bool preservePath = false)
         {
             _logger?.LogInformation("Exporting blocks as documents...");
@@ -35,139 +48,158 @@ namespace TiaMcpServer.Siemens
                 return null;
             }
 
-            var exportList = new List<PlcBlock>();
+            var blocks = FindBlocksOrNone(softwarePath, regexName);
+            var exported = new List<PlcBlock>();
             var failures = new List<string>();
 
-            PlcBlock[] list;
+            foreach (var block in blocks)
+            {
+                if (TryExportBlockAsDocument(block, exportPath, preservePath, failures))
+                {
+                    exported.Add(block);
+                }
+            }
+
+            LogDocumentExport(exported.Count, failures, blocks.Length);
+            return DescribeBlocks(exported);
+        }
+
+        private PlcBlock[] FindBlocksOrNone(string softwarePath, string regexName)
+        {
             try
             {
-                list = FindBlocks(softwarePath, regexName).ToArray();
+                return FindBlocks(softwarePath, regexName).ToArray();
             }
             catch (Exception ex)
             {
                 _logger?.LogError(ex, $"Failed to retrieve block list for {softwarePath}");
-                return DescribeBlocks(exportList);
+                return Array.Empty<PlcBlock>();
             }
+        }
 
-            for (int i = 0; i < list.Count(); i++)
+        private bool TryExportBlockAsDocument(PlcBlock block, string exportPath, bool preservePath, List<string> failures)
+        {
+            if (!block.IsConsistent)
             {
-                var block = list[i];
-
-                _logger?.LogDebug($"- Exporting block as document {i}/{list.Count()} : {block.Name}");
-
-                // Skip inconsistent blocks (TIA generally won’t export them)
-                if (!block.IsConsistent)
-                {
-                    _logger?.LogWarning($"Skipping inconsistent block {block.Name}");
-                    continue;
-                }
-
-                // Determine base directory (preserve group path if requested)
-                string targetDir = exportPath;
-                if (preservePath && block.Parent is PlcBlockGroup parentGroup)
-                {
-                    var groupPath = GetPlcBlockGroupPath(parentGroup);
-                    if (!string.IsNullOrWhiteSpace(groupPath))
-                    {
-                        targetDir = Path.Combine(exportPath, groupPath.Replace('/', '\\'));
-                    }
-                }
-
-                try
-                {
-                    if (!Directory.Exists(targetDir))
-                    {
-                        Directory.CreateDirectory(targetDir);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    failures.Add($"{block.Name}: cannot create directory '{targetDir}' ({ex.Message})");
-                    _logger?.LogError(ex, $"Directory creation failed for {targetDir}");
-                    continue;
-                }
-
-                var fileDcl = Path.Combine(targetDir, $"{block.Name}.s7dcl");
-                var fileRes = Path.Combine(targetDir, $"{block.Name}.s7res");
-
-                // Clean previous artifacts
-                foreach (var f in new[] { fileDcl, fileRes })
-                {
-                    try
-                    {
-                        if (File.Exists(f))
-                        {
-                            File.Delete(f);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        failures.Add($"{block.Name}: cannot delete existing '{Path.GetFileName(f)}' ({ex.Message})");
-                        _logger?.LogError(ex, $"Failed deleting existing file {f}");
-                        // Continue anyway; export might overwrite.
-                    }
-                }
-
-                try
-                {
-                    DocumentExportResult? result = null;
-                    try
-                    {
-                        result = block.ExportAsDocuments(new DirectoryInfo(targetDir), block.Name);
-                    }
-                    catch (EngineeringNotSupportedException ex)
-                    {
-                        failures.Add($"{block.Name}: not supported ({ex.Message})");
-                        _logger?.LogWarning(ex, $"EngineeringNotSupported exporting {block.Name}");
-                        continue;
-                    }
-                    catch (LicenseNotFoundException ex)
-                    {
-                        failures.Add($"{block.Name}: license not found ({ex.Message})");
-                        _logger?.LogError(ex, $"License issue exporting {block.Name}");
-                        continue;
-                    }
-                    catch (Exception ex)
-                    {
-                        failures.Add($"{block.Name}: export threw ({ex.Message})");
-                        _logger?.LogError(ex, $"ExportAsDocuments failed for {block.Name}");
-                        continue;
-                    }
-
-                    if (result == null)
-                    {
-                        failures.Add($"{block.Name}: no result returned");
-                        continue;
-                    }
-
-                    if (result.State == DocumentResultState.Success)
-                    {
-                        exportList.Add(block);
-                    }
-                    else
-                    {
-                        failures.Add($"{block.Name}: result state {result.State}");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    failures.Add($"{block.Name}: unexpected exception ({ex.Message})");
-                    _logger?.LogError(ex, $"Unexpected wrapper error for {block.Name}");
-                }
+                _logger?.LogInformation($"Exporting inconsistent block {block.Name} as it stands");
             }
 
+            var directory = DocumentDirectory(block, exportPath, preservePath);
+
+            if (!TryCreateDirectory(directory, block.Name, failures))
+            {
+                return false;
+            }
+
+            DeleteStaleDocuments(directory, block.Name, failures);
+            var result = ExportDocument(block, directory, failures);
+
+            if (result == null)
+            {
+                return false;
+            }
+
+            if (result.State != DocumentResultState.Success)
+            {
+                failures.Add($"{block.Name}: result state {result.State}");
+                return false;
+            }
+
+            return true;
+        }
+
+        private string DocumentDirectory(PlcBlock block, string exportPath, bool preservePath)
+        {
+            if (!preservePath || !(block.Parent is PlcBlockGroup parentGroup))
+            {
+                return exportPath;
+            }
+
+            var groupPath = GetPlcBlockGroupPath(parentGroup);
+            return string.IsNullOrWhiteSpace(groupPath) ? exportPath : Path.Combine(exportPath, groupPath.Replace('/', '\\'));
+        }
+
+        private bool TryCreateDirectory(string directory, string blockName, List<string> failures)
+        {
+            try
+            {
+                Directory.CreateDirectory(directory);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                failures.Add($"{blockName}: cannot create directory '{directory}' ({ex.Message})");
+                _logger?.LogError(ex, $"Directory creation failed for {directory}");
+                return false;
+            }
+        }
+
+        /// <remarks>
+        /// A document left from an earlier export is removed first, so a failed export cannot leave
+        /// the old one behind looking current. A file that cannot be removed is reported and the
+        /// export is attempted anyway, since it may overwrite it.
+        /// </remarks>
+        private void DeleteStaleDocuments(string directory, string blockName, List<string> failures)
+        {
+            foreach (var file in new[] { Path.Combine(directory, $"{blockName}.s7dcl"), Path.Combine(directory, $"{blockName}.s7res") })
+            {
+                try
+                {
+                    File.Delete(file);
+                }
+                catch (Exception ex)
+                {
+                    failures.Add($"{blockName}: cannot delete existing '{Path.GetFileName(file)}' ({ex.Message})");
+                    _logger?.LogError(ex, $"Failed deleting existing file {file}");
+                }
+            }
+        }
+
+        /// <remarks>
+        /// One block failing to export must not stop the others, so each failure is recorded rather
+        /// than thrown; the log keeps the exception.
+        /// </remarks>
+        private DocumentExportResult? ExportDocument(PlcBlock block, string directory, List<string> failures)
+        {
+            try
+            {
+                var result = block.ExportAsDocuments(new DirectoryInfo(directory), block.Name);
+
+                if (result == null)
+                {
+                    failures.Add($"{block.Name}: no result returned");
+                }
+
+                return result;
+            }
+            catch (EngineeringNotSupportedException ex)
+            {
+                failures.Add($"{block.Name}: not supported ({ex.Message})");
+                _logger?.LogWarning(ex, $"EngineeringNotSupported exporting {block.Name}");
+            }
+            catch (LicenseNotFoundException ex)
+            {
+                failures.Add($"{block.Name}: license not found ({ex.Message})");
+                _logger?.LogError(ex, $"License issue exporting {block.Name}");
+            }
+            catch (Exception ex)
+            {
+                failures.Add($"{block.Name}: export threw ({ex.Message})");
+                _logger?.LogError(ex, $"ExportAsDocuments failed for {block.Name}");
+            }
+
+            return null;
+        }
+
+        private void LogDocumentExport(int exportedCount, IReadOnlyList<string> failures, int total)
+        {
             if (failures.Count > 0)
             {
-                _logger?.LogWarning($"ExportBlocksAsDocuments completed with {failures.Count} failures out of {list.Count()}. First failure: {failures[0]}");
-                // Optional verbose list:
-                // _logger?.LogDebug("All failures: {Failures}", string.Join("; ", failures));
-            }
-            else
-            {
-                _logger?.LogInformation($"ExportBlocksAsDocuments completed successfully. Exported {exportList.Count} blocks.");
+                _logger?.LogWarning($"ExportBlocksAsDocuments completed with {failures.Count} failures out of {total}. First failure: {failures[0]}");
+                return;
             }
 
-            return DescribeBlocks(exportList);
+            _logger?.LogInformation($"ExportBlocksAsDocuments completed successfully. Exported {exportedCount} blocks.");
         }
 
         public bool ExportAsDocuments(string softwarePath, string blockPath, string exportPath, bool preservePath = false)
