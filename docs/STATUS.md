@@ -1,9 +1,70 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-09-22**
+> Last updated: **2026-09-23**
 
 ## ▶ RESUME HERE
+
+### Watch and force tables, and what Openness will not let anybody write — 2026-09-22
+
+**Verified against TIA Portal on 2026-09-23.** 0 warnings; TIA **273/277 in 19 m 56 s**, 4 skipped
+(the same four as always), 0 failing, no orphan portal process. All ten tests of
+`Test32WatchTables` ran and passed, which was checked in the TRX log by name rather than read off
+the total. The suite went from 265 tests to 277 and from 261 passing to 273, so everything added
+here was executed. Governance was **209/209** the day before.
+
+A TIA Portal was opened by hand twelve minutes into the run. The suite's own portal was already up
+and nothing failed, but that is luck rather than a property: the connection tests attach to any
+running portal, so a run with a second one open is not a clean run.
+
+**Eighty-four tools**, on the branch `work/phase-8-crossrefs`' successor `work/phase-8-watch`:
+`GetWatchTables`, `GetWatchTable` and `ExportWatchTable` read, `CreateWatchTable` and
+`ImportWatchTables` write through the guard. README says 84 tools, 48 that read and 36 that write,
+35 of those guarded.
+
+**The measurement that decided the shape of it, and it cost two runs.** A row with an address
+**cannot be created through Openness at all**. Asked what it will make in a table's `Entries`, TIA
+Portal V20 answers in as many words:
+
+```
+does not offer to create a PlcWatchTableEntry in 'Entries'. It offers: PlcTableCommentEntry
+```
+
+The generic composition create had already been refused outright before that
+(`'Create' is not supported by type PlcTableCommentEntryComposition`), although the interface it
+implements declares the method and the XML documentation describes it. So rows arrive the way LAD
+blocks do: as a document that is imported. `ExportWatchTable` writes one out and `ImportWatchTables`
+reads one back, and **Siemens publishes no schema for the format** — `PublicAPI/V20/Schemas` has
+blocks, interfaces and technological objects and no tables at all, so an exported file is the only
+specification there is.
+
+**That is a narrowed scope, and the narrowing was agreed rather than assumed.** The slice was
+authorised with forcing included; writing rows turned out to be impossible, and the choice taken
+was the export/import pair over guessing at an unpublished format.
+
+**Three more things measured before any of it was written.** The force table can be neither created
+nor deleted — its composition has no `Create`, `PlcForceTable` has no `Delete` — because a program
+has exactly one and TIA Portal makes it; `TestProject1` does have one. Every property of a row is
+read-only in C#, so rows are read through the attribute bag. And a watch table *can* be created and
+deleted freely, which is why `CreateWatchTable` exists and `CreateForceTable` does not.
+
+**One rename, and it belongs to this slice.** `DeviceParameterConfigurator` became
+`EngineeringAttributeWriter`, paired with the `EngineeringAttributeReader` that was already there.
+Its signature always took an `IEngineeringObject`; only the name said "device", and a name that
+lies about what a class accepts is how the same safety check comes to be written twice.
+
+**The modify trigger is deliberately not exposed.** Openness has eight and TIA's default is the one
+people use, so it would have added a way to get a row wrong for a capability nobody asked for.
+
+**Uncommitted, on `work/phase-8-watch`,** cut from `main` after PR #25 merged the cross references.
+
+**The next action.** Commit and a pull request, which are the user's. Phase 9 is already under way
+on `work/phase-9-opcua`, cut from `main` in the worktree `../tia-station-mcp-phase9`; whichever of
+the two merges second will conflict at the top of this file and in the README's tool count.
+
+**Left running on the machine**: nothing.
+
+---
 
 ### Phase 8 opens: a block can be asked who calls it — 2026-09-22
 

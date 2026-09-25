@@ -32,7 +32,7 @@ namespace TiaMcpServer.Siemens
             {
                 var deviceItem = RequireDeviceItem(deviceItemPath);
 
-                return DeviceParameterConfigurator.ReadWritable(deviceItem);
+                return EngineeringAttributeWriter.ReadWritable(deviceItem);
             }
             catch (Exception ex)
             {
@@ -75,7 +75,7 @@ namespace TiaMcpServer.Siemens
 
                 RecordParameters(deviceItem, deviceItemPath, backupDirectory);
 
-                return new DeviceParameterConfigurator(_logger).Set(deviceItem, parameterName, value);
+                return new EngineeringAttributeWriter(_logger).Set(deviceItem, parameterName, value);
             }
             catch (Exception ex)
             {

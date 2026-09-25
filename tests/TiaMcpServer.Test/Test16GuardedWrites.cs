@@ -283,6 +283,28 @@ namespace TiaMcpServer.Test
         }
 
         [TestMethod]
+        public void CreateWatchTable_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.CreateWatchTable(Settings.Project1PlcSoftwarePath0, "Cell checks");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        /// <remarks>
+        /// The one in this class where a guard that was not asked would matter most. An imported
+        /// table can carry forced rows, and a forced address holds its value whatever the program
+        /// decides — so a tool that imported one without a policy allowing it would have prepared
+        /// a physical override nobody authorised.
+        /// </remarks>
+        [TestMethod]
+        public void ImportWatchTables_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.ImportWatchTables(Settings.Project1PlcSoftwarePath0, Path.Combine(SomeDirectory, "tables.xml"));
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
         public void DownloadToSimulation_WithNoPolicy_IsRefused()
         {
             var response = McpServer.DownloadToSimulation(Settings.Project1PlcSoftwarePath0);
