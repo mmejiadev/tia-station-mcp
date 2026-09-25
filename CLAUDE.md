@@ -88,12 +88,13 @@ If a task seems to require breaking this, the task is wrong. Ask first.
 
 ### The rule is a build error, not a convention
 
-The repository is two assemblies, and the split is where the rule stops depending on anyone
+The repository is three assemblies, and the split is where the rule stops depending on anyone
 remembering it:
 
 | Assembly | Holds | May reference Openness |
 |---|---|---|
 | `src/TiaMcpServer.Portable/` | `Governance/`, `Knowledge/`, `Spec/`, `Jobs/`, the error model, `GuardedTool`, `OpennessGate` | **No** |
+| `src/TiaMcpServer.OpcUa/` | The OPC UA client: reading a running controller, the certificate pins | **No** |
 | `src/TiaMcpServer/` | `Siemens/`, `McpServer`, `Program` | Yes — it is the adapter |
 
 `TiaMcpServer.Portable` **must never reference `TiaMcpServer`**, and no package reference of its
@@ -297,7 +298,8 @@ Portal**, because a safety rule that can only be checked on a licensed machine i
 that stops being checked. Nothing in that project may take a dependency that needs TIA Portal at
 run time — **or at build time**, which is the harder half and the one that was broken until
 2026-09-02. It references `TiaMcpServer.Portable` and never `TiaMcpServer`; see the dependency
-rule above. The same holds for `tests/TiaMcpServer.Spec.Test/`.
+rule above. The same holds for `tests/TiaMcpServer.Spec.Test/` and `tests/TiaMcpServer.OpcUa.Test/`,
+and `TiaMcpServer.OpcUa` itself references `TiaMcpServer.Portable` and never `TiaMcpServer`.
 
 ---
 

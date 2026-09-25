@@ -142,6 +142,7 @@ Every path is an argument or a default. Nothing is compiled in.
 | `--backups` | `.tia-mcp/backups` | Where the previous state is exported before a write |
 | `--knowledge-index` | `.tia-mcp/harness/knowledge.db` | The documentation index, when there is one |
 | `--knowledge-lookup` | `harness/src/knowledge/hardwareLookup.ts` | The lookup the server runs through Node |
+| `--opcua` | `.tia-mcp/opcua` | The OPC UA client's own certificate, and the certificate each server presented first |
 | `--logging` | off | `1` stderr, `2` debug output, `3` Windows event log |
 
 The defaults are **relative to the working directory**, which means they land beside the project you
@@ -154,10 +155,34 @@ project.
 governance layer is built on: the absence of a decision is a refusal, never a permission.
 
 Copy `.tia-mcp/policy.example.json` to `.tia-mcp/policy.json` and edit it. The example explains the
-four families of target and the matching rules. In short: `*` stands for any run of characters and
+five families of target and the matching rules. In short: `*` stands for any run of characters and
 is not a regular expression, deny beats allow, and a target matching neither list is refused.
 
-Reads are not affected. Listing blocks, exporting, compiling and reading tags need no policy at all.
+Reads of the project are not affected: listing blocks, exporting and reading PLCSIM tags need no
+policy at all. Reading a controller **over OPC UA** does: see below.
+
+### Reading a running controller over OPC UA
+
+`BrowseOpcUaServer` and `ReadOpcUaValues` read from a CPU's OPC UA server. They never write. Three
+things have to be true before they will answer, and each refusal says which one is missing:
+
+1. **The endpoint is in the policy**, as `opcua/<host>:<port>` — for example
+   `opcua/192.168.0.1:4840`. Reading changes nothing, but it is contact with a machine, and a
+   mistyped address reaches whatever answers there.
+2. **The CPU offers a secured endpoint.** In TIA Portal, under the CPU's *OPC UA > Server*, activate
+   the server and enable a security policy such as *Basic256Sha256 - Sign & Encrypt*, then
+   download the hardware configuration. An endpoint with no security is refused.
+3. **The CPU trusts this client.** The client makes its own certificate under `--opcua` on first
+   use. Either tick the CPU's option to accept client certificates automatically, or add
+   `.tia-mcp/opcua/own/certs/*.der` to its trusted clients.
+
+An S7-1500 also needs an **OPC UA runtime licence** set in its properties; without one the server
+does not start.
+
+**The first certificate a server presents is recorded** in `.tia-mcp/opcua/pinned-servers.json`.
+A different one at the same address is refused afterwards: the CPU was replaced or reset, or
+something else is answering. If the change is expected, delete that server's line from the file.
+No tool does this for you, on purpose.
 
 ---
 
@@ -207,6 +232,8 @@ everything the server has changed on this machine.
 | `Request timed out` on the first connect | The whitelist dialog, waiting behind a window |
 | The server exits immediately, saying so on stderr | The group, and a sign-out still pending |
 | Every write refused | No `policy.json`, or the target is in neither list |
+| An OPC UA read refused with "offers no secured endpoint" | The CPU's OPC UA server has no security policy enabled |
+| An OPC UA read refused with "was recorded the first time" | The server's certificate changed: see "Reading a running controller" |
 | Simulation tools report the runtime unavailable | PLCSIM Advanced is not installed |
 | A tag list comes back empty | The controller holds no program: download first |
 | `Cross-thread operation is not valid in Openness within STA` | The executable was launched in a way that overrides its apartment state |

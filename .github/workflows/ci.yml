@@ -106,7 +106,7 @@ jobs:
         run: npm run build
 
   safety:
-    name: Safety — governance and specification, with no TIA Portal
+    name: Safety — governance, specification and the OPC UA client, with no TIA Portal
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -134,3 +134,9 @@ jobs:
 
       - name: Specification
         run: dotnet test tests/TiaMcpServer.Spec.Test/TiaMcpServer.Spec.Test.csproj
+
+      # The OPC UA client, with its certificate pin and its refusal of unsecured endpoints. These
+      # run against an OPC UA server the tests start on the loopback interface, so they need neither
+      # TIA Portal nor a PLC -- which is why TiaMcpServer.OpcUa is its own assembly.
+      - name: OPC UA client
+        run: dotnet test tests/TiaMcpServer.OpcUa.Test/TiaMcpServer.OpcUa.Test.csproj

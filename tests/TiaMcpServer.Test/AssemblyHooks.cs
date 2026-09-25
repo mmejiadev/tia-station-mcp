@@ -105,6 +105,12 @@ namespace TiaMcpServer.Test
                 BackupRoot = Path.Combine(WorkingRoot, "backups")
             });
 
+            Program.RegisterOpcUa(services, new CliOptions
+            {
+                PolicyPath = policyPath,
+                OpcUaRoot = Path.Combine(WorkingRoot, "opcua")
+            });
+
             return services.BuildServiceProvider();
         }
 

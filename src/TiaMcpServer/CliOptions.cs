@@ -35,6 +35,15 @@
         /// </remarks>
         public const string DefaultKnowledgeLookupPath = "harness/src/knowledge/hardwareLookup.ts";
 
+        /// <summary>Where the OPC UA client keeps its certificate and its server pins, when none is given.</summary>
+        /// <remarks>
+        /// Beside the project, like the policy. The pins record which certificate each CPU of this
+        /// cell presented, which is a fact about this cell, not about the machine running the server.
+        /// </remarks>
+        public const string DefaultOpcUaRoot = ".tia-mcp/opcua";
+
+        private const string PinFileName = "pinned-servers.json";
+
         public int? TiaMajorVersion { get; set; }
         public int? Logging { get; set; } // "stdio" or "http"
 
@@ -52,6 +61,17 @@
 
         /// <summary>Path to the program that searches the documentation index.</summary>
         public string? KnowledgeLookupPath { get; set; }
+
+        /// <summary>Directory for the OPC UA client's certificate and its server pins.</summary>
+        public string? OpcUaRoot { get; set; }
+
+        /// <summary>The pin file under an OPC UA directory.</summary>
+        /// <param name="opcUaRoot">The directory.</param>
+        /// <returns>The path of the file that records each server's certificate.</returns>
+        public static string PinFilePath(string opcUaRoot)
+        {
+            return System.IO.Path.Combine(opcUaRoot, PinFileName);
+        }
 
         public static CliOptions ParseArgs(string[] args)
         {
@@ -119,6 +139,15 @@
                         if (i + 1 < args.Length)
                         {
                             options.KnowledgeLookupPath = args[i + 1];
+                            i++;
+                        }
+                        break;
+
+                    case "-opcua":
+                    case "--opcua":
+                        if (i + 1 < args.Length)
+                        {
+                            options.OpcUaRoot = args[i + 1];
                             i++;
                         }
                         break;

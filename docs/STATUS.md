@@ -1,9 +1,88 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-09-23**
+> Last updated: **2026-09-25**
 
 ## ▶ RESUME HERE
+
+### Phase 9 opens: a running controller can be read over OPC UA — 2026-09-23
+
+**Eighty-six tools** with phase 8's watch tables, which this branch was rebased onto.
+`BrowseOpcUaServer` lists what a CPU publishes and `ReadOpcUaValues` reads it. They read and
+nothing else: no write, no method call, no subscription.
+
+**Rebased onto `main` on 2026-09-25**, after PR #26 merged the watch tables. The only conflicts
+were this file and the README's tool count: 86, of which 50 read and 36 write, 35 of those guarded.
+
+**A third assembly, `TiaMcpServer.OpcUa`**, for the reason the portable one exists: nothing in it
+needs TIA Portal, so nothing in it may need TIA Portal to build. It references the portable
+assembly and the OPC Foundation client stack (1.5.378, MIT, no known vulnerabilities) and never
+`TiaMcpServer`. Its tests start a real OPC UA server in the test process, from the same stack,
+shaped like a Siemens data block, so they run on CI, which now has a third safety step.
+
+**Three rules, taken with the user before any code**, each with a test that names it:
+
+- **The endpoint is in the policy**, as `opcua/<host>:<port>`, through the same `policy.json` the
+  writes use. Reading changes nothing, but it is contact with a machine, and a mistyped address
+  reaches whatever answers there. `ChangeTarget` builds the name, so `PLC_0/*` cannot be read as a
+  rule about the network. Deny by default, and Workshop rules may not use wildcards, so a real PLC
+  is always named in full.
+- **Secured endpoints only.** One with no message security has no certificate worth checking and
+  carries values anyone on the wire could alter, so it is refused with the CPU setting to change.
+- **The server's certificate is pinned on first contact** in `.tia-mcp/opcua/pinned-servers.json`.
+  A different certificate at the same address is refused, naming both thumbprints, until a person
+  deletes the line. No tool forgets a pin: one that could would undo the check in one call. An
+  unreadable pin file refuses everything rather than reading as empty, which would count as a
+  first use.
+
+**Checked by breaking it, not only by running it.** 33 OPC UA tests passed first time, which is
+exactly when this repository has learnt not to believe them. Four mutations, each reverted: a
+changed certificate accepted, an unsecured endpoint accepted, values formatted in the current
+culture, and the pin keyed wrongly so every connection is a first use. Each one failed the test
+that names it. The analyzers refused the first two attempts at mutating, as dead code, which is
+worth knowing the next time something is mutated here.
+
+**Then the built server was driven over stdio, on both paths.** Refused: an unlisted endpoint
+comes back as a response with `outcome: Refused` and the line to add to the policy, and a URL with
+another scheme as `InvalidParams`. Allowed: against the test server, started from a small host
+outside the repository, the top level browsed, the data block browsed, its node ids read back
+with their quotes intact, `0.5` read as `0.5` on this es-ES machine, a misspelt node reported as
+`BadNodeIdUnknown` beside four good values, the pin written, and the client's certificate created.
+That run also exercised the executable's own binding redirects, which no unit test does.
+
+**Running it found two defects that the tests had not.** `opc.tcp://localhost:` with a colon and no
+port parsed as port `-1`, so the policy target read `opcua/localhost:-1`. It is refused now, with a
+test. And **the client's private key was not ignored by git**: `.tia-mcp/opcua/own/private/*.pfx`
+would have been committable. `.gitignore` now covers `.tia-mcp/opcua/`, checked with
+`git check-ignore` against a real path.
+
+**Everything is green that can run without TIA.** 0 warnings across the solution; governance
+**203/205** with 2 skipped (the two real documentation lookups report inconclusive in a worktree
+with no `node_modules` and no index; they passed on `main`), specification **44/44**, OPC UA
+**33/33**. **Not run**: the TIA suite, which gained two tests in `Test16GuardedWrites` asserting
+both OPC UA tools refuse under no policy. `AssemblyHooks` and that class now register the OPC UA
+services, since a container without them would fail on those tools with a DI error.
+
+**What is not known yet, and it is most of what matters.** Nothing here has spoken to a Siemens
+CPU. Three things are guesses until then: that PLCSIM Advanced's OPC UA server offers a secured
+endpoint once a policy is enabled in TIA Portal; that the CPU accepts this client's self-signed
+certificate, either automatically or once trusted by hand; and that a data block member's node id
+is `ns=3;s="DB"."Member"` as documented. INSTALL.md says what to set on the CPU, including the
+OPC UA runtime licence. The certificate check accepts only "untrusted"; an expired or wrong-host
+certificate stays refused with the stack's own reason, and a CPU whose clock is wrong may hit that.
+
+**Committed on `work/phase-9-opcua`** and pushed; the pull request is the user's.
+
+**The next action, in order.** Close TIA Portal and run the TIA suite on this branch, which has
+not run it since `Test16GuardedWrites` gained the two OPC UA refusals. Then enable the
+OPC UA server on the PLCSIM controller the harness uses, list `opcua/192.168.0.1:4840` in a policy,
+and read a tag the cell writes — the measurement that turns this from a client that talks OPC UA
+into one that reads a CPU.
+
+**Left running on the machine**: nothing from this session. The two TIA Portals and the
+`TiaMcpServer` that were open are the user's.
+
+---
 
 ### Watch and force tables, and what Openness will not let anybody write — 2026-09-22
 
@@ -56,11 +135,7 @@ lies about what a class accepts is how the same safety check comes to be written
 **The modify trigger is deliberately not exposed.** Openness has eight and TIA's default is the one
 people use, so it would have added a way to get a row wrong for a capability nobody asked for.
 
-**Uncommitted, on `work/phase-8-watch`,** cut from `main` after PR #25 merged the cross references.
-
-**The next action.** Commit and a pull request, which are the user's. Phase 9 is already under way
-on `work/phase-9-opcua`, cut from `main` in the worktree `../tia-station-mcp-phase9`; whichever of
-the two merges second will conflict at the top of this file and in the README's tool count.
+**Merged into `main` as PR #26.**
 
 **Left running on the machine**: nothing.
 

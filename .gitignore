@@ -45,6 +45,11 @@ Desktop.ini
 # The policy is per project and per machine; policy.example.json is the one that ships.
 **/.tia-mcp/policy.json
 
+# The OPC UA client's identity and what it has seen (phase 9). own/private holds the client's
+# private key, which must never be history anywhere; the pins record which certificate each CPU
+# on this network presented, which is a fact about one machine's network, not about the project.
+**/.tia-mcp/opcua/
+
 # The harness (phase 3) is Node and TypeScript. Dependencies and build output are not history.
 harness/node_modules/
 harness/dist/

@@ -1,0 +1,41 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Reading a running controller over OPC UA. Phase 9.
+
+    Its own assembly for the reason TiaMcpServer.Portable is one: nothing here talks to TIA Portal,
+    so nothing here may need TIA Portal to build. It references the portable assembly for the error
+    model and the governance types, and the OPC Foundation client stack, and nothing else. A
+    ProjectReference to TiaMcpServer would drag the Openness resolver in and take these tests off
+    continuous integration without failing a single build.
+
+    The stack's types stay inside this assembly. What crosses into the MCP layer is ours:
+    OpcUaEndpoint, OpcUaNode, OpcUaReading. Same rule as Openness types and the portal layer.
+
+    This reads. It does not write, call methods or subscribe to anything that commands a machine.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <BaseOutputPath>.\bin</BaseOutputPath>
+  </PropertyGroup>
+
+  <!-- The same two repository-wide style decisions as TiaMcpServer.Portable, for the same reasons. -->
+  <PropertyGroup>
+    <NoWarn>$(NoWarn);IDE0008</NoWarn>  <!-- var: CLAUDE.md asks for judgement the analyzer cannot make -->
+    <NoWarn>$(NoWarn);CA1861</NoWarn>   <!-- constant arrays as arguments: a hot-path concern -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="OPCFoundation.NetStandard.Opc.Ua.Client" Version="1.5.378.176" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TiaMcpServer.Portable\TiaMcpServer.Portable.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="TiaMcpServer.OpcUa.Test" />
+  </ItemGroup>
+
+</Project>
