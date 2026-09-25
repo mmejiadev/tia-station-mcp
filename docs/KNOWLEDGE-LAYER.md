@@ -195,6 +195,12 @@ Rules that bind every one of them:
 - Skill descriptions state their trigger precisely enough to fire without being asked, and narrowly
   enough not to fire on everything.
 
+**Method skills are not part of this layer.** `grafcet` (added 2026-09-24) explains how to read,
+check, draw and program sequential charts. It paraphrases IEC 60848 and cites a source for each
+claim, because it teaches an engineering method whose output is checked by a compiler and by tests.
+It never answers a question about hardware or safety: those belong to the skills above, and the
+cardinal rule applies to them unchanged.
+
 **MCP prompts in `McpPrompts.cs` mirror them** for hosts that are not Claude Code. Both surfaces
 render the same static checklists and call the same retrieval — **one body of content, never a
 second copy**. A checklist that exists twice will diverge, and the divergent copy is the one that
