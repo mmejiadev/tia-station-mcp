@@ -5,6 +5,53 @@
 
 ## ▶ RESUME HERE
 
+### A GRAFCET skill: read, check, draw and program sequential charts — 2026-09-24
+
+**Not a tool of the server and not part of the knowledge layer**, by the user's decision the same day:
+`KNOWLEDGE-LAYER.md` now says method skills sit outside it and never answer hardware or safety
+questions, and the skill says so too. `.claude/skills/grafcet/` plus
+`harness/src/grafcet/`, run as `npm run grafcet`. It reads a chart from the text notation or from
+LAD exported as SIMATIC SD documents, checks it, draws it with the IEC 60848 symbols as a
+self-contained HTML page, and writes set/reset LAD back as `.s7dcl`. The tool count is unchanged.
+
+**It was built from a real class project, and it finds that project's faults on its own.** Run on
+the student's original export with the original tag table, it reports the six unquoted operands, the
+steps written with plain coils (drawn as a transfer broken into three pieces), the set with no reset,
+and an `R_BF "X31", n := 15` that cleared another conveyor's steps and missed five of its own — the
+one fault no compiler reports, found by hand the same afternoon. On the corrected export it draws the
+whiteboard, and flags two transient evolutions the whiteboard really has.
+
+**Grounded in current sources, dated.** IEC 60848:2013 ed. 3.0 is the edition in force, with a
+stability date of 2028 per the IEC webstore; there is no 2025 edition. The interpretation choices
+follow Mroß et al. (2023) and González-Rodríguez et al. (Research Square, 2025-10-01, CC BY 4.0).
+S7-GRAPH is S7-1500 only per the S7-1200 V20 manual (11/2024), which is why the skill targets
+set/reset. The reference files paraphrase and cite; the standard is not in the repository.
+
+**Verified.** 0 type errors; harness **278/278** with 71 new tests, one per check rule. Six
+mutations were made and reverted: five failed the test that names them; the sixth, a lone junction in
+a one-coil initialisation, went unnoticed because no test chart has a sequence of a single step.
+Generated LAD was imported into a throwaway copy of the project through Openness: all three
+blocks import, and the initialisation and outputs blocks compile.
+
+**Measured on TIA Portal V20 today**, and written into `reference/set-reset-lad.md`:
+`ExportAsDocuments` exports a block that does not compile (SimaticML export refuses); a project
+folder path over 143 characters cannot be opened; a lone `wire#w1` is refused on import ("Pin 'in'
+connection is missing"); a generated TON compiles only once its IEC_TIMER instance DB exists, and
+import does not create it.
+
+**Open, in order.**
+- Creating a timer's instance DB automatically is not measured: the attempt was blocked by the
+  Openness permission prompt, which reappears whenever the calling executable is rebuilt.
+- `ExportBlocksAsDocuments` skipped inconsistent blocks by its own check although Openness
+  exports them. Fixed by PR #28: they are exported and listed in `Inconsistent`.
+
+**Committed on `work/grafcet-skill`**, rebased onto `main` after PR #28, and pushed;
+the pull request is the user's.
+
+**Left running on the machine**: nothing. The TIA Portal open with the class project is the user's.
+
+---
+
 ### Export as documents no longer hides a block that does not compile — 2026-09-24
 
 **The finding.** `ExportBlocksAsDocuments` skipped every inconsistent block, with a comment saying
@@ -37,8 +84,7 @@ again against it and pass.
 (2026-09-24). `CLAUDE.md` says LAD import needs the `.s7res`; that holds when the document refers to
 multilingual texts, and was not tested beyond this.
 
-**Committed on `work/export-inconsistent-docs`**, rebased onto `main` after PR #27 merged phase 9, and pushed;
-the pull request is the user's.
+**Merged into `main` as PR #28.**
 
 **Left running on the machine**: nothing of this session. The TIA Portal with the class project is
 the user's.
