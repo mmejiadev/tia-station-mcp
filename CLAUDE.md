@@ -371,6 +371,11 @@ catch (Exception ex)
 Consistency: individual exports throw `InvalidState` asking to compile first.
 Bulk exports skip inconsistent items and report them in an `Inconsistent` list.
 
+The exception is export as SIMATIC SD documents (`.s7dcl`): TIA Portal V20 performs it for a block
+that does not compile (measured 2026-09-24), and it is the only way to read such a block. There,
+inconsistent blocks are **exported and still listed in `Inconsistent`** — never skipped silently,
+never passed off as working.
+
 ---
 
 # Tests

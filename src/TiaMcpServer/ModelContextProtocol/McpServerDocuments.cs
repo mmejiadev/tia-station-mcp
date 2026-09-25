@@ -62,7 +62,7 @@ namespace TiaMcpServer.ModelContextProtocol
             }
         }
 
-        [McpServerTool(Name = "ExportBlocksAsDocuments"), Description("Export as documents (.s7dcl/.s7res) from blocks in the plc software to path")]
+        [McpServerTool(Name = "ExportBlocksAsDocuments"), Description("Export as documents (.s7dcl/.s7res) from blocks in the plc software to path. Blocks that do not compile are exported too — this is the one export that can read a broken block — and are listed in Inconsistent.")]
         public static async Task<ResponseExportBlocksAsDocuments> ExportBlocksAsDocuments(
             IMcpServer server,
             RequestContext<CallToolRequestParams> context,
@@ -103,6 +103,7 @@ namespace TiaMcpServer.ModelContextProtocol
                     {
                         Message = $"No blocks found with regex '{regexName}' in '{softwarePath}'",
                         Items = new List<ResponseBlockInfo>(),
+                        Inconsistent = new List<ResponseBlockInfo>(),
                         Meta = new JsonObject
                         {
                             ["timestamp"] = DateTime.Now,
@@ -162,16 +163,23 @@ namespace TiaMcpServer.ModelContextProtocol
                     var duration = (DateTime.Now - startTime).TotalSeconds;
                     Logger?.LogInformation($"Document export completed: {processedCount} blocks exported in {duration:F2} seconds");
 
+                    var inconsistentInfos = responseList.Where(block => block.IsConsistent == false).ToList();
+                    var inconsistentNote = inconsistentInfos.Count == 0
+                        ? string.Empty
+                        : $"; {inconsistentInfos.Count} of them do not compile and were exported as they stand (see Inconsistent)";
+
                     return new ResponseExportBlocksAsDocuments
                     {
-                        Message = $"Document export completed: {processedCount} blocks with regex '{regexName}' exported from '{softwarePath}' to '{exportPath}'",
+                        Message = $"Document export completed: {processedCount} blocks with regex '{regexName}' exported from '{softwarePath}' to '{exportPath}'{inconsistentNote}",
                         Items = responseList,
+                        Inconsistent = inconsistentInfos,
                         Meta = new JsonObject
                         {
                             ["timestamp"] = DateTime.Now,
                             ["success"] = true,
                             ["totalBlocks"] = totalBlocks,
                             ["exportedBlocks"] = processedCount,
+                            ["inconsistentBlocks"] = inconsistentInfos.Count,
                             ["duration"] = duration
                         }
                     };

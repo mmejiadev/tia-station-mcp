@@ -5,6 +5,46 @@
 
 ## ▶ RESUME HERE
 
+### Export as documents no longer hides a block that does not compile — 2026-09-24
+
+**The finding.** `ExportBlocksAsDocuments` skipped every inconsistent block, with a comment saying
+TIA "generally won't export them", and told the caller nothing: the block was simply absent. Measured
+through Openness on TIA Portal V20 the same day, SIMATIC SD export *does* export a block that does not
+compile — only SimaticML export refuses. And a document is the only way to read a broken block, which
+is exactly when someone needs to. Found while correcting a class project whose three broken blocks
+came out of the bulk export as zero files.
+
+**The change, and the rule it amends.** The bulk document export now exports inconsistent blocks and
+reports them in a new `Inconsistent` list (plus `inconsistentBlocks` in the meta and a sentence in
+the message), the same field `ExportBlocks` already had. `CLAUDE.md`'s rule "bulk exports skip
+inconsistent items" gains its one exception, written next to it: SD export exports them and still
+lists them — never skipped silently, never passed off as working. SimaticML exports are unchanged.
+
+**Tests.** `Test33DocumentExport` (named past phase 8's `Test32` so the two branches do not collide)
+builds its own broken block — a LAD function whose TON names an instance DB that does not exist,
+the shape met in practice — asserts it does not compile, then asserts the bulk export writes its
+document and reports it inconsistent. 0 warnings; governance **203/205** (the two index lookups skip
+in a worktree, as before); TIA **263/267 in 16 m 45 s**, the usual four skipped, 0 failing, both new
+tests found by name in the TRX, no orphan portal process. With the old skip put back, both new tests
+**failed** (0/2); with the fix restored they pass again (2/2).
+
+**Cleaned while there, behaviour unchanged.** The method the change sits in was 148 lines with a
+line of commented-out code and an unfounded "TIA portal crashes" comment. It is now seven methods
+of at most 30 lines, with the XML doc the portal layer requires; the two tests above were run
+again against it and pass.
+
+**Noticed, not changed.** A LAD document with no titles or comments imported without an `.s7res`
+(2026-09-24). `CLAUDE.md` says LAD import needs the `.s7res`; that holds when the document refers to
+multilingual texts, and was not tested beyond this.
+
+**Committed on `work/export-inconsistent-docs`**, rebased onto `main` after PR #27 merged phase 9, and pushed;
+the pull request is the user's.
+
+**Left running on the machine**: nothing of this session. The TIA Portal with the class project is
+the user's.
+
+---
+
 ### Phase 9 opens: a running controller can be read over OPC UA — 2026-09-23
 
 **Eighty-six tools** with phase 8's watch tables, which this branch was rebased onto.
@@ -71,7 +111,7 @@ is `ns=3;s="DB"."Member"` as documented. INSTALL.md says what to set on the CPU,
 OPC UA runtime licence. The certificate check accepts only "untrusted"; an expired or wrong-host
 certificate stays refused with the stack's own reason, and a CPU whose clock is wrong may hit that.
 
-**Committed on `work/phase-9-opcua`** and pushed; the pull request is the user's.
+**Merged into `main` as PR #27.**
 
 **The next action, in order.** Close TIA Portal and run the TIA suite on this branch, which has
 not run it since `Test16GuardedWrites` gained the two OPC UA refusals. Then enable the
