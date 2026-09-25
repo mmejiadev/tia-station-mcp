@@ -37,7 +37,7 @@ type Operation<K extends LadOperation['kind']> = LadOperation & { readonly kind:
 export function ladToGrafcet(blocks: readonly LadBlock[], title: string, options: LadReadingOptions = DefaultReading): LadChart {
   const operations = blocks.flatMap((block) => block.operations);
   const findings: LadFinding[] = blocks.flatMap((block) => block.findings);
-  const stepOf = (name: string): number | (null) => readStep(name, options.stepPattern);
+  const stepOf = (name: string): number | null => readStep(name, options.stepPattern);
   const isFirstScan = (condition: Condition): boolean => variablesOf(condition).some((name) => options.firstScanNames.includes(name));
 
   findings.push(...findPlainCoilsOnSteps(operations, stepOf), ...findDoubleCoils(operations));
