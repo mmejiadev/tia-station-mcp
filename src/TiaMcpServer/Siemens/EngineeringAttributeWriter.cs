@@ -7,12 +7,21 @@ using System.Linq;
 namespace TiaMcpServer.Siemens
 {
     /// <summary>
-    /// Reads and writes the parameters of a device item: cycle, start-up, protection and the rest
-    /// of what a device exposes as named attributes.
+    /// Reads and writes the named attributes of any engineering object: a device item's cycle and
+    /// protection level, a watch table row's address and format, and whatever else Openness keeps
+    /// in an attribute bag rather than in a settable property.
     /// </summary>
     /// <remarks>
-    /// Openness exposes device settings as an attribute bag rather than as typed properties, which
-    /// makes one pair of tools cover everything a device has instead of one tool per setting. The
+    /// The pair of <see cref="EngineeringAttributeReader"/>, which reads the whole bag; this one
+    /// writes one entry of it.
+    ///
+    /// It was called DeviceParameterConfigurator until 2026-09-22, when the watch table rows of
+    /// phase 8 turned out to need exactly this and to be no kind of device. The signature already
+    /// took an <c>IEngineeringObject</c>, so only the name was wrong, and a name that lies about
+    /// what a class accepts is how the same safety check comes to be written twice.
+    ///
+    /// Openness exposes these settings as an attribute bag rather than as typed properties, which
+    /// makes one pair of tools cover everything an object has instead of one tool per setting. The
     /// price is that nothing is checked at compile time, so the checking happens here: the
     /// attribute must exist, it must be writable, and the value must fit the type it already holds.
     ///
@@ -20,7 +29,7 @@ namespace TiaMcpServer.Siemens
     /// like this — most of what an item reports cannot be set — and Openness answers it with the
     /// same unhelpful failure it gives for a misspelt name.
     /// </remarks>
-    public sealed class DeviceParameterConfigurator
+    public sealed class EngineeringAttributeWriter
     {
         // How much of a misspelt name has to match for a parameter to be offered in its place, and
         // how many are offered: four letters separate StartupMode from ProtectionLevel, and ten
@@ -36,7 +45,7 @@ namespace TiaMcpServer.Siemens
 
         /// <summary>Creates a parameter configurator.</summary>
         /// <param name="logger">Optional logger.</param>
-        public DeviceParameterConfigurator(ILogger? logger = null)
+        public EngineeringAttributeWriter(ILogger? logger = null)
         {
             _logger = logger;
         }

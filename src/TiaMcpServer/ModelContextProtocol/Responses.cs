@@ -640,4 +640,37 @@ namespace TiaMcpServer.ModelContextProtocol
             return references.Select(reference => reference.Line).ToList();
         }
     }
+    /// <summary>The watch and force tables of a PLC program.</summary>
+    public sealed class ResponseWatchTables : ResponseMessage
+    {
+        /// <summary>Creates the response.</summary>
+        /// <param name="tables">One line per table: name, kind, rows, consistency.</param>
+        public ResponseWatchTables(IReadOnlyList<string> tables)
+        {
+            Tables = tables;
+        }
+
+        /// <summary>
+        /// One line per table, as <c>name | kind | rows | consistency</c>. The kind matters: a
+        /// watch table can be created and deleted, and the single force table cannot.
+        /// </summary>
+        public IReadOnlyList<string> Tables { get; }
+    }
+
+    /// <summary>The rows of one watch or force table.</summary>
+    public sealed class ResponseWatchTable : ResponseMessage
+    {
+        /// <summary>Creates the response.</summary>
+        /// <param name="rows">One line per row that has an address.</param>
+        public ResponseWatchTable(IReadOnlyList<string> rows)
+        {
+            Rows = rows;
+        }
+
+        /// <summary>
+        /// One line per row, as <c>address | display format | monitor trigger | what is prepared</c>.
+        /// Comment rows are not here: Openness exposes nothing on one but the means to delete it.
+        /// </summary>
+        public IReadOnlyList<string> Rows { get; }
+    }
 }
