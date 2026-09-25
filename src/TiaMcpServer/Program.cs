@@ -142,6 +142,7 @@ namespace TiaMcpServer
                 builder.Services.AddSingleton<SimulationRuntime>();
 
                 RegisterGovernance(builder.Services, options);
+                RegisterOpcUa(builder.Services, options);
 
                 var host = builder.Build();
 
@@ -200,6 +201,33 @@ namespace TiaMcpServer
                 $"The server must start in a multi-threaded apartment; this thread is {apartment}. "
                 + "Openness objects created in an STA are bound to the creating thread, so every "
                 + "background operation would fail. See the remarks on Main.");
+        }
+
+        /// <summary>
+        /// Registers the OPC UA client: the reader, its certificate pins, and the policy check.
+        /// </summary>
+        /// <param name="services">Where to register. The governance layer must already be there.</param>
+        /// <param name="options">Command line options, for the OPC UA directory.</param>
+        /// <remarks>
+        /// The access check asks the same policy and mode gate the writes ask, so it is registered
+        /// from them rather than loading the policy a second time: two copies of one file could
+        /// disagree the moment somebody edits it.
+        /// </remarks>
+        public static void RegisterOpcUa(IServiceCollection services, CliOptions? options)
+        {
+            if (services == null)
+            {
+                throw new ArgumentNullException(nameof(services));
+            }
+
+            var opcUaRoot = options?.OpcUaRoot ?? CliOptions.DefaultOpcUaRoot;
+
+            services.AddSingleton(_ => new OpcUa.ServerCertificatePins(CliOptions.PinFilePath(opcUaRoot)));
+            services.AddSingleton<OpcUa.IOpcUaReader>(provider =>
+                new OpcUa.OpcUaReader(opcUaRoot, provider.GetRequiredService<OpcUa.ServerCertificatePins>()));
+            services.AddSingleton(provider => new OpcUa.OpcUaAccessPolicy(
+                provider.GetRequiredService<IModeGate>(),
+                provider.GetRequiredService<IWritePolicy>()));
         }
 
         /// <summary>

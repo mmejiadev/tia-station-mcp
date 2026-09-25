@@ -177,6 +177,16 @@ namespace TiaMcpServer.ModelContextProtocol
             internal static readonly Jobs.IJobStore JobStore = new Jobs.JobStore(
                 new Governance.SystemClock(),
                 new Jobs.ThreadPoolJobDispatcher());
+
+            // Same reasoning as the guard above: the default policy, which denies every endpoint
+            // on a machine that never wrote one, so nothing is contacted by accident.
+            internal static readonly OpcUa.OpcUaAccessPolicy OpcUaAccess = new OpcUa.OpcUaAccessPolicy(
+                Gate,
+                Governance.WritePolicy.Load(CliOptions.DefaultPolicyPath));
+
+            internal static readonly OpcUa.IOpcUaReader OpcUaReader = new OpcUa.OpcUaReader(
+                CliOptions.DefaultOpcUaRoot,
+                new OpcUa.ServerCertificatePins(CliOptions.PinFilePath(CliOptions.DefaultOpcUaRoot)));
         }
 
         public static void SetServiceProvider(IServiceProvider services)

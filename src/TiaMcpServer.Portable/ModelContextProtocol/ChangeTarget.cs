@@ -10,12 +10,13 @@
     /// and an unmatched target is refused, so the mistake would show up as an inexplicable refusal
     /// rather than as a typo.
     ///
-    /// Four families, and nothing else:
+    /// Five families, and nothing else:
     /// <list type="bullet">
     /// <item><description><c>PLC_0/Blocks/FB_Station</c> — a place in the project tree.</description></item>
     /// <item><description><c>simulation/Station_1</c> — a virtual controller, which is not in the project.</description></item>
     /// <item><description><c>simulation-runtime</c> — the PLCSIM Advanced runtime itself, machine-wide.</description></item>
     /// <item><description><c>project</c> — the project as a whole: saving it, closing it, copying it.</description></item>
+    /// <item><description><c>opcua/192.168.0.1:4840</c> — an OPC UA server on the network, which a session may read from.</description></item>
     /// </list>
     /// </remarks>
     public static class ChangeTarget
@@ -47,6 +48,7 @@
         public const string SimulationRuntime = "simulation-runtime";
 
         private const string SimulationPrefix = "simulation/";
+        private const string OpcUaPrefix = "opcua/";
 
         /// <summary>A place in the project tree.</summary>
         /// <param name="softwarePath">Full path to the PLC software, for example <c>PLC_0</c>.</param>
@@ -71,6 +73,21 @@
         public static string Simulation(string instanceName)
         {
             return SimulationPrefix + (instanceName ?? string.Empty).Trim('/');
+        }
+
+        /// <summary>An OPC UA server, by host and port.</summary>
+        /// <param name="host">The machine, as it appears in the endpoint URL.</param>
+        /// <param name="port">The TCP port.</param>
+        /// <returns>The target name, for example <c>opcua/192.168.0.1:4840</c>.</returns>
+        /// <remarks>
+        /// Not a change, and still a target. Reading a running machine alters nothing on it, but it
+        /// is contact with a machine, and a mistyped address reaches whatever answers there. So the
+        /// endpoint has to be listed in the same policy the writes are listed in. The prefix keeps a
+        /// rule about the project, such as <c>PLC_0/*</c>, from being read as a rule about the network.
+        /// </remarks>
+        public static string OpcUaServer(string host, int port)
+        {
+            return OpcUaPrefix + (host ?? string.Empty) + ":" + port.ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
     }
 }

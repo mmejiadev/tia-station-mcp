@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.IO;
+using System.Threading.Tasks;
 using TiaMcpServer.ModelContextProtocol;
 using TiaMcpServer.Siemens;
 
@@ -443,6 +444,32 @@ namespace TiaMcpServer.Test
             throw new InvalidOperationException("unreachable");
         }
 
+        // Not writes, and here anyway. Contacting a machine over OPC UA is governed by the same
+        // policy as a write, so the tool that forgot to ask would pass every other test in the same
+        // way. The endpoint is in TEST-NET-1, which routes nowhere: a tool that did not ask would
+        // time out rather than succeed, and the assertion on the outcome catches it either way.
+        private const string UnlistedEndpoint = "opc.tcp://192.0.2.1:4840";
+
+        private static readonly string[] SomeNode = { "ns=3;s=\"DB_Cell\".\"Running\"" };
+
+        [TestMethod]
+        public async Task ReadOpcUaValues_WithNoPolicy_IsRefusedAndReadsNothing()
+        {
+            var response = await McpServer.ReadOpcUaValues(UnlistedEndpoint, SomeNode);
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+            Assert.AreEqual(0, response.Readings.Count);
+        }
+
+        [TestMethod]
+        public async Task BrowseOpcUaServer_WithNoPolicy_IsRefusedAndListsNothing()
+        {
+            var response = await McpServer.BrowseOpcUaServer(UnlistedEndpoint);
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+            Assert.AreEqual(0, response.Nodes.Count);
+        }
+
         private static void AssertRefused(string? message, string? outcome)
         {
             Assert.AreEqual("Refused", outcome, $"the change was not refused: {message}");
@@ -470,6 +497,12 @@ namespace TiaMcpServer.Test
                 // the policy is consulted so the audit line can name it. Those directories are the
                 // empty ones ListBackups reports, and here they are temporary.
                 BackupRoot = Path.Combine(AssemblyHooks.WorkingRoot, "refused-backups")
+            });
+
+            Program.RegisterOpcUa(services, new CliOptions
+            {
+                PolicyPath = policyPath,
+                OpcUaRoot = Path.Combine(AssemblyHooks.WorkingRoot, "refused-opcua")
             });
 
             return services.BuildServiceProvider();

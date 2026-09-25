@@ -185,7 +185,7 @@ machine that produced it, and nothing phones home.
 ## What this adds on top of the base
 
 Built on [heilingbrunner/tiaportal-mcp](https://github.com/heilingbrunner/tiaportal-mcp) (MIT), from
-which we inherit the architecture, code conventions and error model. **84 tools**, 48 that read and 36 in
+which we inherit the architecture, code conventions and error model. **86 tools**, 50 that read and 36 in
 the file that changes things — 35 of which go through the guard, the thirty-sixth being the
 confirmation step of the guard itself.
 
@@ -198,6 +198,9 @@ What the base does not cover and this adds:
 - A full project snapshot to text for Git (`ExportSourceSnapshot`), tag tables included
 - An instantiable "station" pattern generator (`ExpandCellScl`)
 - A governance layer: policy, plan, audit trail, backup — on every write, with no path around it
+- Reading a running controller over OPC UA (`BrowseOpcUaServer`, `ReadOpcUaValues`): reads only,
+  secured endpoints only, each endpoint listed in the policy, and each server's certificate pinned
+  on first contact so a swapped CPU is refused rather than trusted
 - A harness that closes the loop and measures it, and a dashboard that reads what it recorded
 
 There is **no standalone tag-table export or import tool**. Tag tables reach Git through the

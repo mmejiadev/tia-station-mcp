@@ -526,6 +526,16 @@ somebody configures an interface.
 
 **This reads. It does not command.** That distinction is the whole reason it comes before phase 11.
 
+- ~~Browsing and reading a server~~ — done: `BrowseOpcUaServer` and `ReadOpcUaValues`, in their own
+  assembly, `TiaMcpServer.OpcUa`, so their tests run on CI against an OPC UA server started in the
+  test process. Three rules came with it, each with a test that fails when the rule is removed: the
+  endpoint must be listed in the policy as `opcua/<host>:<port>`; an endpoint offering no message
+  security is refused; and the first certificate a server presents is pinned, so a different one
+  at the same address is refused until a person removes the pin.
+- Measured against PLCSIM Advanced and a real S7-1500: not yet. Everything so far ran against the
+  OPC Foundation's own server stack, which is not a Siemens CPU.
+- Subscriptions, so a value can be watched rather than polled. Still reads; not started.
+
 ### Phase 10 — The rest of the surface
 
 In descending order of what they give back for the work:
