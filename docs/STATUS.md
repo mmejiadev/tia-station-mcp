@@ -5,6 +5,43 @@
 
 ## ▶ RESUME HERE
 
+### McpServerWrites split by area, and the list of writes kept by the file name — 2026-09-25
+
+**The first item of the structural debt measured on 2026-09-24**, taken once the four open branches
+had merged (PRs #26 to #29) so that the split could not turn every merge into a conflict.
+
+`McpServerWrites.cs` had reached **1,824 lines**. It is now eleven files: `McpServerWrites.cs` keeps
+the class remarks and `ApplyChange`, and ten `McpServerWrites.<Area>.cs` hold the rest — `Network`,
+`Devices`, `Simulation`, `CompileAndDownload`, `Tags`, `Scl`, `Project`, `Import`, `Documents`,
+`WatchTables`. The largest is 294 lines. Download sits with compilation rather than with PLCSIM
+because it shares the job and report helpers with the two compile tools, and because it kept
+`Simulation` under the 300-line limit.
+
+**The prefix is the property, not a convention.** What made the single file worth keeping was that
+the whole list of what this server can change was one place to read. Named after their areas alone,
+the new files would have scattered that list back among the read tools; with the prefix, *every tool
+that writes is in a file whose name starts `McpServerWrites`*, and the remarks in `McpServerWrites.cs`
+and `McpServer.cs` now say so. `GuardedTool.Run` is still called from those files and no other.
+
+**A move, not a rewrite.** The members were moved by a script that asserted every line of the
+original landed in exactly one place, and a second check compared the non-blank lines before and
+after: none missing. The only lines added are each file's header; the only lines removed are
+`using` directives the analyzers reported unnecessary. 0 warnings. 35 guarded tools plus
+`ApplyChange`, as before. **Not run**: the test suites, since no behaviour changed; `Test16GuardedWrites`
+finds the tools by reflection, not by file.
+
+**Uncommitted, on `work/split-mcpserver-writes`**, cut from `main` after PR #29. It also carries
+the `CLAUDE.md` rule forbidding attribution to Claude in commits and pull requests, written on
+2026-09-25 and left for this package.
+
+**The next action.** The rest of the debt, in the agreed order: `Responses.cs` (683 lines, inherited
+from upstream) into one class per file; then the methods over 30 lines; then bulk document export
+reporting per-block failures in its response rather than only in the log.
+
+**Left running on the machine**: nothing.
+
+---
+
 ### A GRAFCET skill: read, check, draw and program sequential charts — 2026-09-24
 
 **Not a tool of the server and not part of the knowledge layer**, by the user's decision the same day:

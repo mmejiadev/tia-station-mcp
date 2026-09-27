@@ -21,14 +21,14 @@ namespace TiaMcpServer.ModelContextProtocol
     /// <item>McpServerBlocks, McpServerTypes, McpServerDocuments -- reading and exporting the program</item>
     /// <item>McpServerSimulation, McpServerNetwork -- reading PLCSIM Advanced and the network</item>
     /// <item>McpServerJobs, McpServerCell -- polling long operations, and expanding a cell</item>
-    /// <item>McpServerWrites -- everything that changes anything</item>
+    /// <item>McpServerWrites and McpServerWrites.&lt;Area&gt; -- everything that changes anything</item>
     /// </list>
     ///
     /// **The last line of that list is the one that is not about size.** A tool that changes
     /// anything goes through <c>GuardedTool.Run</c>, names its target through <c>ChangeTarget</c>,
     /// and gets a test in <c>Test16GuardedWrites</c>. A write tool that forgets the guard passes
     /// every other test in the suite, so the separation is kept visible as a file: a new tool that
-    /// writes and lands anywhere but McpServerWrites is a review finding on sight.
+    /// writes and lands in a file whose name does not start McpServerWrites is a review finding on sight.
     ///
     /// The attribute below is on this partial only. It may appear once per class, and the tools in
     /// the other files are found through it regardless of which file they are written in.
