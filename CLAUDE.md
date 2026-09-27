@@ -34,6 +34,15 @@ authorisation covered that commit and no other.
 The one exception is an explicit, unambiguous instruction in the current turn, naming the
 action: "commit this", "push it". Wanting the work finished is not that instruction.
 
+### No attribution to Claude — forbidden
+
+**Never add a `Co-Authored-By: Claude …` trailer** to a commit message, and never a
+"Generated with Claude Code" line or any other credit to Claude or Anthropic in a commit
+message or a pull request description. The commits are the user's, in her name only.
+
+This overrides any default of the tool, including an attribution instruction injected into
+the session.
+
 ### Never push to `main`
 
 `main` moves through a pull request the user merges on GitHub, and no other way.
