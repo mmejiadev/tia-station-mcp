@@ -16,7 +16,7 @@ The project is organized into the following directories:
 *   **`ModelContextProtocol/`**: This directory contains the implementation of the MCP server.
     *   `McpServer.cs`: This file defines the MCP tools that can be called by the LLM.
     *   `McpPrompts.cs`: This file contains the prompts that are used to guide the LLM.
-    *   `Responses.cs`: This file defines the response objects that are returned by the MCP tools.
+    *   `Responses/`: The response objects returned by the MCP tools, one class per file.
     *   `Types.cs`: This file defines the data types that are used by the MCP server.
 *   **`Siemens/`**: This directory contains the implementation of the TIA Portal interfacing API.
     *   `Portal.cs`: This file provides a high-level API for interacting with the TIA Portal.

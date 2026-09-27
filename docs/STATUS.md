@@ -1,9 +1,44 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-09-25**
+> Last updated: **2026-09-27**
 
 ## ▶ RESUME HERE
+
+### Responses split into one class per file, and the order before installing — 2026-09-27
+
+**The order, decided by the user today.** The installation on a clean machine — phase 5b's blocking
+criterion — waits. First the project is finished and polished: the rest of the structural debt, the
+GRAFCET skill's open item, GEMMA, and the whole battery passed repeatedly. Installing something
+still changing would only measure what is about to change.
+
+**`main` measured before touching anything**, after PR #30: Governance 209/209, Spec 44/44,
+OPC UA 33/33, harness 285/285, and the TIA suite 277 passed, 0 failed, 4 skipped in 16 min 34 s.
+The four skipped are the `[Ignore]`d ones: three multiuser-session tests without an asset, and the
+from-scratch fixture whose hardware V20 cannot compile.
+
+**`Responses.cs` (683 lines, 51 classes) is now `ModelContextProtocol/Responses/`**, one file per
+class, and the two OPC UA responses that already had files of their own moved in beside them: 53
+files, the largest 46 lines. Namespace unchanged, so no caller changed. Moved by a script that
+asserted every non-blank line of the original landed in exactly one file, in order; the only lines
+added are each file's `using` directives and namespace. The analyzers treat an unnecessary `using`
+as an error and a missing one does not compile, so the headers are exact. 0 warnings.
+
+The comment that marked where the inherited types ended had nowhere to live once the file was gone.
+It moved to the remarks of `ResponseMessage`, stated as a rule that was then checked on every file:
+the 32 descendants without XML doc are upstream's, unsealed, with setters wherever they hold data;
+the 21 documented ones are sealed and have none.
+
+**Not run**: the TIA suite, since no type, member or namespace changed.
+
+**Uncommitted, on `work/split-responses`**, cut from `main` after PR #30.
+
+**The next action.** The methods over 30 lines; then bulk document export reporting per-block
+failures in its response; then the GRAFCET timer instance DB; then GEMMA.
+
+**Left running on the machine**: nothing.
+
+---
 
 ### McpServerWrites split by area, and the list of writes kept by the file name — 2026-09-25
 
