@@ -23,6 +23,8 @@ namespace TiaMcpServer.ModelContextProtocol
     /// </remarks>
     public static partial class McpServer
     {
+        private const int FirstVersionWithDocuments = 20;
+
         [McpServerTool(Name = "ExportAsDocuments"), Description("Export as documents (.s7dcl/.s7res) from a block in the plc software to path")]
         public static ResponseExportAsDocuments ExportAsDocuments(
             [Description("softwarePath: defines the path in the project structure to the plc software")] string softwarePath,
@@ -35,10 +37,7 @@ namespace TiaMcpServer.ModelContextProtocol
 
             try
             {
-                if (Engineering.TiaMajorVersion < 20)
-                {
-                    throw new McpException("ExportAsDocuments requires TIA Portal V20 or newer", McpErrorCode.InvalidParams);
-                }
+                RequireDocumentSupport("ExportAsDocuments");
                 if (Portal.ExportAsDocuments(softwarePath, blockPath, exportPath, preservePath))
                 {
                     return new ResponseExportAsDocuments
@@ -62,7 +61,7 @@ namespace TiaMcpServer.ModelContextProtocol
             }
         }
 
-        [McpServerTool(Name = "ExportBlocksAsDocuments"), Description("Export as documents (.s7dcl/.s7res) from blocks in the plc software to path. Blocks that do not compile are exported too — this is the one export that can read a broken block — and are listed in Inconsistent.")]
+        [McpServerTool(Name = "ExportBlocksAsDocuments"), Description("Export as documents (.s7dcl/.s7res) from blocks in the plc software to path. Blocks that do not compile are exported too — this is the one export that can read a broken block — and are listed in Inconsistent. Blocks that could not be exported are named in Failed, with the reason.")]
         public static async Task<ResponseExportBlocksAsDocuments> ExportBlocksAsDocuments(
             IMcpServer server,
             RequestContext<CallToolRequestParams> context,
@@ -71,148 +70,118 @@ namespace TiaMcpServer.ModelContextProtocol
             [Description("regexName: defines the name or regular expression to find the block. Use empty string (default) to find all")] string regexName = "",
             [Description("preservePath: preserves the path/structure of the plc software")] bool preservePath = false)
         {
-            var startTime = DateTime.Now;
-            var progressToken = context.Params?.ProgressToken;
-            
+            var call = new BulkCall(softwarePath, exportPath, regexName);
+            var progress = ProgressReporter.For(server, context, Logger);
+
             try
             {
-                if (Engineering.TiaMajorVersion < 20)
-                {
-                    throw new McpException("ExportBlocksAsDocuments requires TIA Portal V20 or newer", McpErrorCode.InvalidParams);
-                }
-                // First, get the list of blocks to determine total count
+                RequireDocumentSupport("ExportBlocksAsDocuments");
+
                 Logger?.LogInformation($"Starting export of blocks as documents from '{softwarePath}' to '{exportPath}'");
-                
+
                 var allBlocks = await Task.Run(() => TiaMcpServer.Siemens.OpennessGate.Run(() => Portal.GetBlocks(softwarePath, regexName)));
-                var totalBlocks = allBlocks?.Count ?? 0;
 
-                if (totalBlocks == 0)
+                if (allBlocks == null || allBlocks.Count == 0)
                 {
-                    if (progressToken != null)
-                    {
-                        await server.SendNotificationAsync("notifications/progress", new
-                        {
-                            Progress = 0,
-                            Total = 0,
-                            Message = "No blocks found to export as documents",
-                            progressToken
-                        });
-                    }
-                    
-                    return new ResponseExportBlocksAsDocuments
-                    {
-                        Message = $"No blocks found with regex '{regexName}' in '{softwarePath}'",
-                        Items = new List<ResponseBlockInfo>(),
-                        Inconsistent = new List<ResponseBlockInfo>(),
-                        Meta = new JsonObject
-                        {
-                            ["timestamp"] = DateTime.Now,
-                            ["success"] = true,
-                            ["totalBlocks"] = 0,
-                            ["exportedBlocks"] = 0,
-                            ["duration"] = (DateTime.Now - startTime).TotalSeconds
-                        }
-                    };
+                    await progress.ReportAsync(0, 0, "No blocks found to export as documents");
+                    return NoDocumentsExported(call);
                 }
 
-                // Send initial progress notification
-                if (progressToken != null)
-                {
-                    await server.SendNotificationAsync("notifications/progress", new
-                    {
-                        Progress = 0,
-                        Total = totalBlocks,
-                        Message = $"Starting export of {totalBlocks} blocks as documents...",
-                        progressToken
-                    });
-                }
-
-                // Export blocks as documents asynchronously
-                var exportedBlocks = await Task.Run(() => TiaMcpServer.Siemens.OpennessGate.Run(() => Portal.ExportBlocksAsDocuments(softwarePath, exportPath, regexName, preservePath)));
-                
-                // Send progress update after export completion
-                if (exportedBlocks != null && progressToken != null)
-                {
-                    var exportedCount = exportedBlocks.Count;
-                    await server.SendNotificationAsync("notifications/progress", new
-                    {
-                        Progress = exportedCount,
-                        Total = totalBlocks,
-                        Message = $"Exported {exportedCount} of {totalBlocks} blocks as documents",
-                        progressToken
-                    });
-                }
-
-                if (exportedBlocks != null)
-                {
-                    var responseList = DescribeBlocks(exportedBlocks);
-                    var processedCount = responseList.Count;
-
-                    // Send final progress notification
-                    if (progressToken != null)
-                    {
-                        await server.SendNotificationAsync("notifications/progress", new
-                        {
-                            Progress = processedCount,
-                            Total = totalBlocks,
-                            Message = $"Document export completed: {processedCount} blocks exported successfully",
-                            progressToken
-                        });
-                    }
-
-                    var duration = (DateTime.Now - startTime).TotalSeconds;
-                    Logger?.LogInformation($"Document export completed: {processedCount} blocks exported in {duration:F2} seconds");
-
-                    var inconsistentInfos = responseList.Where(block => block.IsConsistent == false).ToList();
-                    var inconsistentNote = inconsistentInfos.Count == 0
-                        ? string.Empty
-                        : $"; {inconsistentInfos.Count} of them do not compile and were exported as they stand (see Inconsistent)";
-
-                    return new ResponseExportBlocksAsDocuments
-                    {
-                        Message = $"Document export completed: {processedCount} blocks with regex '{regexName}' exported from '{softwarePath}' to '{exportPath}'{inconsistentNote}",
-                        Items = responseList,
-                        Inconsistent = inconsistentInfos,
-                        Meta = new JsonObject
-                        {
-                            ["timestamp"] = DateTime.Now,
-                            ["success"] = true,
-                            ["totalBlocks"] = totalBlocks,
-                            ["exportedBlocks"] = processedCount,
-                            ["inconsistentBlocks"] = inconsistentInfos.Count,
-                            ["duration"] = duration
-                        }
-                    };
-                }
-                else
-                {
-                    throw new McpException($"Failed exporting documents to '{exportPath}'", McpErrorCode.InternalError);
-                }
+                return await ExportDocuments(call, preservePath, allBlocks.Count, progress);
             }
             catch (Exception ex) when (ex is not McpException)
             {
-                // Send error progress notification if we have a progress token
-                if (progressToken != null)
+                await progress.ReportAsync(0, 0, $"Document export failed: {ex.Message}");
+                throw ToolFailure(ex, $"exporting documents to '{exportPath}'");
+            }
+        }
+
+        private static async Task<ResponseExportBlocksAsDocuments> ExportDocuments(BulkCall call, bool preservePath, int totalBlocks, ProgressReporter progress)
+        {
+            await progress.ReportAsync(0, totalBlocks, $"Starting export of {totalBlocks} blocks as documents...");
+
+            var report = await Task.Run(() => TiaMcpServer.Siemens.OpennessGate.Run(() => Portal.ExportBlocksAsDocuments(call.SoftwarePath, call.Directory, call.RegexName, preservePath)))
+                ?? throw new McpException($"Failed exporting documents to '{call.Directory}'", McpErrorCode.InternalError);
+
+            var response = DocumentsExported(call, totalBlocks, report);
+            await progress.ReportAsync(report.Exported.Count, totalBlocks, $"Document export completed: {report.Exported.Count} blocks exported");
+            return response;
+        }
+
+        private static ResponseExportBlocksAsDocuments NoDocumentsExported(BulkCall call)
+        {
+            return new ResponseExportBlocksAsDocuments
+            {
+                Message = $"No blocks found with regex '{call.RegexName}' in '{call.SoftwarePath}'",
+                Items = new List<ResponseBlockInfo>(),
+                Inconsistent = new List<ResponseBlockInfo>(),
+                Failed = new List<string>(),
+                Meta = new JsonObject
                 {
-                    try
-                    {
-                        await server.SendNotificationAsync("notifications/progress", new
-                        {
-                            Progress = 0,
-                            Total = 0,
-                            Message = $"Document export failed: {ex.Message}",
-                            Error = true,
-                            progressToken
-                        });
-                    }
-                    catch
-                    {
-                        // Ignore notification errors during error handling
-                    }
+                    ["timestamp"] = DateTime.Now,
+                    ["success"] = true,
+                    ["totalBlocks"] = 0,
+                    ["exportedBlocks"] = 0,
+                    ["duration"] = call.ElapsedSeconds
                 }
-                
-                Logger?.LogError(ex, $"Failed exporting documents to '{exportPath}'");
-                throw new McpException($"Unexpected error exporting documents to '{exportPath}': {ex.Message}", ex, McpErrorCode.InternalError);
+            };
+        }
+
+        /// <remarks>
+        /// Unlike the SimaticML exports, inconsistent blocks are read from what was exported: SD
+        /// export writes them, so they are among the items rather than missing from them.
+        /// </remarks>
+        private static ResponseExportBlocksAsDocuments DocumentsExported(BulkCall call, int totalBlocks, DocumentExportReport report)
+        {
+            var items = DescribeBlocks(report.Exported);
+            var inconsistent = items.Where(block => block.IsConsistent == false).ToList();
+            Logger?.LogInformation($"Document export completed: {items.Count} blocks exported in {call.ElapsedSeconds:F2} seconds");
+
+            return new ResponseExportBlocksAsDocuments
+            {
+                Message = DocumentExportMessage(call, items.Count, inconsistent.Count, report.Failures.Count),
+                Items = items,
+                Inconsistent = inconsistent,
+                Failed = report.Failures,
+                Meta = new JsonObject
+                {
+                    ["timestamp"] = DateTime.Now,
+                    ["success"] = report.Failures.Count == 0,
+                    ["totalBlocks"] = totalBlocks,
+                    ["exportedBlocks"] = items.Count,
+                    ["inconsistentBlocks"] = inconsistent.Count,
+                    ["failedBlocks"] = report.Failures.Count,
+                    ["duration"] = call.ElapsedSeconds
+                }
+            };
+        }
+
+        private static string DocumentExportMessage(BulkCall call, int exportedCount, int inconsistentCount, int failureCount)
+        {
+            var message = $"Document export completed: {exportedCount} blocks with regex '{call.RegexName}' exported from '{call.SoftwarePath}' to '{call.Directory}'";
+
+            if (inconsistentCount > 0)
+            {
+                message += $"; {inconsistentCount} of them do not compile and were exported as they stand (see Inconsistent)";
+            }
+
+            if (failureCount > 0)
+            {
+                message += $"; {failureCount} problems prevented a full export (see Failed)";
+            }
+
+            return message;
+        }
+
+        /// <remarks>
+        /// SIMATIC SD documents arrived with TIA Portal V20; older versions have no API for them, and
+        /// asking one fails with an error that does not say so.
+        /// </remarks>
+        private static void RequireDocumentSupport(string toolName)
+        {
+            if (Engineering.TiaMajorVersion < FirstVersionWithDocuments)
+            {
+                throw new McpException($"{toolName} requires TIA Portal V{FirstVersionWithDocuments} or newer", McpErrorCode.InvalidParams);
             }
         }
 

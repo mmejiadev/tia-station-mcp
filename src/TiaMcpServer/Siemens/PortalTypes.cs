@@ -160,7 +160,10 @@ namespace TiaMcpServer.Siemens
                     }
                 }
             }
-            catch (Exception ex)
+            // A PortalException is an answer, not a breakdown: an invalid name filter must reach the
+            // caller as invalid input. Returning an empty list for it answered "no types", which
+            // for an export is a shorter list that looks complete.
+            catch (Exception ex) when (ex is not PortalException)
             {
                 _logger?.LogError(ex, "Error getting types from {SoftwarePath} with regex {RegexName}", softwarePath, regexName);
             }

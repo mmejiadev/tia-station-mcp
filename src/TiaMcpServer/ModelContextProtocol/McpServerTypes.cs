@@ -5,6 +5,7 @@ using ModelContextProtocol.Server;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using TiaMcpServer.Siemens;
@@ -84,7 +85,7 @@ namespace TiaMcpServer.ModelContextProtocol
             }
             catch (Exception ex) when (ex is not McpException)
             {
-                throw new McpException($"Unexpected error retrieving user defined types with regex '{regexName}' in '{softwarePath}': {ex.Message}", ex, McpErrorCode.InternalError);
+                throw ToolFailure(ex, $"retrieving user defined types with regex '{regexName}' in '{softwarePath}'");
             }
         }
 
@@ -154,152 +155,79 @@ namespace TiaMcpServer.ModelContextProtocol
             [Description("regexName: defines the name or regular expression to find the block. Use empty string (default) to find all")] string regexName = "",
             [Description("preservePath: preserves the path/structure of the plc software")] bool preservePath = false)
         {
-            var startTime = DateTime.Now;
-            var progressToken = context.Params?.ProgressToken;
-            
+            var call = new BulkCall(softwarePath, exportPath, regexName);
+            var progress = ProgressReporter.For(server, context, Logger);
+
             try
             {
-                // First, get the list of types to determine total count
                 Logger?.LogInformation($"Starting export of types from '{softwarePath}' to '{exportPath}'");
-                
+
                 var allTypes = await Task.Run(() => TiaMcpServer.Siemens.OpennessGate.Run(() => Portal.GetTypes(softwarePath, regexName)));
-                var totalTypes = allTypes?.Count ?? 0;
 
-                if (totalTypes == 0)
+                if (allTypes == null || allTypes.Count == 0)
                 {
-                    if (progressToken != null)
-                    {
-                        await server.SendNotificationAsync("notifications/progress", new
-                        {
-                            Progress = 0,
-                            Total = 0,
-                            Message = "No types found to export",
-                            progressToken
-                        });
-                    }
-                    
-                    return new ResponseExportTypes
-                    {
-                        Message = $"No types found with regex '{regexName}' in '{softwarePath}'",
-                        Items = new List<ResponseTypeInfo>(),
-                        Meta = new JsonObject
-                        {
-                            ["timestamp"] = DateTime.Now,
-                            ["success"] = true,
-                            ["totalTypes"] = 0,
-                            ["exportedTypes"] = 0,
-                            ["duration"] = (DateTime.Now - startTime).TotalSeconds
-                        }
-                    };
+                    await progress.ReportAsync(0, 0, "No types found to export");
+                    return NoTypesExported(call);
                 }
 
-                // Send initial progress notification
-                if (progressToken != null)
-                {
-                    await server.SendNotificationAsync("notifications/progress", new
-                    {
-                        Progress = 0,
-                        Total = totalTypes,
-                        Message = $"Starting export of {totalTypes} types...",
-                        progressToken
-                    });
-                }
+                await progress.ReportAsync(0, allTypes.Count, $"Starting export of {allTypes.Count} types...");
 
-                // Export types asynchronously
-                var exportedTypes = await Task.Run(() => TiaMcpServer.Siemens.OpennessGate.Run(() => Portal.ExportTypes(softwarePath, exportPath, regexName, preservePath)));
+                var exportedTypes = await Task.Run(() => TiaMcpServer.Siemens.OpennessGate.Run(() => Portal.ExportTypes(softwarePath, exportPath, regexName, preservePath)))
+                    ?? throw new McpException($"Failed exporting types '{regexName}' from '{softwarePath}' to {exportPath}", McpErrorCode.InternalError);
 
-                // Build list of inconsistent (skipped) types for reporting
-                var inconsistentTypeInfos = new List<ResponseTypeInfo>();
-                if (allTypes != null)
-                {
-                    foreach (var t in allTypes)
-                    {
-                        if (!t.IsConsistent)
-                        {
-                            inconsistentTypeInfos.Add(Describe(t));
-                        }
-                    }
-                }
-                
-                // Send progress update after export completion
-                if (exportedTypes != null && progressToken != null)
-                {
-                    var exportedCount = exportedTypes.Count;
-                    await server.SendNotificationAsync("notifications/progress", new
-                    {
-                        Progress = exportedCount,
-                        Total = totalTypes,
-                        Message = $"Exported {exportedCount} of {totalTypes} types",
-                        progressToken
-                    });
-                }
-
-                if (exportedTypes != null)
-                {
-                    var responseList = DescribeTypes(exportedTypes);
-                    var processedCount = responseList.Count;
-
-                    // Send final progress notification
-                    if (progressToken != null)
-                    {
-                        await server.SendNotificationAsync("notifications/progress", new
-                        {
-                            Progress = processedCount,
-                            Total = totalTypes,
-                            Message = $"Export completed: {processedCount} types exported successfully",
-                            progressToken
-                        });
-                    }
-
-                    var duration = (DateTime.Now - startTime).TotalSeconds;
-                    Logger?.LogInformation($"Type export completed: {processedCount} types exported in {duration:F2} seconds");
-
-                    return new ResponseExportTypes
-                    {
-                        Message = $"Export completed: {processedCount} types with regex '{regexName}' exported from '{softwarePath}' to '{exportPath}'",
-                        Items = responseList,
-                        Inconsistent = inconsistentTypeInfos,
-                        Meta = new JsonObject
-                        {
-                            ["timestamp"] = DateTime.Now,
-                            ["success"] = true,
-                            ["totalTypes"] = totalTypes,
-                            ["exportedTypes"] = processedCount,
-                            ["inconsistentTypes"] = inconsistentTypeInfos.Count,
-                            ["duration"] = duration
-                        }
-                    };
-                }
-                else
-                {
-                    throw new McpException($"Failed exporting types '{regexName}' from '{softwarePath}' to {exportPath}", McpErrorCode.InternalError);
-                }
+                var response = TypesExported(call, allTypes, exportedTypes);
+                await progress.ReportAsync(exportedTypes.Count, allTypes.Count, $"Export completed: {exportedTypes.Count} types exported successfully");
+                return response;
             }
             catch (Exception ex) when (ex is not McpException)
             {
-                // Send error progress notification if we have a progress token
-                if (progressToken != null)
-                {
-                    try
-                    {
-                        await server.SendNotificationAsync("notifications/progress", new
-                        {
-                            Progress = 0,
-                            Total = 0,
-                            Message = $"Type export failed: {ex.Message}",
-                            Error = true,
-                            progressToken
-                        });
-                    }
-                    catch
-                    {
-                        // Ignore notification errors during error handling
-                    }
-                }
-                
-                Logger?.LogError(ex, $"Failed exporting types '{regexName}' from '{softwarePath}' to {exportPath}");
-                throw new McpException($"Unexpected error exporting types '{regexName}' from '{softwarePath}' to {exportPath}: {ex.Message}", ex, McpErrorCode.InternalError);
+                await progress.ReportAsync(0, 0, $"Type export failed: {ex.Message}");
+                throw ToolFailure(ex, $"exporting types '{regexName}' from '{softwarePath}' to {exportPath}");
             }
+        }
+
+        private static ResponseExportTypes NoTypesExported(BulkCall call)
+        {
+            return new ResponseExportTypes
+            {
+                Message = $"No types found with regex '{call.RegexName}' in '{call.SoftwarePath}'",
+                Items = new List<ResponseTypeInfo>(),
+                Meta = new JsonObject
+                {
+                    ["timestamp"] = DateTime.Now,
+                    ["success"] = true,
+                    ["totalTypes"] = 0,
+                    ["exportedTypes"] = 0,
+                    ["duration"] = call.ElapsedSeconds
+                }
+            };
+        }
+
+        /// <remarks>
+        /// Inconsistent types are reported from the list read before the export, not from what it
+        /// returned: SimaticML export skips them, so they are exactly the ones missing from it.
+        /// </remarks>
+        private static ResponseExportTypes TypesExported(BulkCall call, IReadOnlyList<TypeDescription> allTypes, IReadOnlyList<TypeDescription> exportedTypes)
+        {
+            var items = DescribeTypes(exportedTypes);
+            var inconsistent = DescribeTypes(allTypes.Where(type => !type.IsConsistent));
+            Logger?.LogInformation($"Type export completed: {items.Count} types exported in {call.ElapsedSeconds:F2} seconds");
+
+            return new ResponseExportTypes
+            {
+                Message = $"Export completed: {items.Count} types with regex '{call.RegexName}' exported from '{call.SoftwarePath}' to '{call.Directory}'",
+                Items = items,
+                Inconsistent = inconsistent,
+                Meta = new JsonObject
+                {
+                    ["timestamp"] = DateTime.Now,
+                    ["success"] = true,
+                    ["totalTypes"] = allTypes.Count,
+                    ["exportedTypes"] = items.Count,
+                    ["inconsistentTypes"] = inconsistent.Count,
+                    ["duration"] = call.ElapsedSeconds
+                }
+            };
         }
 
         private static List<ResponseTypeInfo> DescribeTypes(IEnumerable<TypeDescription>? types)

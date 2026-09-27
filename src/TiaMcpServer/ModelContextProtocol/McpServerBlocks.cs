@@ -90,7 +90,7 @@ namespace TiaMcpServer.ModelContextProtocol
             }
             catch (Exception ex) when (ex is not McpException)
             {
-                throw new McpException($"Unexpected error retrieving blocks with regex '{regexName}' in '{softwarePath}': {ex.Message}", ex, McpErrorCode.InternalError);
+                throw ToolFailure(ex, $"retrieving blocks with regex '{regexName}' in '{softwarePath}'");
             }
         }
 
@@ -238,152 +238,79 @@ namespace TiaMcpServer.ModelContextProtocol
             [Description("regexName: defines the name or regular expression to find the block. Use empty string (default) to find all")] string regexName = "",
             [Description("preservePath: preserves the path/structure of the plc software")] bool preservePath = false)
         {
-            var startTime = DateTime.Now;
-            var progressToken = context.Params?.ProgressToken;
-            
+            var call = new BulkCall(softwarePath, exportPath, regexName);
+            var progress = ProgressReporter.For(server, context, Logger);
+
             try
             {
-                // First, get the list of blocks to determine total count
                 Logger?.LogInformation($"Starting export of blocks from '{softwarePath}' to '{exportPath}'");
-                
+
                 var allBlocks = await Task.Run(() => TiaMcpServer.Siemens.OpennessGate.Run(() => Portal.GetBlocks(softwarePath, regexName)));
-                var totalBlocks = allBlocks?.Count ?? 0;
 
-                if (totalBlocks == 0)
+                if (allBlocks == null || allBlocks.Count == 0)
                 {
-                    if (progressToken != null)
-                    {
-                        await server.SendNotificationAsync("notifications/progress", new
-                        {
-                            Progress = 0,
-                            Total = 0,
-                            Message = "No blocks found to export",
-                            progressToken
-                        });
-                    }
-                    
-                    return new ResponseExportBlocks
-                    {
-                        Message = $"No blocks found with regex '{regexName}' in '{softwarePath}'",
-                        Items = new List<ResponseBlockInfo>(),
-                        Meta = new JsonObject
-                        {
-                            ["timestamp"] = DateTime.Now,
-                            ["success"] = true,
-                            ["totalBlocks"] = 0,
-                            ["exportedBlocks"] = 0,
-                            ["duration"] = (DateTime.Now - startTime).TotalSeconds
-                        }
-                    };
+                    await progress.ReportAsync(0, 0, "No blocks found to export");
+                    return NoBlocksExported(call);
                 }
 
-                // Send initial progress notification
-                if (progressToken != null)
-                {
-                    await server.SendNotificationAsync("notifications/progress", new
-                    {
-                        Progress = 0,
-                        Total = totalBlocks,
-                        Message = $"Starting export of {totalBlocks} blocks...",
-                        progressToken
-                    });
-                }
+                await progress.ReportAsync(0, allBlocks.Count, $"Starting export of {allBlocks.Count} blocks...");
 
-                // Export blocks asynchronously
-                var exportedBlocks = await Task.Run(() => TiaMcpServer.Siemens.OpennessGate.Run(() => Portal.ExportBlocks(softwarePath, exportPath, regexName, preservePath)));
+                var exportedBlocks = await Task.Run(() => TiaMcpServer.Siemens.OpennessGate.Run(() => Portal.ExportBlocks(softwarePath, exportPath, regexName, preservePath)))
+                    ?? throw new McpException($"Failed exporting blocks with '{regexName}' from '{softwarePath}' to {exportPath}", McpErrorCode.InternalError);
 
-                // Build list of inconsistent (skipped) blocks for reporting
-                var inconsistentInfos = new List<ResponseBlockInfo>();
-                if (allBlocks != null)
-                {
-                    foreach (var b in allBlocks)
-                    {
-                        if (!b.IsConsistent)
-                        {
-                            inconsistentInfos.Add(Describe(b));
-                        }
-                    }
-                }
-                
-                // Send progress update after export completion
-                if (exportedBlocks != null && progressToken != null)
-                {
-                    var exportedCount = exportedBlocks.Count;
-                    await server.SendNotificationAsync("notifications/progress", new
-                    {
-                        Progress = exportedCount,
-                        Total = totalBlocks,
-                        Message = $"Exported {exportedCount} of {totalBlocks} blocks",
-                        progressToken
-                    });
-                }
-
-                if (exportedBlocks != null)
-                {
-                    var responseList = DescribeBlocks(exportedBlocks);
-                    var processedCount = responseList.Count;
-
-                    // Send final progress notification
-                    if (progressToken != null)
-                    {
-                        await server.SendNotificationAsync("notifications/progress", new
-                        {
-                            Progress = processedCount,
-                            Total = totalBlocks,
-                            Message = $"Export completed: {processedCount} blocks exported successfully",
-                            progressToken
-                        });
-                    }
-
-                    var duration = (DateTime.Now - startTime).TotalSeconds;
-                    Logger?.LogInformation($"Export completed: {processedCount} blocks exported in {duration:F2} seconds");
-
-                    return new ResponseExportBlocks
-                    {
-                        Message = $"Export completed: {processedCount} blocks with regex '{regexName}' exported from '{softwarePath}' to '{exportPath}'",
-                        Items = responseList,
-                        Inconsistent = inconsistentInfos,
-                        Meta = new JsonObject
-                        {
-                            ["timestamp"] = DateTime.Now,
-                            ["success"] = true,
-                            ["totalBlocks"] = totalBlocks,
-                            ["exportedBlocks"] = processedCount,
-                            ["inconsistentBlocks"] = inconsistentInfos.Count,
-                            ["duration"] = duration
-                        }
-                    };
-                }
-                else
-                {
-                    throw new McpException($"Failed exporting blocks with '{regexName}' from '{softwarePath}' to {exportPath}", McpErrorCode.InternalError);
-                }
+                var response = BlocksExported(call, allBlocks, exportedBlocks);
+                await progress.ReportAsync(exportedBlocks.Count, allBlocks.Count, $"Export completed: {exportedBlocks.Count} blocks exported successfully");
+                return response;
             }
             catch (Exception ex) when (ex is not McpException)
             {
-                // Send error progress notification if we have a progress token
-                if (progressToken != null)
-                {
-                    try
-                    {
-                        await server.SendNotificationAsync("notifications/progress", new
-                        {
-                            Progress = 0,
-                            Total = 0,
-                            Message = $"Export failed: {ex.Message}",
-                            Error = true,
-                            progressToken
-                        });
-                    }
-                    catch
-                    {
-                        // Ignore notification errors during error handling
-                    }
-                }
-                
-                Logger?.LogError(ex, $"Failed exporting blocks with '{regexName}' from '{softwarePath}' to {exportPath}");
-                throw new McpException($"Unexpected error exporting blocks with '{regexName}' from '{softwarePath}' to {exportPath}: {ex.Message}", ex, McpErrorCode.InternalError);
+                await progress.ReportAsync(0, 0, $"Export failed: {ex.Message}");
+                throw ToolFailure(ex, $"exporting blocks with '{regexName}' from '{softwarePath}' to {exportPath}");
             }
+        }
+
+        private static ResponseExportBlocks NoBlocksExported(BulkCall call)
+        {
+            return new ResponseExportBlocks
+            {
+                Message = $"No blocks found with regex '{call.RegexName}' in '{call.SoftwarePath}'",
+                Items = new List<ResponseBlockInfo>(),
+                Meta = new JsonObject
+                {
+                    ["timestamp"] = DateTime.Now,
+                    ["success"] = true,
+                    ["totalBlocks"] = 0,
+                    ["exportedBlocks"] = 0,
+                    ["duration"] = call.ElapsedSeconds
+                }
+            };
+        }
+
+        /// <remarks>
+        /// Inconsistent blocks are reported from the list read before the export, not from what it
+        /// returned: SimaticML export skips them, so they are exactly the ones missing from it.
+        /// </remarks>
+        private static ResponseExportBlocks BlocksExported(BulkCall call, IReadOnlyList<BlockDescription> allBlocks, IReadOnlyList<BlockDescription> exportedBlocks)
+        {
+            var items = DescribeBlocks(exportedBlocks);
+            var inconsistent = DescribeBlocks(allBlocks.Where(block => !block.IsConsistent));
+            Logger?.LogInformation($"Export completed: {items.Count} blocks exported in {call.ElapsedSeconds:F2} seconds");
+
+            return new ResponseExportBlocks
+            {
+                Message = $"Export completed: {items.Count} blocks with regex '{call.RegexName}' exported from '{call.SoftwarePath}' to '{call.Directory}'",
+                Items = items,
+                Inconsistent = inconsistent,
+                Meta = new JsonObject
+                {
+                    ["timestamp"] = DateTime.Now,
+                    ["success"] = true,
+                    ["totalBlocks"] = allBlocks.Count,
+                    ["exportedBlocks"] = items.Count,
+                    ["inconsistentBlocks"] = inconsistent.Count,
+                    ["duration"] = call.ElapsedSeconds
+                }
+            };
         }
 
         /// <remarks>

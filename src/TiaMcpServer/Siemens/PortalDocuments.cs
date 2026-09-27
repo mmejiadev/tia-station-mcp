@@ -25,15 +25,15 @@ namespace TiaMcpServer.Siemens
         /// Inconsistent blocks are exported too. SimaticML export refuses them, but SIMATIC SD export
         /// does not (measured on TIA Portal V20, 2026-09-24), and a document is the only way to read a
         /// block that does not compile. The caller learns which ones they are from IsConsistent in
-        /// the result, never by their absence. A block that fails to export is left out and logged;
-        /// the others are still exported.
+        /// the result, never by their absence. A block that fails to export is left out and named in
+        /// the report's failures; the others are still exported.
         /// </remarks>
         /// <param name="softwarePath">Full path to the PLC software.</param>
         /// <param name="exportPath">Directory the documents are written to.</param>
         /// <param name="regexName">Name or regular expression selecting the blocks; empty for all.</param>
         /// <param name="preservePath">Mirror the block group structure below the export directory.</param>
-        /// <returns>The blocks exported, or null when no project is open or TIA Portal is older than V20.</returns>
-        public IReadOnlyList<BlockDescription>? ExportBlocksAsDocuments(string softwarePath, string exportPath, string regexName = "", bool preservePath = false)
+        /// <returns>The blocks exported and the failures met, or null when no project is open or TIA Portal is older than V20.</returns>
+        public DocumentExportReport? ExportBlocksAsDocuments(string softwarePath, string exportPath, string regexName = "", bool preservePath = false)
         {
             _logger?.LogInformation("Exporting blocks as documents...");
 
@@ -61,7 +61,7 @@ namespace TiaMcpServer.Siemens
             }
 
             LogDocumentExport(exported.Count, failures, blocks.Length);
-            return DescribeBlocks(exported);
+            return new DocumentExportReport(DescribeBlocks(exported), failures);
         }
 
         private PlcBlock[] FindBlocksOrNone(string softwarePath, string regexName)

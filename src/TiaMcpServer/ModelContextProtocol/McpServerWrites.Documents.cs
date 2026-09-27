@@ -3,6 +3,7 @@ using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
@@ -32,34 +33,13 @@ namespace TiaMcpServer.ModelContextProtocol
 
             try
             {
-                if (Engineering.TiaMajorVersion < 20)
-                {
-                    throw new McpException("ImportFromDocuments requires TIA Portal V20 or newer", McpErrorCode.InvalidParams);
-                }
+                RequireDocumentSupport("ImportFromDocuments");
 
                 // Refused before a plan exists: a mistyped option is invalid input, not a change
                 // that failed halfway through an import.
                 TiaMcpServer.Siemens.ImportDocumentOption.Validate(importOption);
 
-                // Pre-check .s7res for missing en-US tags
-                var warnings = new JsonArray();
-                try
-                {
-                    var missingIds = GetResMissingEnUsIds(importPath, fileNameWithoutExtension);
-                    if (missingIds != null && missingIds.Count > 0)
-                    {
-                        Logger?.LogWarning($".s7res for '{fileNameWithoutExtension}' missing en-US tags for {missingIds.Count} items: {string.Join(", ", missingIds)}");
-                        warnings.Add(new JsonObject
-                        {
-                            ["name"] = fileNameWithoutExtension,
-                            ["missingEnUsIds"] = new JsonArray(missingIds.Select(id => (JsonNode)id).ToArray())
-                        });
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Logger?.LogDebug(ex, "Failed to evaluate .s7res warnings");
-                }
+                var warnings = MissingEnUsWarnings(importPath, new[] { fileNameWithoutExtension });
 
                 var request = new Governance.ChangeRequest(
                     "ImportFromDocuments",
@@ -69,34 +49,32 @@ namespace TiaMcpServer.ModelContextProtocol
                 return GuardedTool.Run(
                     GuardedWrites,
                     request,
-                    () =>
-                    {
-                        if (!Portal.ImportFromDocuments(softwarePath, groupPath, importPath, fileNameWithoutExtension, importOption))
-                        {
-                            throw new McpException($"Failed importing '{fileNameWithoutExtension}' from '{importPath}'", McpErrorCode.InternalError);
-                        }
-
-                        return new ResponseImportFromDocuments
-                        {
-                            Message = $"Imported '{fileNameWithoutExtension}' from '{importPath}'",
-                            Meta = new JsonObject
-                            {
-                                ["timestamp"] = DateTime.Now,
-                                ["success"] = true,
-                                ["warnings"] = warnings
-                            }
-                        };
-                    },
+                    () => BlockImported(Portal.ImportFromDocuments(softwarePath, groupPath, importPath, fileNameWithoutExtension, importOption), fileNameWithoutExtension, importPath, warnings),
                     () => new ResponseImportFromDocuments());
-            }
-            catch (TiaMcpServer.Siemens.PortalException pex)
-            {
-                throw ToMcpException(pex, $"Failed importing '{fileNameWithoutExtension}' from '{importPath}'");
             }
             catch (Exception ex) when (ex is not McpException)
             {
-                throw new McpException($"Unexpected error importing from documents: {ex.Message}", ex, McpErrorCode.InternalError);
+                throw ToolFailure(ex, $"importing '{fileNameWithoutExtension}' from '{importPath}'");
             }
+        }
+
+        private static ResponseImportFromDocuments BlockImported(bool isImported, string documentName, string importPath, JsonArray warnings)
+        {
+            if (!isImported)
+            {
+                throw new McpException($"Failed importing '{documentName}' from '{importPath}'", McpErrorCode.InternalError);
+            }
+
+            return new ResponseImportFromDocuments
+            {
+                Message = $"Imported '{documentName}' from '{importPath}'",
+                Meta = new JsonObject
+                {
+                    ["timestamp"] = DateTime.Now,
+                    ["success"] = true,
+                    ["warnings"] = warnings
+                }
+            };
         }
 
         [McpServerTool(Name = "ImportBlocksFromDocuments"), Description("Import program blocks from SIMATIC SD documents (.s7dcl/.s7res) into PLC software (V20+)")]
@@ -109,167 +87,147 @@ namespace TiaMcpServer.ModelContextProtocol
             [Description("regexName: name or regular expression to select block files (empty for all)")] string regexName = "",
             [Description("importOption: ImportDocumentOptions value (None, Override, SkipInactiveCultures, ActivateInactiveCultures)")] string importOption = "Override")
         {
-            var startTime = DateTime.Now;
-
-            // No context means no progress token, which is the same condition as a caller that
-            // did not ask for progress: this tool reports none and does the work. It is not
-            // defensive padding — RequestContext cannot be constructed without a live server, so
-            // a caller with no server to notify has no context to pass either.
-            var progressToken = context?.Params?.ProgressToken;
+            var call = new BulkCall(softwarePath, importPath, regexName);
+            var progress = ProgressReporter.For(server, context, Logger);
 
             try
             {
-                if (Engineering.TiaMajorVersion < 20)
-                {
-                    throw new McpException("ImportBlocksFromDocuments requires TIA Portal V20 or newer", McpErrorCode.InvalidParams);
-                }
+                RequireDocumentSupport("ImportBlocksFromDocuments");
 
-                // Determine total by scanning .s7dcl files matching regex
-                int total = 0;
-                var scanWarnings = new JsonArray();
+                var documents = FindDocuments(importPath, regexName);
+                await progress.ReportAsync(0, documents.Count, documents.Count > 0 ? $"Starting import of {documents.Count} blocks from documents..." : "Scanning import directory...");
 
-                // The pre-scan only counts files and warns about missing en-US resources, so a
-                // failure here must not stop the import - but it is logged rather than swallowed.
-                // An empty catch is forbidden outright by CLAUDE.md, and this file held three of
-                // them until the audit of 2026-09-02: a warning that never appeared looked exactly
-                // like a document with nothing wrong with it.
-                try
-                {
-                    if (Directory.Exists(importPath))
-                    {
-                        var filter = Siemens.NameFilter.Parse(regexName);
-                        var files = Directory.GetFiles(importPath, "*.s7dcl", SearchOption.TopDirectoryOnly);
-                        foreach (var f in files)
-                        {
-                            var name = Path.GetFileNameWithoutExtension(f);
-                            if (!filter.Matches(name))
-                                continue;
-                            total++;
-
-                            try
-                            {
-                                var missingIds = GetResMissingEnUsIds(importPath, name);
-                                if (missingIds != null && missingIds.Count > 0)
-                                {
-                                    scanWarnings.Add(new JsonObject
-                                    {
-                                        ["name"] = name,
-                                        ["missingEnUsIds"] = new JsonArray(missingIds.Select(id => (JsonNode)id).ToArray())
-                                    });
-                                }
-                            }
-                            catch (Exception scanFailure)
-                            {
-                                Logger?.LogWarning(scanFailure, "Could not read the en-US resources of '{Name}' in '{ImportPath}'", name, importPath);
-                            }
-                        }
-                    }
-                }
-                catch (Exception scanFailure)
-                {
-                    Logger?.LogWarning(scanFailure, "The pre-scan of '{ImportPath}' failed; the import continues without its warnings", importPath);
-                }
-
-                if (progressToken != null)
-                {
-                    await server.SendNotificationAsync("notifications/progress", new
-                    {
-                        Progress = 0,
-                        Total = total,
-                        Message = total > 0 ? $"Starting import of {total} blocks from documents..." : "Scanning import directory...",
-                        progressToken
-                    });
-                }
-
-                // Refused before a plan exists: a mistyped option is invalid input, not a change
-                // that failed halfway through an import.
-                TiaMcpServer.Siemens.ImportDocumentOption.Validate(importOption);
-
-                var request = new Governance.ChangeRequest(
-                    "ImportBlocksFromDocuments",
-                    ChangeTarget.Program(softwarePath, groupPath),
-                    string.IsNullOrWhiteSpace(regexName) ? importPath : regexName);
-
-                // The guard decides on the calling thread and the import runs on a worker, so a
-                // refusal costs nothing and the import that does run still keeps this method
-                // responsive enough to report progress.
-                var response = await Task.Run(() => TiaMcpServer.Siemens.OpennessGate.Run(() => GuardedTool.Run(
-                    GuardedWrites,
-                    request,
-                    () =>
-                    {
-                        var imported = Portal.ImportBlocksFromDocuments(softwarePath, groupPath, importPath, regexName, importOption);
-                        var items = DescribeBlocks(imported);
-
-                        return new ResponseImportBlocksFromDocuments
-                        {
-                            Message = $"Document import completed: {items.Count} blocks imported from '{importPath}'",
-                            Items = items,
-                            Meta = new JsonObject
-                            {
-                                ["timestamp"] = DateTime.Now,
-                                ["success"] = true,
-                                ["totalBlocks"] = total,
-                                ["importedBlocks"] = items.Count,
-                                ["duration"] = (DateTime.Now - startTime).TotalSeconds,
-                                ["warnings"] = scanWarnings
-                            }
-                        };
-                    },
-                    () => new ResponseImportBlocksFromDocuments())));
+                var response = await ImportDocumentsGuarded(call, groupPath, importOption, documents);
 
                 var processed = response.Items?.Count() ?? 0;
-
-                if (progressToken != null)
-                {
-                    await server.SendNotificationAsync("notifications/progress", new
-                    {
-                        Progress = processed,
-                        Total = total,
-                        Message = response.Message,
-                        progressToken
-                    });
-                }
-
-                Logger?.LogInformation(
-                    "Document import finished: {Processed} block(s) in {Duration:F2} s",
-                    processed,
-                    (DateTime.Now - startTime).TotalSeconds);
-
+                await progress.ReportAsync(processed, documents.Count, response.Message ?? string.Empty);
+                Logger?.LogInformation("Document import finished: {Processed} block(s) in {Duration:F2} s", processed, call.ElapsedSeconds);
                 return response;
             }
             catch (Exception ex) when (ex is not McpException)
             {
-                if (progressToken != null)
+                await progress.ReportAsync(0, 0, $"Document import failed: {ex.Message}");
+                throw ToolFailure(ex, $"importing documents from '{importPath}'");
+            }
+        }
+
+        /// <remarks>
+        /// The guard decides on the calling thread and the import runs on a worker, so a refusal
+        /// costs nothing and the import that does run still keeps the tool responsive enough to
+        /// report progress.
+        /// </remarks>
+        private static Task<ResponseImportBlocksFromDocuments> ImportDocumentsGuarded(BulkCall call, string groupPath, string importOption, IReadOnlyList<string> documents)
+        {
+            // Refused before a plan exists: a mistyped option is invalid input, not a change
+            // that failed halfway through an import.
+            TiaMcpServer.Siemens.ImportDocumentOption.Validate(importOption);
+
+            var warnings = MissingEnUsWarnings(call.Directory, documents);
+            var request = new Governance.ChangeRequest(
+                "ImportBlocksFromDocuments",
+                ChangeTarget.Program(call.SoftwarePath, groupPath),
+                string.IsNullOrWhiteSpace(call.RegexName) ? call.Directory : call.RegexName);
+
+            return Task.Run(() => TiaMcpServer.Siemens.OpennessGate.Run(() => GuardedTool.Run(
+                GuardedWrites,
+                request,
+                () => BlocksImported(call, documents.Count, warnings, Portal.ImportBlocksFromDocuments(call.SoftwarePath, groupPath, call.Directory, call.RegexName, importOption)),
+                () => new ResponseImportBlocksFromDocuments())));
+        }
+
+        private static ResponseImportBlocksFromDocuments BlocksImported(BulkCall call, int documentCount, JsonArray warnings, IReadOnlyList<BlockDescription>? imported)
+        {
+            var items = DescribeBlocks(imported);
+
+            return new ResponseImportBlocksFromDocuments
+            {
+                Message = $"Document import completed: {items.Count} blocks imported from '{call.Directory}'",
+                Items = items,
+                Meta = new JsonObject
                 {
-                    try
-                    {
-                        await server.SendNotificationAsync("notifications/progress", new
-                        {
-                            Progress = 0,
-                            Total = 0,
-                            Message = $"Document import failed: {ex.Message}",
-                            Error = true,
-                            progressToken
-                        });
-                    }
-                    catch (Exception notifyFailure)
-                    {
-                        // Already handling a failure: this one must not replace it, but a progress
-                        // channel that has quietly died is worth knowing about.
-                        Logger?.LogWarning(notifyFailure, "Could not send the failure notification for '{ImportPath}'", importPath);
-                    }
+                    ["timestamp"] = DateTime.Now,
+                    ["success"] = true,
+                    ["totalBlocks"] = documentCount,
+                    ["importedBlocks"] = items.Count,
+                    ["duration"] = call.ElapsedSeconds,
+                    ["warnings"] = warnings
+                }
+            };
+        }
+
+        /// <remarks>
+        /// The pre-scan only counts documents and warns about missing en-US resources, so a failure
+        /// here must not stop the import — but it is logged rather than swallowed. An empty catch is
+        /// forbidden outright by CLAUDE.md, and this tool held three of them until the audit of
+        /// 2026-09-02: a warning that never appeared looked exactly like a document with nothing
+        /// wrong with it.
+        /// </remarks>
+        private static IReadOnlyList<string> FindDocuments(string importPath, string regexName)
+        {
+            try
+            {
+                if (!Directory.Exists(importPath))
+                {
+                    return Array.Empty<string>();
                 }
 
-                if (ex is TiaMcpServer.Siemens.PortalException pex)
+                var filter = Siemens.NameFilter.Parse(regexName);
+                return Directory.GetFiles(importPath, "*.s7dcl", SearchOption.TopDirectoryOnly)
+                    .Select(file => Path.GetFileNameWithoutExtension(file))
+                    .Where(name => filter.Matches(name))
+                    .ToList();
+            }
+            catch (Exception scanFailure)
+            {
+                Logger?.LogWarning(scanFailure, "The pre-scan of '{ImportPath}' failed; the import continues without its warnings", importPath);
+                return Array.Empty<string>();
+            }
+        }
+
+        private static JsonArray MissingEnUsWarnings(string importPath, IEnumerable<string> documentNames)
+        {
+            var warnings = new JsonArray();
+
+            foreach (var name in documentNames)
+            {
+                var warning = MissingEnUsWarning(importPath, name);
+
+                if (warning != null)
                 {
-                    // A refused import option is invalid input, not a broken environment, and
-                    // telling the caller to retry it would be wrong.
-                    throw ToMcpException(pex, $"Failed importing documents from '{importPath}'");
+                    warnings.Add(warning);
+                }
+            }
+
+            return warnings;
+        }
+
+        /// <remarks>
+        /// A LAD block imported without en-US tags in its .s7res fails with an error naming neither
+        /// the file nor the language, so the gap is named before the import is tried. Reading the
+        /// resources is advisory: a failure is logged and the import goes ahead.
+        /// </remarks>
+        private static JsonObject? MissingEnUsWarning(string importPath, string documentName)
+        {
+            try
+            {
+                var missingIds = GetResMissingEnUsIds(importPath, documentName);
+
+                if (missingIds.Count == 0)
+                {
+                    return null;
                 }
 
-                Logger?.LogError(ex, $"Failed importing documents from '{importPath}'");
-                throw new McpException($"Unexpected error importing documents from '{importPath}': {ex.Message}", ex, McpErrorCode.InternalError);
+                Logger?.LogWarning(".s7res for '{Name}' is missing en-US tags for {Count} items: {Ids}", documentName, missingIds.Count, string.Join(", ", missingIds));
+                return new JsonObject
+                {
+                    ["name"] = documentName,
+                    ["missingEnUsIds"] = new JsonArray(missingIds.Select(id => (JsonNode)id).ToArray())
+                };
+            }
+            catch (Exception scanFailure)
+            {
+                Logger?.LogWarning(scanFailure, "Could not read the en-US resources of '{Name}' in '{ImportPath}'", documentName, importPath);
+                return null;
             }
         }
     }
