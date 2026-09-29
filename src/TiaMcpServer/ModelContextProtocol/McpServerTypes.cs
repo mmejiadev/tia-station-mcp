@@ -63,25 +63,16 @@ namespace TiaMcpServer.ModelContextProtocol
             {
                 var list = Portal.GetTypes(softwarePath, regexName);
 
-                var responseList = DescribeTypes(list);
-
-                if (list != null)
+                return new ResponseTypes
                 {
-                    return new ResponseTypes
+                    Message = $"Types with regex '{regexName}' retrieved from '{softwarePath}'",
+                    Items = DescribeTypes(list),
+                    Meta = new JsonObject
                     {
-                        Message = $"Types with regex '{regexName}' retrieved from '{softwarePath}'",
-                        Items = responseList,
-                        Meta = new JsonObject
-                        {
-                            ["timestamp"] = DateTime.Now,
-                            ["success"] = true
-                        }
-                    };
-                }
-                else
-                {
-                    throw new McpException($"Failed retrieving user defined types with regex '{regexName}' in '{softwarePath}'", McpErrorCode.InternalError);
-                }
+                        ["timestamp"] = DateTime.Now,
+                        ["success"] = true
+                    }
+                };
             }
             catch (Exception ex) when (ex is not McpException)
             {
@@ -164,7 +155,7 @@ namespace TiaMcpServer.ModelContextProtocol
 
                 var allTypes = await Task.Run(() => TiaMcpServer.Siemens.OpennessGate.Run(() => Portal.GetTypes(softwarePath, regexName)));
 
-                if (allTypes == null || allTypes.Count == 0)
+                if (allTypes.Count == 0)
                 {
                     await progress.ReportAsync(0, 0, "No types found to export");
                     return NoTypesExported(call);
@@ -172,8 +163,7 @@ namespace TiaMcpServer.ModelContextProtocol
 
                 await progress.ReportAsync(0, allTypes.Count, $"Starting export of {allTypes.Count} types...");
 
-                var exportedTypes = await Task.Run(() => TiaMcpServer.Siemens.OpennessGate.Run(() => Portal.ExportTypes(softwarePath, exportPath, regexName, preservePath)))
-                    ?? throw new McpException($"Failed exporting types '{regexName}' from '{softwarePath}' to {exportPath}", McpErrorCode.InternalError);
+                var exportedTypes = await Task.Run(() => TiaMcpServer.Siemens.OpennessGate.Run(() => Portal.ExportTypes(softwarePath, exportPath, regexName, preservePath)));
 
                 var response = TypesExported(call, allTypes, exportedTypes);
                 await progress.ReportAsync(exportedTypes.Count, allTypes.Count, $"Export completed: {exportedTypes.Count} types exported successfully");

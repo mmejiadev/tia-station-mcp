@@ -49,7 +49,7 @@ namespace TiaMcpServer.ModelContextProtocol
                 return GuardedTool.Run(
                     GuardedWrites,
                     request,
-                    () => BlockImported(Portal.ImportFromDocuments(softwarePath, groupPath, importPath, fileNameWithoutExtension, importOption), fileNameWithoutExtension, importPath, warnings),
+                    () => BlockImported(() => Portal.ImportFromDocuments(softwarePath, groupPath, importPath, fileNameWithoutExtension, importOption), fileNameWithoutExtension, importPath, warnings),
                     () => new ResponseImportFromDocuments());
             }
             catch (Exception ex) when (ex is not McpException)
@@ -58,12 +58,13 @@ namespace TiaMcpServer.ModelContextProtocol
             }
         }
 
-        private static ResponseImportFromDocuments BlockImported(bool isImported, string documentName, string importPath, JsonArray warnings)
+        /// <remarks>
+        /// The import throws when the block is not imported, with the reason; it used to answer false,
+        /// and the tool could only say "failed" without saying why.
+        /// </remarks>
+        private static ResponseImportFromDocuments BlockImported(Action import, string documentName, string importPath, JsonArray warnings)
         {
-            if (!isImported)
-            {
-                throw new McpException($"Failed importing '{documentName}' from '{importPath}'", McpErrorCode.InternalError);
-            }
+            import();
 
             return new ResponseImportFromDocuments
             {
@@ -77,7 +78,7 @@ namespace TiaMcpServer.ModelContextProtocol
             };
         }
 
-        [McpServerTool(Name = "ImportBlocksFromDocuments"), Description("Import program blocks from SIMATIC SD documents (.s7dcl/.s7res) into PLC software (V20+)")]
+        [McpServerTool(Name = "ImportBlocksFromDocuments"), Description("Import program blocks from SIMATIC SD documents (.s7dcl/.s7res) into PLC software (V20+). Documents that could not be imported are named in Failed, with the reason; a groupPath that does not exist is refused rather than read as the root.")]
         public static async Task<ResponseImportBlocksFromDocuments> ImportBlocksFromDocuments(
             IMcpServer server,
             RequestContext<CallToolRequestParams> context,
@@ -135,24 +136,38 @@ namespace TiaMcpServer.ModelContextProtocol
                 () => new ResponseImportBlocksFromDocuments())));
         }
 
-        private static ResponseImportBlocksFromDocuments BlocksImported(BulkCall call, int documentCount, JsonArray warnings, IReadOnlyList<BlockDescription>? imported)
+        private static ResponseImportBlocksFromDocuments BlocksImported(BulkCall call, int documentCount, JsonArray warnings, DocumentImportReport report)
         {
-            var items = DescribeBlocks(imported);
+            var items = DescribeBlocks(report.Imported);
 
             return new ResponseImportBlocksFromDocuments
             {
-                Message = $"Document import completed: {items.Count} blocks imported from '{call.Directory}'",
+                Message = DocumentImportMessage(call, items.Count, report.Failures.Count),
                 Items = items,
+                Failed = report.Failures,
                 Meta = new JsonObject
                 {
                     ["timestamp"] = DateTime.Now,
-                    ["success"] = true,
+                    ["success"] = report.Failures.Count == 0,
                     ["totalBlocks"] = documentCount,
                     ["importedBlocks"] = items.Count,
+                    ["failedBlocks"] = report.Failures.Count,
                     ["duration"] = call.ElapsedSeconds,
                     ["warnings"] = warnings
                 }
             };
+        }
+
+        private static string DocumentImportMessage(BulkCall call, int importedCount, int failureCount)
+        {
+            var message = $"Document import completed: {importedCount} blocks imported from '{call.Directory}'";
+
+            if (failureCount > 0)
+            {
+                message += $"; {failureCount} documents were not imported (see Failed)";
+            }
+
+            return message;
         }
 
         /// <remarks>

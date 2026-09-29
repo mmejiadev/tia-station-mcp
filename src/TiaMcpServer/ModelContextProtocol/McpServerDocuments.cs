@@ -81,7 +81,7 @@ namespace TiaMcpServer.ModelContextProtocol
 
                 var allBlocks = await Task.Run(() => TiaMcpServer.Siemens.OpennessGate.Run(() => Portal.GetBlocks(softwarePath, regexName)));
 
-                if (allBlocks == null || allBlocks.Count == 0)
+                if (allBlocks.Count == 0)
                 {
                     await progress.ReportAsync(0, 0, "No blocks found to export as documents");
                     return NoDocumentsExported(call);
@@ -100,8 +100,7 @@ namespace TiaMcpServer.ModelContextProtocol
         {
             await progress.ReportAsync(0, totalBlocks, $"Starting export of {totalBlocks} blocks as documents...");
 
-            var report = await Task.Run(() => TiaMcpServer.Siemens.OpennessGate.Run(() => Portal.ExportBlocksAsDocuments(call.SoftwarePath, call.Directory, call.RegexName, preservePath)))
-                ?? throw new McpException($"Failed exporting documents to '{call.Directory}'", McpErrorCode.InternalError);
+            var report = await Task.Run(() => TiaMcpServer.Siemens.OpennessGate.Run(() => Portal.ExportBlocksAsDocuments(call.SoftwarePath, call.Directory, call.RegexName, preservePath)));
 
             var response = DocumentsExported(call, totalBlocks, report);
             await progress.ReportAsync(report.Exported.Count, totalBlocks, $"Document export completed: {report.Exported.Count} blocks exported");

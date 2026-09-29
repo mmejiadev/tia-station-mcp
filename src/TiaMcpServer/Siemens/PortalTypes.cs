@@ -33,7 +33,10 @@ namespace TiaMcpServer.Siemens
         /// <param name="softwarePath">Path to the PLC software in the project.</param>
         /// <param name="regexName">The name filter, or empty for every type.</param>
         /// <returns>One description per matching type, in the order the program lists them.</returns>
-        /// <exception cref="PortalException">The filter is not a valid expression.</exception>
+        /// <exception cref="PortalException">
+        /// The filter is not a valid expression, no project is open, or there is no PLC software at
+        /// the path.
+        /// </exception>
         public IReadOnlyList<TypeDescription> GetTypes(string softwarePath, string regexName = "")
         {
             return DescribeTypes(FindTypes(softwarePath, regexName));
@@ -136,37 +139,15 @@ namespace TiaMcpServer.Siemens
             return string.Join("/", segments);
         }
 
+        /// <remarks>
+        /// Throws rather than answering an empty list, for the reasons given at FindBlocks.
+        /// </remarks>
         private List<PlcType> FindTypes(string softwarePath, string regexName = "")
         {
             _logger?.LogInformation("Getting types...");
 
-            if (IsProjectNull())
-            {
-                return [];
-            }
-
             var list = new List<PlcType>();
-
-            try
-            {
-                var softwareContainer = GetSoftwareContainer(softwarePath);
-                if (softwareContainer?.Software is PlcSoftware plcSoftware)
-                {
-                    var group = plcSoftware?.TypeGroup;
-
-                    if (group != null)
-                    {
-                        GetTypesRecursive(group, list, regexName);
-                    }
-                }
-            }
-            // A PortalException is an answer, not a breakdown: an invalid name filter must reach the
-            // caller as invalid input. Returning an empty list for it answered "no types", which
-            // for an export is a shorter list that looks complete.
-            catch (Exception ex) when (ex is not PortalException)
-            {
-                _logger?.LogError(ex, "Error getting types from {SoftwarePath} with regex {RegexName}", softwarePath, regexName);
-            }
+            GetTypesRecursive(RequireSoftware(softwarePath).TypeGroup, list, regexName);
 
             return list;
         }
@@ -279,29 +260,23 @@ namespace TiaMcpServer.Siemens
             return success;
         }
 
-        public IReadOnlyList<TypeDescription>? ExportTypes(string softwarePath, string exportPath, string regexName = "", bool preservePath = false)
+        /// <summary>Exports every consistent user-defined type whose name matches as SimaticML.</summary>
+        /// <param name="softwarePath">Full path to the PLC software.</param>
+        /// <param name="exportPath">Directory the files are written to.</param>
+        /// <param name="regexName">Name or regular expression selecting the types; empty for all.</param>
+        /// <param name="preservePath">Mirror the type group structure below the export directory.</param>
+        /// <returns>The types exported. Inconsistent types and types that failed are left out.</returns>
+        /// <exception cref="PortalException">
+        /// No project is open, there is no PLC software at the path, or the filter is not valid.
+        /// </exception>
+        public IReadOnlyList<TypeDescription> ExportTypes(string softwarePath, string exportPath, string regexName = "", bool preservePath = false)
         {
             _logger?.LogInformation("Exporting types...");
-
-            if (IsProjectNull())
-            {
-                return null;
-            }
 
             var exportList = new List<PlcType>();
             var failures = new List<string>();
 
-            PlcType[] list;
-
-            try
-            {
-                list = FindTypes(softwarePath, regexName).ToArray();
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogError(ex, "Failed to retrieve type list for {SoftwarePath}", softwarePath);
-                return DescribeTypes(exportList);
-            }
+            var list = FindTypes(softwarePath, regexName).ToArray();
 
             for (int i = 0; i < list.Count(); i++)
             {

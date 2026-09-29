@@ -56,6 +56,41 @@ namespace TiaMcpServer.Test
         }
 
         [TestMethod]
+        public void ExportBlock_ExistingPath_ReportsSuccess()
+        {
+            var response = McpServer.ExportBlock(Settings.Project1PlcSoftwarePath0, "1_Tests/FC_Block_1", Path.GetTempPath());
+
+            Assert.AreEqual(true, (bool?)response.Meta?["success"], response.Message);
+        }
+
+        /// <remarks>
+        /// The suggestion used to be built inside an empty catch. The answer is still "not found",
+        /// as invalid input, and it names the full path the caller most likely meant.
+        /// </remarks>
+        [TestMethod]
+        public void ExportBlock_BareName_ThrowsInvalidParamsSuggestingTheFullPath()
+        {
+            var failure = Assert.ThrowsException<McpException>(
+                () => McpServer.ExportBlock(Settings.Project1PlcSoftwarePath0, "FC_Block_1", Path.GetTempPath()));
+
+            Assert.AreEqual(McpErrorCode.InvalidParams, failure.ErrorCode, failure.Message);
+            StringAssert.Contains(failure.Message, "1_Tests/FC_Block_1");
+        }
+
+        /// <remarks>
+        /// The bulk export used to answer "No blocks found" with success true for a software path
+        /// that does not exist.
+        /// </remarks>
+        [TestMethod]
+        public async Task ExportBlocks_UnknownSoftwarePath_ThrowsInvalidParams()
+        {
+            var failure = await Assert.ThrowsExceptionAsync<McpException>(
+                () => McpServer.ExportBlocks(null!, null!, "NoSuchDevice/NoSuchPlc", Path.GetTempPath()));
+
+            Assert.AreEqual(McpErrorCode.InvalidParams, failure.ErrorCode, failure.Message);
+        }
+
+        [TestMethod]
         public async Task ExportBlocks_InvalidFilter_ThrowsInvalidParams()
         {
             var failure = await Assert.ThrowsExceptionAsync<McpException>(

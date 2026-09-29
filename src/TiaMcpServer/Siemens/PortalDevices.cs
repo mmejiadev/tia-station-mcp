@@ -3,6 +3,7 @@ using Siemens.Engineering.Compiler;
 using Siemens.Engineering.HW;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 
 namespace TiaMcpServer.Siemens
@@ -70,24 +71,22 @@ namespace TiaMcpServer.Siemens
                 return [];
             }
 
+            // Parsed before the walk, not only inside it: the devices at the top of the project used
+            // to be added without the filter, so GetDevices("^PLC_1$") also answered every device
+            // outside a group, and an invalid filter went unnoticed in a project with no groups.
+            var filter = NameFilter.Parse(regexName);
             var list = new List<Device>();
 
-            if (_project?.Devices != null)
+            if (_project?.Devices == null)
             {
-                foreach (Device device in _project.Devices)
-                {
-                    list.Add(device);
-                }
+                return list;
+            }
 
-                foreach (var group in _project.DeviceGroups)
-                {
-                    GetDevicesRecursive(group, list, regexName);
-                }
+            list.AddRange(_project.Devices.Where(device => filter.Matches(device.Name)));
 
-                //foreach (var group in _project.UngroupedDevicesGroup)
-                //{
-                //    GetDevicesRecursive(_project.UngroupedDevicesGroup, list, regexName);
-                //}
+            foreach (var group in _project.DeviceGroups)
+            {
+                GetDevicesRecursive(group, list, regexName);
             }
 
             return list;

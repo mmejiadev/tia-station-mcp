@@ -22,6 +22,9 @@ namespace TiaMcpServer.ModelContextProtocol
     /// </remarks>
     public static partial class McpServer
     {
+        /// <summary>How many full paths a "block not found" answer offers at most.</summary>
+        private const int MaxBlockSuggestions = 10;
+
         [McpServerTool(Name = "GetBlockInfo"), Description("Get a block info, which is located in the plc software")]
         public static ResponseBlockInfo GetBlockInfo(
             [Description("softwarePath: defines the path in the project structure to the plc software")] string softwarePath,
@@ -68,25 +71,16 @@ namespace TiaMcpServer.ModelContextProtocol
             {
                 var list = Portal.GetBlocks(softwarePath, regexName);
 
-                var responseList = DescribeBlocks(list);
-
-                if (list != null)
+                return new ResponseBlocks
                 {
-                    return new ResponseBlocks
+                    Message = $"Blocks with regex '{regexName}' retrieved from '{softwarePath}'",
+                    Items = DescribeBlocks(list),
+                    Meta = new JsonObject
                     {
-                        Message = $"Blocks with regex '{regexName}' retrieved from '{softwarePath}'",
-                        Items = responseList,
-                        Meta = new JsonObject
-                        {
-                            ["timestamp"] = DateTime.Now,
-                            ["success"] = true
-                        }
-                    };
-                }
-                else
-                {
-                    throw new McpException($"Failed retrieving blocks with regex '{regexName}' in '{softwarePath}'", McpErrorCode.InternalError);
-                }
+                        ["timestamp"] = DateTime.Now,
+                        ["success"] = true
+                    }
+                };
             }
             catch (Exception ex) when (ex is not McpException)
             {
@@ -103,30 +97,20 @@ namespace TiaMcpServer.ModelContextProtocol
 
             try
             {
-                var hierarchy = Portal.GetBlockHierarchy(softwarePath);
-                if (hierarchy != null)
+                return new ResponseBlocksWithHierarchy
                 {
-                    return new ResponseBlocksWithHierarchy
+                    Message = $"Block hierarchy retrieved from '{softwarePath}'",
+                    Root = Portal.GetBlockHierarchy(softwarePath),
+                    Meta = new JsonObject
                     {
-                        Message = $"Block hierarchy retrieved from '{softwarePath}'",
-                        Root = hierarchy,
-                        Meta = new JsonObject
-                        {
-                            ["timestamp"] = DateTime.Now,
-                            ["success"] = true
-                        }
-                    };
-                }
-                else
-                {
-                    // Specific failure: root group could not be resolved
-                    throw new McpException($"Block root group not found for '{softwarePath}'", McpErrorCode.InternalError);
-                }
+                        ["timestamp"] = DateTime.Now,
+                        ["success"] = true
+                    }
+                };
             }
             catch (Exception ex) when (ex is not McpException)
             {
-                // Generic unexpected failure wrapper
-                throw new McpException($"Unexpected error retrieving block hierarchy for '{softwarePath}': {ex.Message}", ex, McpErrorCode.InternalError);
+                throw ToolFailure(ex, $"retrieving block hierarchy for '{softwarePath}'");
             }
         }
 
@@ -142,91 +126,74 @@ namespace TiaMcpServer.ModelContextProtocol
 
             try
             {
-                var block = Portal.ExportBlock(softwarePath, blockPath, exportPath, preservePath);
-                if (block != null)
+                Portal.ExportBlock(softwarePath, blockPath, exportPath, preservePath);
+
+                return new ResponseExportBlock
                 {
-                    return new ResponseExportBlock
+                    Message = $"Block exported from '{blockPath}' to '{exportPath}'",
+                    Meta = new JsonObject
                     {
-                        Message = $"Block exported from '{blockPath}' to '{exportPath}'",
-                        Meta = new JsonObject
-                        {
-                            ["timestamp"] = DateTime.Now,
-                            ["success"] = true
-                        }
-                    };
-                }
-                // Should not be reachable because Portal.ExportBlock throws on failure
-                throw new McpException($"Failed exporting block from '{blockPath}' to '{exportPath}'", McpErrorCode.InternalError);
+                        ["timestamp"] = DateTime.Now,
+                        ["success"] = true
+                    }
+                };
             }
-            catch (TiaMcpServer.Siemens.PortalException pex)
+            catch (TiaMcpServer.Siemens.PortalException pex) when (pex.Code == TiaMcpServer.Siemens.PortalErrorCode.NotFound)
             {
-                // Map known portal errors to sharper MCP errors and messages.
-                switch (pex.Code)
-                {
-                    case TiaMcpServer.Siemens.PortalErrorCode.NotFound:
-                        {
-                            var suggestionNote = string.Empty;
-                            // If the path has no '/', it may be incomplete; build suggestions using Portal's regex search and path resolver
-                            if (!string.IsNullOrEmpty(blockPath) && !blockPath.Contains('/'))
-                            {
-                                try
-                                {
-                                    var escaped = Regex.Escape(blockPath);
-                                    var blocks = Portal.GetBlocks(softwarePath, $"^{escaped}$");
-                                    if (blocks == null || blocks.Count == 0)
-                                    {
-                                        blocks = Portal.GetBlocks(softwarePath, escaped);
-                                    }
-
-                                    var candidates = blocks
-                                        .Take(10)
-                                        .Select(b => b.Path)
-                                        .Where(p => !string.IsNullOrWhiteSpace(p))
-                                        .Distinct(StringComparer.OrdinalIgnoreCase)
-                                        .ToList();
-
-                                    if (candidates.Count > 0)
-                                    {
-                                        suggestionNote = $" Did you mean: {string.Join(", ", candidates)}?";
-                                    }
-                                }
-                                catch
-                                {
-                                    // Best-effort suggestions only
-                                }
-                            }
-
-                            var msg = $"Block not found.{suggestionNote}".Trim();
-                            throw new McpException(msg, McpErrorCode.InvalidParams);
-                        }
-
-                    case TiaMcpServer.Siemens.PortalErrorCode.ExportFailed:
-                        {
-                            // Relay underlying portal error with concise reason; log full details
-                            var reason = pex.InnerException?.Message?.Trim();
-                            var msg = "Failed to export block.";
-                            if (!string.IsNullOrEmpty(reason)) msg += $" Reason: {reason}";
-
-                            Logger?.LogError(pex, "MCP ExportBlock failed for {SoftwarePath} {BlockPath} -> {ExportPath}",
-                                pex.Data?["softwarePath"], pex.Data?["blockPath"], pex.Data?["exportPath"]);
-
-                            throw new McpException(msg, McpErrorCode.InternalError);
-                        }
-
-                    case TiaMcpServer.Siemens.PortalErrorCode.InvalidParams:
-                    case TiaMcpServer.Siemens.PortalErrorCode.InvalidState:
-                        {
-                            throw new McpException(pex.Message, McpErrorCode.InvalidParams);
-                        }
-                }
-
-                // Fallback
-                throw new McpException(pex.Message, McpErrorCode.InternalError);
+                throw new McpException($"{pex.Message}.{SuggestBlockPaths(softwarePath, blockPath)}", McpErrorCode.InvalidParams);
+            }
+            catch (TiaMcpServer.Siemens.PortalException pex) when (pex.Code == TiaMcpServer.Siemens.PortalErrorCode.ExportFailed)
+            {
+                // The portal wraps what TIA Portal threw as "Export failed"; the reason is inside.
+                Logger?.LogError(pex, "MCP ExportBlock failed for {SoftwarePath} {BlockPath} -> {ExportPath}", softwarePath, blockPath, exportPath);
+                throw new McpException($"Failed to export block. Reason: {pex.InnerException?.Message ?? pex.Message}", McpErrorCode.InternalError);
             }
             catch (Exception ex) when (ex is not McpException)
             {
-                throw new McpException($"Unexpected error exporting block from '{blockPath}' to '{exportPath}': {ex.Message}", ex, McpErrorCode.InternalError);
+                throw ToolFailure(ex, $"exporting block from '{blockPath}' to '{exportPath}'");
             }
+        }
+
+        /// <remarks>
+        /// A bare name is the usual reason a block is not found, since paths are required. The
+        /// suggestion is advice on top of the answer, never the answer: if looking it up fails, the
+        /// caller still gets "not found" and the failure goes to the log. It used to go nowhere, in
+        /// an empty catch.
+        /// </remarks>
+        private static string SuggestBlockPaths(string softwarePath, string blockPath)
+        {
+            if (string.IsNullOrEmpty(blockPath) || blockPath.Contains('/'))
+            {
+                return string.Empty;
+            }
+
+            try
+            {
+                var candidates = FindBlockPathsNamed(softwarePath, Regex.Escape(blockPath));
+
+                return candidates.Count == 0 ? string.Empty : $" Did you mean: {string.Join(", ", candidates)}?";
+            }
+            catch (Exception ex)
+            {
+                Logger?.LogWarning(ex, "Could not look up suggestions for block '{BlockPath}' in '{SoftwarePath}'", blockPath, softwarePath);
+                return string.Empty;
+            }
+        }
+
+        private static List<string> FindBlockPathsNamed(string softwarePath, string escapedName)
+        {
+            var blocks = Portal.GetBlocks(softwarePath, $"^{escapedName}$");
+            if (blocks.Count == 0)
+            {
+                blocks = Portal.GetBlocks(softwarePath, escapedName);
+            }
+
+            return blocks
+                .Take(MaxBlockSuggestions)
+                .Select(block => block.Path)
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
 
         [McpServerTool(Name = "ExportBlocks"), Description("Export all blocks from the plc software to path")]
@@ -247,7 +214,7 @@ namespace TiaMcpServer.ModelContextProtocol
 
                 var allBlocks = await Task.Run(() => TiaMcpServer.Siemens.OpennessGate.Run(() => Portal.GetBlocks(softwarePath, regexName)));
 
-                if (allBlocks == null || allBlocks.Count == 0)
+                if (allBlocks.Count == 0)
                 {
                     await progress.ReportAsync(0, 0, "No blocks found to export");
                     return NoBlocksExported(call);
@@ -255,8 +222,7 @@ namespace TiaMcpServer.ModelContextProtocol
 
                 await progress.ReportAsync(0, allBlocks.Count, $"Starting export of {allBlocks.Count} blocks...");
 
-                var exportedBlocks = await Task.Run(() => TiaMcpServer.Siemens.OpennessGate.Run(() => Portal.ExportBlocks(softwarePath, exportPath, regexName, preservePath)))
-                    ?? throw new McpException($"Failed exporting blocks with '{regexName}' from '{softwarePath}' to {exportPath}", McpErrorCode.InternalError);
+                var exportedBlocks = await Task.Run(() => TiaMcpServer.Siemens.OpennessGate.Run(() => Portal.ExportBlocks(softwarePath, exportPath, regexName, preservePath)));
 
                 var response = BlocksExported(call, allBlocks, exportedBlocks);
                 await progress.ReportAsync(exportedBlocks.Count, allBlocks.Count, $"Export completed: {exportedBlocks.Count} blocks exported successfully");

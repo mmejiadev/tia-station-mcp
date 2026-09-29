@@ -27,10 +27,13 @@ namespace TiaMcpServer.Test
     public sealed class Test33DocumentExport
     {
         private const string Software = Settings.Project1PlcSoftwarePath0;
-        private const string BrokenName = "FC_BrokenByTest";
-        private const string TagName = "TiaMcpBrokenDone";
 
-        private const string BrokenBlock = @"{
+        // Internal because Test35DocumentImport imports the same document: it is the one this suite
+        // has measured TIA Portal V20 to accept.
+        internal const string BrokenName = "FC_BrokenByTest";
+        internal const string TagName = "TiaMcpBrokenDone";
+
+        internal const string BrokenBlock = @"{
     S7_Optimized := ""TRUE"";
     S7_PreferredLanguage := ""LAD"";
     S7_Version := ""0.1""
@@ -136,8 +139,8 @@ END_FUNCTION
             Directory.CreateDirectory(importDirectory);
             File.WriteAllText(Path.Combine(importDirectory, $"{BrokenName}.s7dcl"), BrokenBlock.Replace("\r\n", "\n").Replace("\n", "\r\n"), new UTF8Encoding(true));
 
-            var imported = AssemblyHooks.SharedPortal.ImportFromDocuments(Software, string.Empty, importDirectory, BrokenName, "Override");
-            Assert.IsTrue(imported, "The broken block could not be imported, so there is nothing to export");
+            // Throws, with the reason, when the block cannot be imported: there would be nothing to export.
+            AssemblyHooks.SharedPortal.ImportFromDocuments(Software, string.Empty, importDirectory, BrokenName, "Override");
 
             var compiled = AssemblyHooks.SharedPortal.CompileSoftware(Software);
             Assert.IsFalse(compiled.IsSuccessful, "The fixture compiled, so it no longer tests a broken block");

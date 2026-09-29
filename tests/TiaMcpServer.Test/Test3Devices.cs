@@ -1,4 +1,7 @@
-﻿namespace TiaMcpServer.Test
+﻿using System.Linq;
+using TiaMcpServer.Siemens;
+
+namespace TiaMcpServer.Test
 {
     /// <remarks>
     /// The device and device-item paths stay in <c>[DataRow]</c>: they describe the inside of the
@@ -79,6 +82,26 @@
 
             Assert.IsNotNull(devices);
             Assert.IsTrue(devices.Count > 0, "The project has devices but none were returned");
+        }
+
+        /// <remarks>
+        /// HMI_0 and PC-System_0 both sit at the top of the project, outside any group, which is
+        /// where the filter used to be skipped.
+        /// </remarks>
+        [TestMethod]
+        public void GetDevices_FilterOnATopLevelDevice_ReturnsOnlyThatDevice()
+        {
+            var devices = AssemblyHooks.SharedPortal.GetDevices("^HMI_0$");
+
+            Assert.AreEqual("HMI_0", string.Join(", ", devices.Select(device => device.Name)));
+        }
+
+        [TestMethod]
+        public void GetDevices_InvalidFilter_ThrowsInvalidParams()
+        {
+            var failure = Assert.ThrowsException<PortalException>(() => AssemblyHooks.SharedPortal.GetDevices("["));
+
+            Assert.AreEqual(PortalErrorCode.InvalidParams, failure.Code);
         }
     }
 }
