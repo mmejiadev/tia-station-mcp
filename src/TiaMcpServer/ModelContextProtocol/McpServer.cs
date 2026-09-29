@@ -338,6 +338,24 @@ namespace TiaMcpServer.ModelContextProtocol
 
         #endregion
 
+        /// <remarks>
+        /// The catch-all of a tool, for a failure that reached it from below. A PortalException still
+        /// carries its category — an invalid name filter is the caller's mistake, not a broken
+        /// environment — so it goes through ToMcpException; only what nobody planned for becomes an
+        /// internal error. The bulk exports used to send everything down the second path, which told
+        /// a caller to retry a request that could never succeed.
+        /// </remarks>
+        private static McpException ToolFailure(Exception failure, string action)
+        {
+            if (failure is TiaMcpServer.Siemens.PortalException portalException)
+            {
+                return ToMcpException(portalException, $"Failed {action}");
+            }
+
+            Logger?.LogError(failure, "Failed {Action}", action);
+            return new McpException($"Unexpected error {action}: {failure.Message}", failure, McpErrorCode.InternalError);
+        }
+
         private static McpException ToMcpException(TiaMcpServer.Siemens.PortalException portalException, string fallbackMessage)
         {
             Logger?.LogError(portalException, "{Message}", fallbackMessage);

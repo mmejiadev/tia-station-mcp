@@ -14,6 +14,7 @@ namespace TiaMcpServer.Test
     [DoNotParallelize]
     public sealed class Test4Software
     {
+        private const string UnknownSoftwarePath = "NoSuchDevice/NoSuchPlc";
         private const string BlockPath = "1_Tests/FC_Block_1";
         private const string BlockGroupPath = "1_Tests";
         private const string TypePath = "Common/CarrierRegister/ML_SubstratState";
@@ -207,6 +208,37 @@ namespace TiaMcpServer.Test
 
             Assert.IsNotNull(blocks, "An empty result must be a list, not null");
             Assert.AreEqual(0, blocks.Count);
+        }
+
+        /// <remarks>
+        /// A software path that does not exist used to answer an empty list, the same as a filter
+        /// that matches nothing — which for a bulk export is a short list that looks complete.
+        /// </remarks>
+        [TestMethod]
+        public void GetBlocks_UnknownSoftwarePath_ThrowsNotFound()
+        {
+            var failure = Assert.ThrowsException<PortalException>(
+                () => AssemblyHooks.SharedPortal.GetBlocks(UnknownSoftwarePath, string.Empty));
+
+            Assert.AreEqual(PortalErrorCode.NotFound, failure.Code, failure.Message);
+        }
+
+        [TestMethod]
+        public void GetTypes_UnknownSoftwarePath_ThrowsNotFound()
+        {
+            var failure = Assert.ThrowsException<PortalException>(
+                () => AssemblyHooks.SharedPortal.GetTypes(UnknownSoftwarePath, string.Empty));
+
+            Assert.AreEqual(PortalErrorCode.NotFound, failure.Code, failure.Message);
+        }
+
+        [TestMethod]
+        public void GetBlockHierarchy_UnknownSoftwarePath_ThrowsNotFound()
+        {
+            var failure = Assert.ThrowsException<PortalException>(
+                () => AssemblyHooks.SharedPortal.GetBlockHierarchy(UnknownSoftwarePath));
+
+            Assert.AreEqual(PortalErrorCode.NotFound, failure.Code, failure.Message);
         }
 
         [TestMethod]

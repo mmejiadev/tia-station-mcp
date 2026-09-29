@@ -1,9 +1,209 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-09-27**
+> Last updated: **2026-09-29**
 
 ## ▶ RESUME HERE
+
+### Batch 2, second item: the export tool's empty catch, and a device filter that was skipped — 2026-09-29
+
+**`McpServer.ExportBlock` went from 97 lines to 30**, with the suggestion for a bare name in its own
+`SuggestBlockPaths`. The empty catch around that suggestion is now a logged warning: the suggestion
+is advice on top of "not found", so a failure to build it must not replace the answer, but it no
+longer vanishes. It is the one catch in this batch that deliberately does not rethrow, like
+`ProgressReporter`'s. Other failures go through `ToolFailure`; an `ExportFailed` still carries TIA
+Portal's own reason.
+
+**The commented-out code in `PortalDevices.FindDevices` was hiding a defect.** The devices at the
+top of the project were added without the name filter, so `GetDevices("^PLC_1$")` also answered
+every device outside a group, and an invalid filter passed unnoticed in a project with no groups.
+The filter is now parsed before the walk and applied to them too. The commented block, which would
+not have compiled, is gone. **Still open**: devices under `UngroupedDevicesGroup` are not listed by
+`GetDevices` although `GetProjectTree` shows them. The test project has none, so it is not measured;
+deciding it needs a project that does.
+
+**Tests**: `Test3Devices` gains `GetDevices_FilterOnATopLevelDevice_ReturnsOnlyThatDevice` and
+`GetDevices_InvalidFilter_ThrowsInvalidParams`; `Test5McpServer` gains
+`ExportBlock_ExistingPath_ReportsSuccess` and `ExportBlock_BareName_ThrowsInvalidParamsSuggestingTheFullPath`.
+It compiles with 0 warnings.
+
+**Verified on 2026-09-29, the whole suite**: `TiaMcpServer.Test` 294 passed, 4 skipped (the download
+and the three session tests, skipped as before), 0 failed, in 22 minutes; Governance 209/209, Spec
+44/44, OpcUa 33/33. With the filter fix removed, `Test3Devices` fails
+`GetDevices_FilterOnATopLevelDevice_ReturnsOnlyThatDevice` and nothing else, answering
+`S7-1500/ET200MP-Station_3, PC-System_0, HMI_0` for `^HMI_0$`. The invalid-filter test passes
+without the fix too, because the test project has groups; it guards the new early parse. The
+`ExportBlock` tests guard behaviour the rewrite had to keep, not a defect: the empty catch never
+fired in them.
+
+**The log-only catches, read before touching them**: the two in `Portal.cs` are in `Dispose` and
+`ReleaseProjectIfOwned`, where logging is right — a release must not throw. The ones in
+`FindBlocks` and `FindTypes` are not, and next to them is a worse case: an unknown `softwarePath`
+answers an empty list, "no blocks", instead of `NotFound`.
+
+### Batch 2, third item: the finders stop answering "no blocks" for a path that does not exist — 2026-09-29
+
+**`FindBlocks`, `FindTypes` and `GetBlockHierarchy` go through `RequireSoftware`**, the lookup the
+tag tables already used: no project open is `InvalidState`, an empty path `InvalidParams`, a path
+that resolves to no PLC software `NotFound`. Before, all three — and any Openness failure — came
+back as an empty list or a null, logged and nothing else. For `ExportBlocks`, `ExportTypes` and
+`ExportBlocksAsDocuments` that was "No blocks found" with `success` true. `FindBlockRootGroup` is
+gone; so are the catches that swallowed the finders' failures in `PortalBlocks.ExportBlocks`,
+`PortalTypes.ExportTypes` and `PortalDocuments.FindBlocksOrNone`, which is gone with them. The
+`null` branches of `GetBlocks`, `GetTypes` and `GetBlocksWithHierarchy` could no longer be reached
+and are removed; the hierarchy tool now reports through `ToolFailure` like the others.
+
+**An Openness failure while listing is not wrapped**: there is no error code for a failed read, and
+`ExportFailed` would name the wrong thing. It reaches the tool, whose `ToolFailure` logs it and
+answers `InternalError` with its message.
+
+**Tests**: `Test4Software` gains `GetBlocks_`, `GetTypes_` and
+`GetBlockHierarchy_UnknownSoftwarePath_ThrowsNotFound`; `Test5McpServer` gains
+`ExportBlocks_UnknownSoftwarePath_ThrowsInvalidParams`. **Verified on 2026-09-29**: `Test3`, `Test4`,
+`Test5`, `Test33` and `Test35`, 77/77. With the three finders put back to answering empty for an
+unknown path, exactly the four new tests fail and no other.
+
+**Review before committing, 2026-09-29.** The three bulk exports of the portal returned `null` when
+no project was open, and the tools turned that into `InternalError`; with the finders throwing
+`InvalidState` first, those branches were dead. `ExportBlocks`, `ExportTypes` and
+`ExportBlocksAsDocuments` now return a non-null result, the last throws `InvalidState` below V20
+instead of returning null, and the tools lost their `?? throw` and `== null` checks. The V20 constant
+moved to `PortalDocuments.cs` and replaces the literal 20 in the single export too. The document
+imports fail as `WriteFailed`, not `ExportFailed`: they write. The three files added on 2026-09-28
+had LF, not CRLF as noted below; they have CRLF now. 0 warnings; `Test3`, `Test4`, `Test5`, `Test33`
+and `Test35` 77/77.
+
+**The next action.** The rest of batch 2: the portal bulk exports (`PortalBlocks.ExportBlocks`
+118 lines, `PortalTypes.ExportTypes`), which still only log their per-block failures, the single
+`PortalDocuments.ExportAsDocuments`, which answers `false` for a block it did not find, and the
+`ImportBlock`/`ImportType` pair, which answer `false` for every failure — a write path. Also open:
+`ExportBlock` with an unknown software path still says "Block not found".
+
+---
+
+### Batch 2, first item: the document imports stop swallowing their failures — 2026-09-28
+
+**`Portal.ImportBlocksFromDocuments` returns a `DocumentImportReport`**, the import twin of the
+export report from batch 1, and the tool carries its failures in `Failed`, with `failedBlocks` in
+`Meta`, a sentence in the message and `success` false when there are any. The two empty catches are
+gone. Each document that throws, returns no result, returns a state other than `Success` or returns
+`Success` naming no block is recorded as `DocumentName: reason`; for a failed state the reason
+carries TIA Portal's own `Messages`, which the code had never read. Blocks TIA Portal names are
+counted even when the document also failed: after a `PartialSuccess` they are in the project.
+
+**Found on the way, and worse than the empty catches**: a `groupPath` that does not exist was read
+as the root. The group lookup answers null for "no such group" and for "no group asked for", and
+both imports took null to mean the root — a mistyped group put the blocks at the top of the program
+and the tool reported them imported. Now `NotFound`. The same outer catch-all also turned no project
+open, an unknown software path, a missing directory and an invalid name filter into "completed: 0
+blocks"; each now throws with its category through the single decoration point.
+
+**`Portal.ImportFromDocuments` (single) returns nothing and throws with the reason** instead of
+answering false, which let the tool say only "failed". Same checks, same `DocumentImportFailure`, so
+the two tools cannot disagree about one document. The unused `preservePath` parameter of the bulk
+method is gone.
+
+**The imports moved to `PortalDocumentImport.cs`**; `PortalDocuments.cs` went from 438 lines to
+about 300. The TIA version is checked against a named constant.
+
+**Tests, new `Test35DocumentImport`**: a valid document imports (the bulk import had no test at
+all); a file that is not a document is named in `Failed` and `success` is false; a group that does
+not exist throws `NotFound`; `[` throws `InvalidParams`; the single import throws naming the
+document. The valid document is `Test33DocumentExport`'s, made `internal`, because it is measured to
+import. `Test33`'s fixture now relies on the single import throwing.
+
+**Verified on 2026-09-28.** It compiles with 0 warnings; the build first failed on two CA1859
+errors, `DocumentNames` and `ImportedBlocks` returning `IReadOnlyList` from private methods, now
+`List`. The three new files had CRLF but no BOM; they have it now. `Test33`, `Test35`, `Test16` and
+`Test5`: 62/62. Each fix was removed in turn and `Test35` run against it, and each time the test
+named for it failed and no other: a missing group read as the root fails
+`AGroupThatDoesNotExist_ThrowsNotFound`; an empty `Failed` fails `IsNamedInFailed`; the single import
+not throwing fails `ThrowsNamingIt`; the outer catch-all answering an empty report fails both the
+group and the `[` filter test.
+
+**Uncommitted, on `work/bulk-tool-progress`**, on top of batch 1's commit `3126df4`.
+
+**The next action.** The rest of batch 2: `McpServerBlocks.ExportBlock`'s empty catch, the log-only
+catches, the commented-out code in `PortalDevices.cs`, and the portal bulk exports.
+
+---
+
+### The bulk tools: one progress reporter, and failed blocks named in the response — 2026-09-27
+
+**The methods over 30 lines, measured first**: 91 of them by a heuristic scan (brace matching, not
+Roslyn, so a count can be off by a line). 56 are between 31 and 40 lines; the six over 100 were all
+bulk exports and imports inherited from upstream. The work is split into batches, each its own pull
+request and each run against the TIA suite, because unlike the two file splits before it this
+rewrites code that talks to TIA Portal. This is batch 1: the four bulk tools of the MCP layer.
+
+**`ProgressReporter` replaces the hand-written notifications.** `ExportBlocks`, `ExportTypes`,
+`ExportBlocksAsDocuments` and `ImportBlocksFromDocuments` each wrote out a dozen lines per progress
+notification as anonymous objects, and three of them held an empty `catch` around the failure
+notification. The reporter uses the SDK's typed `NotifyProgressAsync`, and a notification that
+cannot be sent is logged and never thrown — progress is advisory. That fixed a defect the rewrite
+first carried over: the tools awaited their notifications bare, so a channel that died after a
+guarded import had written its blocks turned the success into an error, inviting a retry of a write
+that had already happened. The anonymous
+objects carried an `error` field the typed notification has not; nothing in the harness or the
+dashboard reads it. Where the tools sent "exported N of M" and then "completed: N", which were
+always the same N, they now send one.
+
+**`ExportBlocksAsDocuments` names the blocks it could not export**, the last item of the debt
+measured on 2026-09-24. The portal layer already collected every failure — a directory that cannot
+be created, a stale document that cannot be removed, a licence, an exception — and only logged
+them. `Portal.ExportBlocksAsDocuments` now returns a `DocumentExportReport` with the exported blocks
+and those failures, and the response carries them in `Failed`, with `failedBlocks` in `Meta`, a
+sentence in the message, and `success` false when there are any.
+
+**Smaller, shared.** The four TIA version checks of the document tools are one
+`RequireDocumentSupport`; the en-US pre-scan the single and bulk imports each wrote is one
+`MissingEnUsWarning`; `BulkCall` carries the four values every bulk message needs. 91 methods over
+the limit became 86;
+every method in the four tools' files that this batch touched is now under 30 lines. 0 warnings.
+
+**An invalid name filter now reaches the caller as invalid input**, found when the user asked
+whether this batch was free of bugs and a test was written to show it. It was wrong twice over.
+`Portal.FindBlocks` and `FindTypes` caught every exception, the `InvalidParams` that `NameFilter`
+throws included, and returned an empty list — so `[` answered "no blocks found", a shorter list that
+looks complete. And the tools mapped whatever did reach them to `InternalError`, "retry". The finders
+now let a `PortalException` through, and `GetBlocks`, `GetTypes` and the four bulk tools send every
+failure through one `ToolFailure`, which keeps a `PortalException`'s category. Other exceptions in
+the finders are still logged and swallowed; see below.
+
+**Tests.** `Test34ProgressReporter`: no token sends nothing; a notification that cannot be sent is
+logged, not thrown. `Test33DocumentExport` gains
+`ExportBlocksAsDocuments_ADocumentThatCannotBeWritten_IsNamedInFailed`, which holds the target
+document open with no sharing so the export cannot write it. `Test5McpServer` gains
+`<Tool>_InvalidFilter_ThrowsInvalidParams` for `GetBlocks`, `GetTypes`, `ExportBlocks`,
+`ExportTypes` and `ExportBlocksAsDocuments`. Each fix was removed and its test run to see it fail:
+emptying `Failed` fails the first; disabling `ToolFailure`'s portal branch fails all five filter
+tests; restoring `FindBlocks`' catch-all fails the three block ones.
+
+**What swallows errors, measured by a scan of every catch that does not rethrow**: 3 empty and 7
+that only log, all inherited, besides the one in `ProgressReporter` that is deliberate.
+- Empty: `McpServerBlocks.ExportBlock` ("Best-effort suggestions only"), and two in
+  `PortalDocuments.ImportBlocksFromDocuments` — **a write path**: a block that fails to import is
+  skipped in silence and the tool answers "completed" with fewer blocks.
+- Log-only: `Portal.cs` 167 and 202, `PortalBlocks.cs` 190 (Openness failures in `FindBlocks`) and
+  215, `PortalDocuments.cs` 375 and 431, `PortalTypes.cs` 163.
+- Commented-out code, which CLAUDE.md forbids: `PortalDevices.cs` 87–90.
+
+**Uncommitted, on `work/bulk-tool-progress`**, cut from `main` after PR #31.
+
+**The next action.** Batch 2 is the swallowed errors above, before any more method lengths, because
+they are defects rather than shape — the silent import first, since it writes. It takes the portal
+bulk methods with it (`PortalBlocks.ExportBlocks` 118 lines, `PortalTypes.ExportTypes` 101,
+`PortalDocuments.ExportAsDocuments` 94, `ImportBlocksFromDocuments` 76) and the single-item exports
+of the MCP layer (`ExportBlock` 90, `ExportType` 48). Then `Program` and `CliOptions`; then the
+31–40 line methods one by one, saying so where splitting one would make it less clear. Then the
+GRAFCET timer instance DB, then GEMMA.
+
+**Not addressed, and worth knowing for "scalable"**: the bulk tools report progress only at the
+start and the end, because the portal methods take no progress callback; and none of them takes a
+`CancellationToken`, which CLAUDE.md asks of every long operation. Both need the portal signatures
+to change, so they belong with batch 2.
+
+---
 
 ### Responses split into one class per file, and the order before installing — 2026-09-27
 

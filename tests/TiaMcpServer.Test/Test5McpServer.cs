@@ -1,4 +1,7 @@
-﻿using System.Linq;
+﻿using ModelContextProtocol;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
 using TiaMcpServer.ModelContextProtocol;
 
 namespace TiaMcpServer.Test
@@ -12,6 +15,9 @@ namespace TiaMcpServer.Test
     [DoNotParallelize]
     public sealed class Test5McpServer
     {
+        /// <summary>An unclosed character class: not a valid regular expression.</summary>
+        private const string InvalidFilter = "[";
+
         [TestInitialize]
         public void TestInit()
         {
@@ -23,6 +29,92 @@ namespace TiaMcpServer.Test
         public void TestCleanup()
         {
             McpServer.CloseProject();
+        }
+
+        /// <remarks>
+        /// An invalid name filter is the caller's mistake. The portal layer swallowed it and answered
+        /// with an empty list, and the tools turned what did get through into an internal error —
+        /// "no blocks" or "retry", never "your filter is wrong". One test per tool, since each had
+        /// its own catch.
+        /// </remarks>
+        [TestMethod]
+        public void GetBlocks_InvalidFilter_ThrowsInvalidParams()
+        {
+            var failure = Assert.ThrowsException<McpException>(
+                () => McpServer.GetBlocks(Settings.Project1PlcSoftwarePath0, InvalidFilter));
+
+            Assert.AreEqual(McpErrorCode.InvalidParams, failure.ErrorCode, failure.Message);
+        }
+
+        [TestMethod]
+        public void GetTypes_InvalidFilter_ThrowsInvalidParams()
+        {
+            var failure = Assert.ThrowsException<McpException>(
+                () => McpServer.GetTypes(Settings.Project1PlcSoftwarePath0, InvalidFilter));
+
+            Assert.AreEqual(McpErrorCode.InvalidParams, failure.ErrorCode, failure.Message);
+        }
+
+        [TestMethod]
+        public void ExportBlock_ExistingPath_ReportsSuccess()
+        {
+            var response = McpServer.ExportBlock(Settings.Project1PlcSoftwarePath0, "1_Tests/FC_Block_1", Path.GetTempPath());
+
+            Assert.AreEqual(true, (bool?)response.Meta?["success"], response.Message);
+        }
+
+        /// <remarks>
+        /// The suggestion used to be built inside an empty catch. The answer is still "not found",
+        /// as invalid input, and it names the full path the caller most likely meant.
+        /// </remarks>
+        [TestMethod]
+        public void ExportBlock_BareName_ThrowsInvalidParamsSuggestingTheFullPath()
+        {
+            var failure = Assert.ThrowsException<McpException>(
+                () => McpServer.ExportBlock(Settings.Project1PlcSoftwarePath0, "FC_Block_1", Path.GetTempPath()));
+
+            Assert.AreEqual(McpErrorCode.InvalidParams, failure.ErrorCode, failure.Message);
+            StringAssert.Contains(failure.Message, "1_Tests/FC_Block_1");
+        }
+
+        /// <remarks>
+        /// The bulk export used to answer "No blocks found" with success true for a software path
+        /// that does not exist.
+        /// </remarks>
+        [TestMethod]
+        public async Task ExportBlocks_UnknownSoftwarePath_ThrowsInvalidParams()
+        {
+            var failure = await Assert.ThrowsExceptionAsync<McpException>(
+                () => McpServer.ExportBlocks(null!, null!, "NoSuchDevice/NoSuchPlc", Path.GetTempPath()));
+
+            Assert.AreEqual(McpErrorCode.InvalidParams, failure.ErrorCode, failure.Message);
+        }
+
+        [TestMethod]
+        public async Task ExportBlocks_InvalidFilter_ThrowsInvalidParams()
+        {
+            var failure = await Assert.ThrowsExceptionAsync<McpException>(
+                () => McpServer.ExportBlocks(null!, null!, Settings.Project1PlcSoftwarePath0, Path.GetTempPath(), InvalidFilter));
+
+            Assert.AreEqual(McpErrorCode.InvalidParams, failure.ErrorCode, failure.Message);
+        }
+
+        [TestMethod]
+        public async Task ExportTypes_InvalidFilter_ThrowsInvalidParams()
+        {
+            var failure = await Assert.ThrowsExceptionAsync<McpException>(
+                () => McpServer.ExportTypes(null!, null!, Settings.Project1PlcSoftwarePath0, Path.GetTempPath(), InvalidFilter));
+
+            Assert.AreEqual(McpErrorCode.InvalidParams, failure.ErrorCode, failure.Message);
+        }
+
+        [TestMethod]
+        public async Task ExportBlocksAsDocuments_InvalidFilter_ThrowsInvalidParams()
+        {
+            var failure = await Assert.ThrowsExceptionAsync<McpException>(
+                () => McpServer.ExportBlocksAsDocuments(null!, null!, Settings.Project1PlcSoftwarePath0, Path.GetTempPath(), InvalidFilter));
+
+            Assert.AreEqual(McpErrorCode.InvalidParams, failure.ErrorCode, failure.Message);
         }
 
         [TestMethod]

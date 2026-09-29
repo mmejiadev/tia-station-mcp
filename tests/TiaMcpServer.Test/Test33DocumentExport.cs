@@ -2,6 +2,8 @@
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
+using TiaMcpServer.ModelContextProtocol;
 using TiaMcpServer.Siemens;
 
 namespace TiaMcpServer.Test
@@ -25,10 +27,13 @@ namespace TiaMcpServer.Test
     public sealed class Test33DocumentExport
     {
         private const string Software = Settings.Project1PlcSoftwarePath0;
-        private const string BrokenName = "FC_BrokenByTest";
-        private const string TagName = "TiaMcpBrokenDone";
 
-        private const string BrokenBlock = @"{
+        // Internal because Test35DocumentImport imports the same document: it is the one this suite
+        // has measured TIA Portal V20 to accept.
+        internal const string BrokenName = "FC_BrokenByTest";
+        internal const string TagName = "TiaMcpBrokenDone";
+
+        internal const string BrokenBlock = @"{
     S7_Optimized := ""TRUE"";
     S7_PreferredLanguage := ""LAD"";
     S7_Version := ""0.1""
@@ -55,6 +60,7 @@ END_FUNCTION
         {
             _directory = AssemblyHooks.CreateTestDirectory();
             AssemblyHooks.SharedPortal.OpenProject(AssemblyHooks.ProjectPath);
+            McpServer.Portal = AssemblyHooks.SharedPortal;
         }
 
         [TestCleanup]
@@ -89,15 +95,38 @@ END_FUNCTION
             Assert.IsFalse(broken.IsConsistent, "A block that does not compile was reported as consistent");
         }
 
+        /// <remarks>
+        /// A block whose document cannot be written must be named in the response with its reason,
+        /// not left for the caller to notice by counting. The document is held open with no sharing,
+        /// so neither removing the stale one nor writing the new one can succeed. No server and no
+        /// request context: what is under test is the response, not the progress notifications.
+        /// </remarks>
+        [TestMethod]
+        public async Task ExportBlocksAsDocuments_ADocumentThatCannotBeWritten_IsNamedInFailed()
+        {
+            ImportBrokenBlock();
+            var exportDirectory = Path.Combine(_directory, "export");
+            Directory.CreateDirectory(exportDirectory);
+
+            ResponseExportBlocksAsDocuments response;
+            using (File.Open(Path.Combine(exportDirectory, $"{BrokenName}.s7dcl"), FileMode.Create, FileAccess.ReadWrite, FileShare.None))
+            {
+                response = await McpServer.ExportBlocksAsDocuments(null!, null!, Software, exportDirectory, BrokenName);
+            }
+
+            var failures = response.Failed?.ToList() ?? new List<string>();
+            Assert.IsTrue(failures.Any(line => line.StartsWith($"{BrokenName}:")), $"The block whose document is locked is not named in Failed: {response.Message}");
+        }
+
         private IReadOnlyList<BlockDescription> ExportBroken(out string exportDirectory)
         {
             ImportBrokenBlock();
 
             exportDirectory = Path.Combine(_directory, "export");
-            var exported = AssemblyHooks.SharedPortal.ExportBlocksAsDocuments(Software, exportDirectory, BrokenName);
+            var report = AssemblyHooks.SharedPortal.ExportBlocksAsDocuments(Software, exportDirectory, BrokenName);
 
-            Assert.IsNotNull(exported, "The document export returned nothing");
-            return exported;
+            Assert.IsNotNull(report, "The document export returned nothing");
+            return report.Exported;
         }
 
         private void ImportBrokenBlock()
@@ -110,8 +139,8 @@ END_FUNCTION
             Directory.CreateDirectory(importDirectory);
             File.WriteAllText(Path.Combine(importDirectory, $"{BrokenName}.s7dcl"), BrokenBlock.Replace("\r\n", "\n").Replace("\n", "\r\n"), new UTF8Encoding(true));
 
-            var imported = AssemblyHooks.SharedPortal.ImportFromDocuments(Software, string.Empty, importDirectory, BrokenName, "Override");
-            Assert.IsTrue(imported, "The broken block could not be imported, so there is nothing to export");
+            // Throws, with the reason, when the block cannot be imported: there would be nothing to export.
+            AssemblyHooks.SharedPortal.ImportFromDocuments(Software, string.Empty, importDirectory, BrokenName, "Override");
 
             var compiled = AssemblyHooks.SharedPortal.CompileSoftware(Software);
             Assert.IsFalse(compiled.IsSuccessful, "The fixture compiled, so it no longer tests a broken block");

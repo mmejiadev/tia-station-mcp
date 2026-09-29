@@ -39,7 +39,10 @@ namespace TiaMcpServer.Siemens
         /// <param name="softwarePath">Path to the PLC software in the project.</param>
         /// <param name="regexName">The name filter, or empty for every block.</param>
         /// <returns>One description per matching block, in the order the program lists them.</returns>
-        /// <exception cref="PortalException">The filter is not a valid expression.</exception>
+        /// <exception cref="PortalException">
+        /// The filter is not a valid expression, no project is open, or there is no PLC software at
+        /// the path.
+        /// </exception>
         public IReadOnlyList<BlockDescription> GetBlocks(string softwarePath, string regexName = "")
         {
             return DescribeBlocks(FindBlocks(softwarePath, regexName));
@@ -65,12 +68,13 @@ namespace TiaMcpServer.Siemens
 
         /// <summary>Describes the whole block tree of a PLC program.</summary>
         /// <param name="softwarePath">Path to the PLC software in the project.</param>
-        /// <returns>The root group with its blocks and subgroups, or null when it cannot be read.</returns>
-        public BlockGroupDescription? GetBlockHierarchy(string softwarePath)
+        /// <returns>The root group with its blocks and subgroups.</returns>
+        /// <exception cref="PortalException">No project is open, or there is no PLC software at the path.</exception>
+        public BlockGroupDescription GetBlockHierarchy(string softwarePath)
         {
-            var root = FindBlockRootGroup(softwarePath);
+            _logger?.LogInformation("Getting block root group...");
 
-            return root == null ? null : BlockDescriber.DescribeGroup(root, string.Empty);
+            return BlockDescriber.DescribeGroup(RequireSoftware(softwarePath).BlockGroup, string.Empty);
         }
 
         private PlcBlock? FindBlock(string softwarePath, string blockPath)
@@ -163,61 +167,19 @@ namespace TiaMcpServer.Siemens
             return string.Join("/", segments);
         }
 
+        /// <remarks>
+        /// Throws rather than answering an empty list. A software path that does not exist, no
+        /// project open and an Openness failure all used to come back as "no blocks" — for an
+        /// export, a shorter list that looks complete — and only the log knew why.
+        /// </remarks>
         private List<PlcBlock> FindBlocks(string softwarePath, string regexName = "")
         {
             _logger?.LogInformation("Getting blocks...");
 
-            if (IsProjectNull())
-            {
-                return [];
-            }
-
             var list = new List<PlcBlock>();
-
-            try
-            {
-                var softwareContainer = GetSoftwareContainer(softwarePath);
-                if (softwareContainer?.Software is PlcSoftware plcSoftware)
-                {
-                    var group = plcSoftware?.BlockGroup;
-
-                    if (group != null)
-                    {
-                        GetBlocksRecursive(group, list, regexName);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogError(ex, "Error getting blocks from {SoftwarePath} with regex {RegexName}", softwarePath, regexName);
-            }
+            GetBlocksRecursive(RequireSoftware(softwarePath).BlockGroup, list, regexName);
 
             return list;
-        }
-
-        private PlcBlockSystemGroup? FindBlockRootGroup(string softwarePath)
-        {
-            _logger?.LogInformation("Getting block root group...");
-
-            if (IsProjectNull())
-            {
-                return null;
-            }
-
-            try
-            {
-                var softwareContainer = GetSoftwareContainer(softwarePath);
-                if (softwareContainer?.Software is PlcSoftware plcSoftware)
-                {
-                    return plcSoftware.BlockGroup;
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogError(ex, "Error getting block root group");
-            }
-
-            return null;
         }
 
         public BlockDescription? ExportBlock(string softwarePath, string blockPath, string exportPath, bool preservePath = false)
@@ -329,29 +291,23 @@ namespace TiaMcpServer.Siemens
             return false;
         }
 
-        public IReadOnlyList<BlockDescription>? ExportBlocks(string softwarePath, string exportPath, string regexName = "", bool preservePath = false)
+        /// <summary>Exports every consistent block whose name matches as SimaticML.</summary>
+        /// <param name="softwarePath">Full path to the PLC software.</param>
+        /// <param name="exportPath">Directory the files are written to.</param>
+        /// <param name="regexName">Name or regular expression selecting the blocks; empty for all.</param>
+        /// <param name="preservePath">Mirror the block group structure below the export directory.</param>
+        /// <returns>The blocks exported. Inconsistent blocks and blocks that failed are left out.</returns>
+        /// <exception cref="PortalException">
+        /// No project is open, there is no PLC software at the path, or the filter is not valid.
+        /// </exception>
+        public IReadOnlyList<BlockDescription> ExportBlocks(string softwarePath, string exportPath, string regexName = "", bool preservePath = false)
         {
             _logger?.LogInformation("Exporting blocks...");
-
-            if (IsProjectNull())
-            {
-                return null;
-            }
 
             var exportList = new List<PlcBlock>();
             var failures = new List<string>();
             
-            PlcBlock[] list;
-
-            try
-            {
-                list = FindBlocks(softwarePath, regexName).ToArray();
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogError(ex, "Failed to retrieve block list for {SoftwarePath}", softwarePath);
-                return DescribeBlocks(exportList);
-            }
+            var list = FindBlocks(softwarePath, regexName).ToArray();
 
             for (int k = 0; k < list.Count(); k++)
             {
