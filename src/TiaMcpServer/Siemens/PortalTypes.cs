@@ -213,51 +213,42 @@ namespace TiaMcpServer.Siemens
             }
         }
 
-        public bool ImportType(string softwarePath, string groupPath, string importPath)
+        /// <summary>Imports a user-defined type from a SimaticML file, replacing a type of the same name.</summary>
+        /// <param name="softwarePath">Full path to the PLC software.</param>
+        /// <param name="groupPath">Type group the type is placed in; empty for the root.</param>
+        /// <param name="importPath">The SimaticML file.</param>
+        /// <param name="backupDirectory">
+        /// Where the program's blocks and types are exported before anything is written. Required:
+        /// the import replaces a type of the same name.
+        /// </param>
+        /// <exception cref="PortalException">
+        /// The type was not imported, or the backup was incomplete so nothing was; the message says why.
+        /// </exception>
+        /// <remarks>It used to answer false for every failure, as ImportBlock did.</remarks>
+        public void ImportType(string softwarePath, string groupPath, string importPath, string backupDirectory)
         {
             _logger?.LogInformation($"Importing type from path: {importPath}");
 
-            var success = false;
-
-            if (IsProjectNull())
+            try
             {
-                return success;
-            }
+                var software = RequireSoftware(softwarePath);
+                var group = GetPlcTypeGroupByPath(softwarePath, groupPath)
+                    ?? throw new PortalException(PortalErrorCode.NotFound, $"Type group not found: '{groupPath}' in {softwarePath}");
 
-            var softwareContainer = GetSoftwareContainer(softwarePath);
-            if (softwareContainer?.Software is PlcSoftware plcSoftware)
-            {
-                var typeGroup = plcSoftware?.TypeGroup;
+                var file = RequireImportFile(importPath);
 
-                if (typeGroup != null)
+                ProgramBackup.Save(software, backupDirectory, _logger);
+                var imported = group.Types.Import(file, ImportOptions.Override);
+
+                if (imported == null || imported.Count == 0)
                 {
-                    var group = GetPlcTypeGroupByPath(softwarePath, groupPath);
-                    if (group == null)
-                    {
-                        return false;
-                    }
-
-                    try
-                    {
-                        // Correct the argument type by using FileInfo instead of FileStream  
-                        var fileInfo = new FileInfo(importPath);
-                        if (fileInfo.Exists)
-                        {
-                            var list = group.Types.Import(fileInfo, ImportOptions.Override);
-                            if (list != null && list.Count > 0)
-                            {
-                                return true;
-                            }
-                        }
-                    }
-                    catch (Exception)
-                    {
-                        return false;
-                    }
+                    throw new PortalException(PortalErrorCode.WriteFailed, $"TIA Portal imported no type from '{importPath}'");
                 }
             }
-
-            return success;
+            catch (Exception ex)
+            {
+                throw DecorateImportFailure(ex, "ImportType", softwarePath, groupPath, importPath);
+            }
         }
 
         /// <summary>Exports every consistent user-defined type whose name matches as SimaticML.</summary>

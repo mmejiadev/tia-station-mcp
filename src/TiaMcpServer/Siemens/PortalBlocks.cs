@@ -244,51 +244,69 @@ namespace TiaMcpServer.Siemens
             }
         }
 
-        public bool ImportBlock(string softwarePath, string groupPath, string importPath)
+        /// <summary>Imports a block from a SimaticML file, replacing a block of the same name.</summary>
+        /// <param name="softwarePath">Full path to the PLC software.</param>
+        /// <param name="groupPath">Block group the block is placed in; empty for the root.</param>
+        /// <param name="importPath">The SimaticML file.</param>
+        /// <param name="backupDirectory">
+        /// Where the program's blocks and types are exported before anything is written. Required:
+        /// the import replaces a block of the same name.
+        /// </param>
+        /// <exception cref="PortalException">
+        /// The block was not imported, or the backup was incomplete so nothing was; the message says why.
+        /// </exception>
+        /// <remarks>
+        /// It used to answer false for every failure — no project, a group or a file that does not
+        /// exist, TIA Portal rejecting the XML — and the tool could only say "failed".
+        /// </remarks>
+        public void ImportBlock(string softwarePath, string groupPath, string importPath, string backupDirectory)
         {
             _logger?.LogInformation($"Importing block from path: {importPath}");
 
-            if (IsProjectNull())
+            try
             {
-                return false;
-            }
+                var software = RequireSoftware(softwarePath);
+                var group = GetPlcBlockGroupByPath(softwarePath, groupPath)
+                    ?? throw new PortalException(PortalErrorCode.NotFound, $"Block group not found: '{groupPath}' in {softwarePath}");
 
-            var softwareContainer = GetSoftwareContainer(softwarePath);
-            if (softwareContainer?.Software is PlcSoftware plcSoftware)
-            {
-                var blockGroup = plcSoftware?.BlockGroup;
+                var file = RequireImportFile(importPath);
 
-                if (blockGroup != null)
+                ProgramBackup.Save(software, backupDirectory, _logger);
+                var imported = group.Blocks.Import(file, ImportOptions.Override);
+
+                if (imported == null || imported.Count == 0)
                 {
-
-                    var group = GetPlcBlockGroupByPath(softwarePath, groupPath);
-                    if (group == null)
-                    {
-                        return false;
-                    }
-
-                    try
-                    {
-                        // Correct the argument type by using FileInfo instead of FileStream  
-                        var fileInfo = new FileInfo(importPath);
-                        if (fileInfo.Exists)
-                        {
-                            var list = group.Blocks.Import(fileInfo, ImportOptions.Override);
-                            if (list != null && list.Count > 0)
-                            {
-                                return true;
-                            }
-                        }
-
-                    }
-                    catch (Exception)
-                    {
-                        return false;
-                    }
+                    throw new PortalException(PortalErrorCode.WriteFailed, $"TIA Portal imported no block from '{importPath}'");
                 }
             }
+            catch (Exception ex)
+            {
+                throw DecorateImportFailure(ex, "ImportBlock", softwarePath, groupPath, importPath);
+            }
+        }
 
-            return false;
+        private static FileInfo RequireImportFile(string importPath)
+        {
+            if (string.IsNullOrWhiteSpace(importPath))
+            {
+                throw new PortalException(PortalErrorCode.InvalidParams, "importPath is required");
+            }
+
+            var file = new FileInfo(importPath);
+
+            return file.Exists ? file : throw new PortalException(PortalErrorCode.NotFound, $"Import file does not exist: {importPath}");
+        }
+
+        private PortalException DecorateImportFailure(Exception ex, string operation, string softwarePath, string groupPath, string importPath)
+        {
+            var pex = ex as PortalException ?? new PortalException(PortalErrorCode.WriteFailed, $"{operation} failed: {ex.Message}", null, ex);
+
+            pex.Data["softwarePath"] = softwarePath;
+            pex.Data["groupPath"] = groupPath;
+            pex.Data["importPath"] = importPath;
+
+            _logger?.LogError(pex, "{Operation} failed for {SoftwarePath} {GroupPath} <- {ImportPath}", operation, softwarePath, groupPath, importPath);
+            return pex;
         }
 
         /// <summary>Exports every consistent block whose name matches as SimaticML.</summary>

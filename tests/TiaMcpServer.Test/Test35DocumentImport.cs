@@ -52,7 +52,7 @@ namespace TiaMcpServer.Test
         {
             WriteValidDocument();
 
-            var report = AssemblyHooks.SharedPortal.ImportBlocksFromDocuments(Software, string.Empty, _importDirectory, Test33DocumentExport.BrokenName, "Override");
+            var report = AssemblyHooks.SharedPortal.ImportBlocksFromDocuments(Request(string.Empty), Test33DocumentExport.BrokenName, "Override");
 
             Assert.IsTrue(report.Imported.Any(block => block.Name == Test33DocumentExport.BrokenName), $"The block is not among those imported. Failures: {string.Join("; ", report.Failures)}");
             Assert.AreEqual(0, report.Failures.Count, string.Join("; ", report.Failures));
@@ -81,7 +81,7 @@ namespace TiaMcpServer.Test
             WriteValidDocument();
 
             var thrown = Assert.ThrowsException<PortalException>(() =>
-                AssemblyHooks.SharedPortal.ImportBlocksFromDocuments(Software, "NoSuchGroup", _importDirectory, Test33DocumentExport.BrokenName, "Override"));
+                AssemblyHooks.SharedPortal.ImportBlocksFromDocuments(Request("NoSuchGroup"), Test33DocumentExport.BrokenName, "Override"));
 
             Assert.AreEqual(PortalErrorCode.NotFound, thrown.Code, thrown.Message);
         }
@@ -92,7 +92,7 @@ namespace TiaMcpServer.Test
             WriteValidDocument();
 
             var thrown = Assert.ThrowsException<PortalException>(() =>
-                AssemblyHooks.SharedPortal.ImportBlocksFromDocuments(Software, string.Empty, _importDirectory, "[", "Override"));
+                AssemblyHooks.SharedPortal.ImportBlocksFromDocuments(Request(string.Empty), "[", "Override"));
 
             Assert.AreEqual(PortalErrorCode.InvalidParams, thrown.Code, thrown.Message);
         }
@@ -103,9 +103,14 @@ namespace TiaMcpServer.Test
             WriteNotADocument();
 
             var thrown = Assert.ThrowsException<PortalException>(() =>
-                AssemblyHooks.SharedPortal.ImportFromDocuments(Software, string.Empty, _importDirectory, NotADocumentName, "Override"));
+                AssemblyHooks.SharedPortal.ImportFromDocuments(Request(string.Empty), NotADocumentName, "Override"));
 
             StringAssert.Contains(thrown.Message, NotADocumentName);
+        }
+
+        private DocumentImportRequest Request(string groupPath)
+        {
+            return new DocumentImportRequest(Software, groupPath, _importDirectory, Path.Combine(_directory, "backup"));
         }
 
         private void WriteValidDocument()

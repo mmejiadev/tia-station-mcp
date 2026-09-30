@@ -334,6 +334,8 @@ namespace TiaMcpServer.Test
                 "ExportTypes wrote no files");
         }
 
+        private string BackupDirectory => Path.Combine(_exportDirectory, "backup");
+
         [TestMethod]
         public void ImportBlock_PreviouslyExportedBlock_Succeeds()
         {
@@ -342,9 +344,9 @@ namespace TiaMcpServer.Test
             AssemblyHooks.SharedPortal.ExportBlock(Settings.Project1PlcSoftwarePath0, BlockPath, _exportDirectory, preservePath: false);
             var exportedFile = Directory.EnumerateFiles(_exportDirectory, "FC_Block_1.xml", SearchOption.AllDirectories).Single();
 
-            var result = AssemblyHooks.SharedPortal.ImportBlock(Settings.Project1PlcSoftwarePath0, BlockGroupPath, exportedFile);
+            AssemblyHooks.SharedPortal.ImportBlock(Settings.Project1PlcSoftwarePath0, BlockGroupPath, exportedFile, BackupDirectory);
 
-            Assert.IsTrue(result, $"Failed to import {exportedFile}");
+            Assert.IsNotNull(AssemblyHooks.SharedPortal.GetBlock(Settings.Project1PlcSoftwarePath0, BlockPath), "The imported block is not in the project");
         }
 
         [TestMethod]
@@ -353,9 +355,60 @@ namespace TiaMcpServer.Test
             AssemblyHooks.SharedPortal.ExportType(Settings.Project1PlcSoftwarePath0, TypePath, _exportDirectory, preservePath: false);
             var exportedFile = Directory.EnumerateFiles(_exportDirectory, "ML_SubstratState.xml", SearchOption.AllDirectories).Single();
 
-            var result = AssemblyHooks.SharedPortal.ImportType(Settings.Project1PlcSoftwarePath0, TypeGroupPath, exportedFile);
+            AssemblyHooks.SharedPortal.ImportType(Settings.Project1PlcSoftwarePath0, TypeGroupPath, exportedFile, BackupDirectory);
 
-            Assert.IsTrue(result, $"Failed to import {exportedFile}");
+            Assert.IsNotNull(AssemblyHooks.SharedPortal.GetType(Settings.Project1PlcSoftwarePath0, TypePath), "The imported type is not in the project");
+        }
+
+        /// <remarks>
+        /// The imports answered false for every failure, so the tool could only say "failed". Each
+        /// cause now arrives with its category: a missing file or group is the caller's to fix.
+        /// </remarks>
+        [TestMethod]
+        public void ImportBlock_FileThatDoesNotExist_ThrowsNotFound()
+        {
+            var missingFile = Path.Combine(_exportDirectory, "NoSuchBlock.xml");
+
+            var failure = Assert.ThrowsException<PortalException>(
+                () => AssemblyHooks.SharedPortal.ImportBlock(Settings.Project1PlcSoftwarePath0, BlockGroupPath, missingFile, BackupDirectory));
+
+            Assert.AreEqual(PortalErrorCode.NotFound, failure.Code, failure.Message);
+        }
+
+        [TestMethod]
+        public void ImportBlock_GroupThatDoesNotExist_ThrowsNotFound()
+        {
+            AssemblyHooks.SharedPortal.ExportBlock(Settings.Project1PlcSoftwarePath0, BlockPath, _exportDirectory, preservePath: false);
+            var exportedFile = Directory.EnumerateFiles(_exportDirectory, "FC_Block_1.xml", SearchOption.AllDirectories).Single();
+
+            var failure = Assert.ThrowsException<PortalException>(
+                () => AssemblyHooks.SharedPortal.ImportBlock(Settings.Project1PlcSoftwarePath0, "NoSuchGroup", exportedFile, BackupDirectory));
+
+            Assert.AreEqual(PortalErrorCode.NotFound, failure.Code, failure.Message);
+        }
+
+        [TestMethod]
+        public void ImportBlock_FileThatIsNotSimaticMl_ThrowsWriteFailed()
+        {
+            var notSimaticMl = Path.Combine(_exportDirectory, "NotSimaticMl.xml");
+            Directory.CreateDirectory(_exportDirectory);
+            File.WriteAllText(notSimaticMl, "<NotSimaticMl />");
+
+            var failure = Assert.ThrowsException<PortalException>(
+                () => AssemblyHooks.SharedPortal.ImportBlock(Settings.Project1PlcSoftwarePath0, BlockGroupPath, notSimaticMl, BackupDirectory));
+
+            Assert.AreEqual(PortalErrorCode.WriteFailed, failure.Code, failure.Message);
+        }
+
+        [TestMethod]
+        public void ImportType_FileThatDoesNotExist_ThrowsNotFound()
+        {
+            var missingFile = Path.Combine(_exportDirectory, "NoSuchType.xml");
+
+            var failure = Assert.ThrowsException<PortalException>(
+                () => AssemblyHooks.SharedPortal.ImportType(Settings.Project1PlcSoftwarePath0, TypeGroupPath, missingFile, BackupDirectory));
+
+            Assert.AreEqual(PortalErrorCode.NotFound, failure.Code, failure.Message);
         }
     }
 }

@@ -140,7 +140,7 @@ END_FUNCTION
             File.WriteAllText(Path.Combine(importDirectory, $"{BrokenName}.s7dcl"), BrokenBlock.Replace("\r\n", "\n").Replace("\n", "\r\n"), new UTF8Encoding(true));
 
             // Throws, with the reason, when the block cannot be imported: there would be nothing to export.
-            AssemblyHooks.SharedPortal.ImportFromDocuments(Software, string.Empty, importDirectory, BrokenName, "Override");
+            AssemblyHooks.SharedPortal.ImportFromDocuments(new DocumentImportRequest(Software, string.Empty, importDirectory, Path.Combine(_directory, "backup")), BrokenName, "Override");
 
             var compiled = AssemblyHooks.SharedPortal.CompileSoftware(Software);
             Assert.IsFalse(compiled.IsSuccessful, "The fixture compiled, so it no longer tests a broken block");
