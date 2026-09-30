@@ -1,9 +1,59 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-09-29**
+> Last updated: **2026-09-30**
 
 ## ▶ RESUME HERE
+
+### Batch 2, fourth item: the imports throw with a reason, and every program write takes a full backup — 2026-09-30
+
+**`ImportBlock` and `ImportType` no longer answer `false`.** A file or a group that does not exist is
+`NotFound`, XML TIA Portal rejects is `WriteFailed`, and the tools report through `ToolFailure`.
+
+**A real safety hole, found while adding the backup the imports were missing.** `CLAUDE.md` says
+every write is preceded by an export of the previous state. The four imports took none, and
+`WriteScl` took one with the bulk SimaticML export, which skips a block that does not compile and
+only logs what it could not write. In the generate, compile, fix loop the block about to be
+overwritten is the one that does not compile: the backup left out the one copy that mattered, and
+the write went ahead.
+
+**`ProgramBackup`** exports every block and type of the program, mirroring the groups: SimaticML for
+what compiles, SIMATIC SD documents for what does not. If a single item cannot be saved, the write is
+refused with `WriteFailed`, naming each item and TIA Portal's reason, and nothing is written.
+`WriteScl`, `ImportBlock`, `ImportType`, `ImportFromDocuments` and `ImportBlocksFromDocuments` all go
+through it; the four import tools now allocate a directory in the backup registry and declare it in
+the plan, as `WriteScl` does. The document imports take a `DocumentImportRequest`, since the bulk one
+would otherwise have had six parameters.
+
+**Two facts measured on the way (2026-09-30).**
+- The `DirectoryInfo` that `Directory.CreateDirectory` returns keeps only the last folder name as its
+  original path on .NET Framework, and `ExportAsDocuments` reads that and refuses it: "The argument
+  'directoryInfo' cannot be a relative path". Pass `new DirectoryInfo(path)`.
+- In the test project, SIMATIC SD export refuses `Main` ("mixed programming languages") and the other
+  OBs and `FC_Block_1` ("project modifications made with a TIA Portal version earlier than V20 Update
+  4", which needs the SimaticSdEnabler add-in, SIOS 109994073). So a program holding one of those
+  **and** not compiling cannot be backed up, and a write to it is refused. That is the rule working,
+  not a defect; the message says why.
+
+**Tests**: `Test4Software` gains `ImportBlock_FileThatDoesNotExist_`, `_GroupThatDoesNotExist_`
+(`NotFound`), `_FileThatIsNotSimaticMl_ThrowsWriteFailed` and `ImportType_FileThatDoesNotExist_`;
+new `Test36ProgramBackup`: a block that does not compile is in the backup as a document; a backup
+that cannot be written refuses `WriteScl` and the block does not exist afterwards; `ImportBlock`
+keeps the block it replaces. **Verified on 2026-09-30**: 0 warnings; `Test4`, `Test9`, `Test16`,
+`Test31`, `Test33`, `Test35` and `Test36`, 98/98. With `ImportBlock`'s catch swallowing again, its
+three tests fail and no other. With `WriteScl` back on the old backup, both `WriteScl` tests of
+`Test36` fail: it skipped the broken block, **and it wrote although the backup failed**.
+
+**Uncommitted, on `work/batch2-imports-and-exports`**, cut from `main` after PR #32.
+
+**The next action.** The rest of batch 2: `PortalBlocks.ExportBlocks` and `PortalTypes.ExportTypes`
+(per-block failures only logged), the single `ExportAsDocuments` (`false` for a block it did not
+find), and `ExportBlock` saying "Block not found" for an unknown software path. Then the database
+and cache the user asked for on 2026-09-29, to show the latest states and changes: PostgreSQL with
+Drizzle on the TypeScript side, fed from `audit.jsonl` and the backup registry — to be designed with
+her first.
+
+---
 
 ### Batch 2, second item: the export tool's empty catch, and a device filter that was skipped — 2026-09-29
 

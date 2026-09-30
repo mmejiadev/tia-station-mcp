@@ -20,7 +20,7 @@ namespace TiaMcpServer.ModelContextProtocol
     /// </remarks>
     public static partial class McpServer
     {
-        [McpServerTool(Name = "ImportFromDocuments"), Description("Import program block from SIMATIC SD documents (.s7dcl/.s7res) into PLC software (V20+)")]
+        [McpServerTool(Name = "ImportFromDocuments"), Description("Import program block from SIMATIC SD documents (.s7dcl/.s7res) into PLC software (V20+). A block of the same name is replaced, so the program's blocks and types are exported to the backup registry first; call ListBackups to find that copy. If any of them cannot be saved, nothing is imported.")]
         public static ResponseImportFromDocuments ImportFromDocuments(
             [Description("softwarePath: defines the path in the project structure to the plc software")] string softwarePath,
             [Description("groupPath: optional path within the PLC program where the block should be placed (empty for root)")] string groupPath,
@@ -41,15 +41,16 @@ namespace TiaMcpServer.ModelContextProtocol
 
                 var warnings = MissingEnUsWarnings(importPath, new[] { fileNameWithoutExtension });
 
-                var request = new Governance.ChangeRequest(
-                    "ImportFromDocuments",
-                    ChangeTarget.Program(softwarePath, groupPath),
-                    fileNameWithoutExtension);
+                var target = ChangeTarget.Program(softwarePath, groupPath);
+                var backupDirectory = Backups.Allocate("ImportFromDocuments", target);
+                var request = new Governance.ChangeRequest("ImportFromDocuments", target, fileNameWithoutExtension)
+                    .WithBackup(backupDirectory);
+                var import = new DocumentImportRequest(softwarePath, groupPath, importPath, backupDirectory);
 
                 return GuardedTool.Run(
                     GuardedWrites,
                     request,
-                    () => BlockImported(() => Portal.ImportFromDocuments(softwarePath, groupPath, importPath, fileNameWithoutExtension, importOption), fileNameWithoutExtension, importPath, warnings),
+                    () => BlockImported(() => Portal.ImportFromDocuments(import, fileNameWithoutExtension, importOption), fileNameWithoutExtension, importPath, warnings),
                     () => new ResponseImportFromDocuments());
             }
             catch (Exception ex) when (ex is not McpException)
@@ -78,7 +79,7 @@ namespace TiaMcpServer.ModelContextProtocol
             };
         }
 
-        [McpServerTool(Name = "ImportBlocksFromDocuments"), Description("Import program blocks from SIMATIC SD documents (.s7dcl/.s7res) into PLC software (V20+). Documents that could not be imported are named in Failed, with the reason; a groupPath that does not exist is refused rather than read as the root.")]
+        [McpServerTool(Name = "ImportBlocksFromDocuments"), Description("Import program blocks from SIMATIC SD documents (.s7dcl/.s7res) into PLC software (V20+). Documents that could not be imported are named in Failed, with the reason; a groupPath that does not exist is refused rather than read as the root. The program's blocks and types are exported to the backup registry first; if any of them cannot be saved, nothing is imported.")]
         public static async Task<ResponseImportBlocksFromDocuments> ImportBlocksFromDocuments(
             IMcpServer server,
             RequestContext<CallToolRequestParams> context,
@@ -124,15 +125,19 @@ namespace TiaMcpServer.ModelContextProtocol
             TiaMcpServer.Siemens.ImportDocumentOption.Validate(importOption);
 
             var warnings = MissingEnUsWarnings(call.Directory, documents);
+            var target = ChangeTarget.Program(call.SoftwarePath, groupPath);
+            var backupDirectory = Backups.Allocate("ImportBlocksFromDocuments", target);
             var request = new Governance.ChangeRequest(
                 "ImportBlocksFromDocuments",
-                ChangeTarget.Program(call.SoftwarePath, groupPath),
-                string.IsNullOrWhiteSpace(call.RegexName) ? call.Directory : call.RegexName);
+                target,
+                string.IsNullOrWhiteSpace(call.RegexName) ? call.Directory : call.RegexName)
+                .WithBackup(backupDirectory);
+            var import = new DocumentImportRequest(call.SoftwarePath, groupPath, call.Directory, backupDirectory);
 
             return Task.Run(() => TiaMcpServer.Siemens.OpennessGate.Run(() => GuardedTool.Run(
                 GuardedWrites,
                 request,
-                () => BlocksImported(call, documents.Count, warnings, Portal.ImportBlocksFromDocuments(call.SoftwarePath, groupPath, call.Directory, call.RegexName, importOption)),
+                () => BlocksImported(call, documents.Count, warnings, Portal.ImportBlocksFromDocuments(import, call.RegexName, importOption)),
                 () => new ResponseImportBlocksFromDocuments())));
         }
 

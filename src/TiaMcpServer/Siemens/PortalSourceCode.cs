@@ -82,22 +82,11 @@ namespace TiaMcpServer.Siemens
 
             try
             {
-                if (string.IsNullOrWhiteSpace(backupDirectory))
-                {
-                    throw new PortalException(PortalErrorCode.InvalidParams, "backupDirectory is required: SCL generation overwrites blocks");
-                }
+                var software = RequireSoftware(softwarePath);
 
-                if (IsProjectNull())
-                {
-                    throw new PortalException(PortalErrorCode.InvalidState, "Open a project before writing SCL");
-                }
-
-                var software = FindPlcSoftware(softwarePath)
-                    ?? throw new PortalException(PortalErrorCode.NotFound, $"PLC software not found: {softwarePath}");
-
-                // Deliberately the full XML export rather than the text snapshot: a snapshot cannot
+                // Deliberately a full export rather than the text snapshot: a snapshot cannot
                 // represent LAD, and a backup that silently omits half the program is not a backup.
-                ExportBlocks(softwarePath, backupDirectory, string.Empty, preservePath: true);
+                ProgramBackup.Save(software, backupDirectory, _logger);
 
                 return new SclBlockGenerator(software, _logger).Generate(sclCode);
             }

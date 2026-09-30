@@ -27,59 +27,50 @@ namespace TiaMcpServer.Siemens
         /// <remarks>
         /// A document that fails to import is left out and named in the report's failures; the others
         /// are still imported. Anything that stops the whole import — no project, no such group, an
-        /// invalid filter — is thrown instead, so it cannot be mistaken for an empty directory.
+        /// invalid filter, an incomplete backup — is thrown instead, so it cannot be mistaken for an
+        /// empty directory.
         /// </remarks>
-        /// <param name="softwarePath">Full path to the PLC software.</param>
-        /// <param name="groupPath">Block group the blocks are placed in; empty for the root.</param>
-        /// <param name="importPath">Directory holding the documents.</param>
+        /// <param name="request">Where to import from and to, and where to save the previous state.</param>
         /// <param name="regexName">Name or regular expression selecting the documents; empty for all.</param>
         /// <param name="option">An ImportDocumentOptions value, or empty for Override.</param>
         /// <returns>The blocks imported and the documents that were not.</returns>
         /// <exception cref="PortalException">The import could not start, or failed as a whole.</exception>
-        public DocumentImportReport ImportBlocksFromDocuments(string softwarePath, string groupPath, string importPath, string regexName, string option)
+        public DocumentImportReport ImportBlocksFromDocuments(DocumentImportRequest request, string regexName, string option)
         {
-            _logger?.LogInformation($"Importing blocks from documents in {importPath} with regex '{regexName}'");
+            _logger?.LogInformation($"Importing blocks from documents in {request.ImportPath} with regex '{regexName}'");
 
             try
             {
-                var destination = RequireDocumentDestination(softwarePath, groupPath);
-                var directory = RequireImportDirectory(importPath);
+                var directory = RequireImportDirectory(request.ImportPath);
                 var documentNames = DocumentNames(directory, NameFilter.Parse(regexName));
                 var importOption = ImportDocumentOption.Parse(option);
+                var destination = PrepareDocumentDestination(request);
 
                 return ImportDocuments(documentNames, name => destination.ImportFromDocuments(directory, name, importOption));
             }
             catch (Exception ex)
             {
-                var pex = ex as PortalException ?? new PortalException(PortalErrorCode.WriteFailed, $"Import from documents failed: {ex.Message}", null, ex);
-
-                pex.Data["softwarePath"] = softwarePath;
-                pex.Data["groupPath"] = groupPath;
-                pex.Data["importPath"] = importPath;
-                pex.Data["regexName"] = regexName;
-
-                _logger?.LogError(pex, "ImportBlocksFromDocuments failed for {SoftwarePath} {GroupPath} <- {ImportPath}", softwarePath, groupPath, importPath);
-                throw pex;
+                throw DecorateDocumentImportFailure(ex, "ImportBlocksFromDocuments", request, regexName);
             }
         }
 
         /// <summary>Imports one block from its SIMATIC SD documents (.s7dcl, with its .s7res when present).</summary>
-        /// <param name="softwarePath">Full path to the PLC software.</param>
-        /// <param name="groupPath">Block group the block is placed in; empty for the root.</param>
-        /// <param name="importPath">Directory holding the documents.</param>
+        /// <param name="request">Where to import from and to, and where to save the previous state.</param>
         /// <param name="fileNameWithoutExtension">The documents' file name, without extension.</param>
         /// <param name="option">An ImportDocumentOptions value, or empty for Override.</param>
-        /// <exception cref="PortalException">The block was not imported; the message says why.</exception>
-        public void ImportFromDocuments(string softwarePath, string groupPath, string importPath, string fileNameWithoutExtension, string option)
+        /// <exception cref="PortalException">
+        /// The block was not imported, or the backup was incomplete so nothing was; the message says why.
+        /// </exception>
+        public void ImportFromDocuments(DocumentImportRequest request, string fileNameWithoutExtension, string option)
         {
-            _logger?.LogInformation($"Importing block from documents: {fileNameWithoutExtension} in {importPath}");
+            _logger?.LogInformation($"Importing block from documents: {fileNameWithoutExtension} in {request.ImportPath}");
 
             try
             {
-                var destination = RequireDocumentDestination(softwarePath, groupPath);
-                var directory = RequireImportDirectory(importPath);
-                var result = destination.ImportFromDocuments(directory, fileNameWithoutExtension, ImportDocumentOption.Parse(option));
-                var failure = DocumentImportFailure(result);
+                var directory = RequireImportDirectory(request.ImportPath);
+                var importOption = ImportDocumentOption.Parse(option);
+                var destination = PrepareDocumentDestination(request);
+                var failure = DocumentImportFailure(destination.ImportFromDocuments(directory, fileNameWithoutExtension, importOption));
 
                 if (failure != null)
                 {
@@ -88,16 +79,22 @@ namespace TiaMcpServer.Siemens
             }
             catch (Exception ex)
             {
-                var pex = ex as PortalException ?? new PortalException(PortalErrorCode.WriteFailed, $"Import from documents failed: {ex.Message}", null, ex);
-
-                pex.Data["softwarePath"] = softwarePath;
-                pex.Data["groupPath"] = groupPath;
-                pex.Data["importPath"] = importPath;
-                pex.Data["fileNameWithoutExtension"] = fileNameWithoutExtension;
-
-                _logger?.LogError(pex, "ImportFromDocuments failed for {SoftwarePath} {GroupPath} <- {ImportPath} {Name}", softwarePath, groupPath, importPath, fileNameWithoutExtension);
-                throw pex;
+                throw DecorateDocumentImportFailure(ex, "ImportFromDocuments", request, fileNameWithoutExtension);
             }
+        }
+
+        private PortalException DecorateDocumentImportFailure(Exception ex, string operation, DocumentImportRequest request, string selection)
+        {
+            var pex = ex as PortalException ?? new PortalException(PortalErrorCode.WriteFailed, $"Import from documents failed: {ex.Message}", null, ex);
+
+            pex.Data["softwarePath"] = request.SoftwarePath;
+            pex.Data["groupPath"] = request.GroupPath;
+            pex.Data["importPath"] = request.ImportPath;
+            pex.Data["backupDirectory"] = request.BackupDirectory;
+            pex.Data["selection"] = selection;
+
+            _logger?.LogError(pex, "{Operation} failed for {SoftwarePath} {GroupPath} <- {ImportPath} {Selection}", operation, request.SoftwarePath, request.GroupPath, request.ImportPath, selection);
+            return pex;
         }
 
         /// <remarks>
@@ -105,24 +102,24 @@ namespace TiaMcpServer.Siemens
         /// null for both "no such group" and "no group asked for", and the import used to take the
         /// null to mean the root: a mistyped group put the blocks at the top of the program, and the
         /// tool reported them imported.
+        ///
+        /// The backup comes last, once everything that can refuse the import has been checked, and
+        /// before anything is written.
         /// </remarks>
-        private PlcBlockComposition RequireDocumentDestination(string softwarePath, string groupPath)
+        private PlcBlockComposition PrepareDocumentDestination(DocumentImportRequest request)
         {
             if (Engineering.TiaMajorVersion < FirstTiaVersionWithDocuments)
             {
                 throw new PortalException(PortalErrorCode.InvalidState, $"Importing SIMATIC SD documents requires TIA Portal V{FirstTiaVersionWithDocuments} or newer");
             }
 
-            var software = RequireSoftware(softwarePath);
+            var software = RequireSoftware(request.SoftwarePath);
+            var group = string.IsNullOrWhiteSpace(request.GroupPath)
+                ? software.BlockGroup
+                : GetPlcBlockGroupByPath(request.SoftwarePath, request.GroupPath)
+                    ?? throw new PortalException(PortalErrorCode.NotFound, $"Block group not found: '{request.GroupPath}' in {request.SoftwarePath}. Create it first, or leave groupPath empty to import at the root.");
 
-            if (string.IsNullOrWhiteSpace(groupPath))
-            {
-                return software.BlockGroup.Blocks;
-            }
-
-            var group = GetPlcBlockGroupByPath(softwarePath, groupPath)
-                ?? throw new PortalException(PortalErrorCode.NotFound, $"Block group not found: '{groupPath}' in {softwarePath}. Create it first, or leave groupPath empty to import at the root.");
-
+            ProgramBackup.Save(software, request.BackupDirectory, _logger);
             return group.Blocks;
         }
 

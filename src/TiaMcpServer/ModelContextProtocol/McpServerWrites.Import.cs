@@ -14,7 +14,7 @@ namespace TiaMcpServer.ModelContextProtocol
     /// </remarks>
     public static partial class McpServer
     {
-        [McpServerTool(Name = "ImportBlock"), Description("Import a block file to plc software")]
+        [McpServerTool(Name = "ImportBlock"), Description("Import a block file to plc software. A block of the same name is replaced, so the program's blocks and types are exported to the backup registry first; call ListBackups to find that copy. If any of them cannot be saved, nothing is imported.")]
         public static ResponseImportBlock ImportBlock(
             [Description("softwarePath: defines the path in the project structure to the plc software")] string softwarePath,
             [Description("groupPath: defines the path in the project structure to the group, where to import the block")] string groupPath,
@@ -25,17 +25,17 @@ namespace TiaMcpServer.ModelContextProtocol
 
             try
             {
-                var request = new Governance.ChangeRequest("ImportBlock", ChangeTarget.Program(softwarePath, groupPath), importPath);
+                var target = ChangeTarget.Program(softwarePath, groupPath);
+                var backupDirectory = Backups.Allocate("ImportBlock", target);
+                var request = new Governance.ChangeRequest("ImportBlock", target, importPath)
+                    .WithBackup(backupDirectory);
 
                 return GuardedTool.Run(
                     GuardedWrites,
                     request,
                     () =>
                     {
-                        if (!Portal.ImportBlock(softwarePath, groupPath, importPath))
-                        {
-                            throw new McpException($"Failed importing block from '{importPath}' to '{groupPath}'", McpErrorCode.InternalError);
-                        }
+                        Portal.ImportBlock(softwarePath, groupPath, importPath, backupDirectory);
 
                         return new ResponseImportBlock
                         {
@@ -51,11 +51,11 @@ namespace TiaMcpServer.ModelContextProtocol
             }
             catch (Exception ex) when (ex is not McpException)
             {
-                throw new McpException($"Unexpected error importing block from '{importPath}' to '{groupPath}': {ex.Message}", ex, McpErrorCode.InternalError);
+                throw ToolFailure(ex, $"importing block from '{importPath}' to '{groupPath}'");
             }
         }
 
-        [McpServerTool(Name = "ImportType"), Description("Import a type from file into the plc software")]
+        [McpServerTool(Name = "ImportType"), Description("Import a type from file into the plc software. A type of the same name is replaced, so the program's blocks and types are exported to the backup registry first; call ListBackups to find that copy. If any of them cannot be saved, nothing is imported.")]
         public static ResponseImportType ImportType(
             [Description("softwarePath: defines the path in the project structure to the plc software")] string softwarePath,
             [Description("groupPath: defines the path in the project structure to the group, where to import the type")] string groupPath,
@@ -66,17 +66,17 @@ namespace TiaMcpServer.ModelContextProtocol
 
             try
             {
-                var request = new Governance.ChangeRequest("ImportType", ChangeTarget.Program(softwarePath, groupPath), importPath);
+                var target = ChangeTarget.Program(softwarePath, groupPath);
+                var backupDirectory = Backups.Allocate("ImportType", target);
+                var request = new Governance.ChangeRequest("ImportType", target, importPath)
+                    .WithBackup(backupDirectory);
 
                 return GuardedTool.Run(
                     GuardedWrites,
                     request,
                     () =>
                     {
-                        if (!Portal.ImportType(softwarePath, groupPath, importPath))
-                        {
-                            throw new McpException($"Failed importing type from '{importPath}' to '{groupPath}'", McpErrorCode.InternalError);
-                        }
+                        Portal.ImportType(softwarePath, groupPath, importPath, backupDirectory);
 
                         return new ResponseImportType
                         {
@@ -92,7 +92,7 @@ namespace TiaMcpServer.ModelContextProtocol
             }
             catch (Exception ex) when (ex is not McpException)
             {
-                throw new McpException($"Unexpected error importing type from '{importPath}' to '{groupPath}': {ex.Message}", ex, McpErrorCode.InternalError);
+                throw ToolFailure(ex, $"importing type from '{importPath}' to '{groupPath}'");
             }
         }
     }
