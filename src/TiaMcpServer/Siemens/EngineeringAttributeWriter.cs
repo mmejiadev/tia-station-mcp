@@ -115,9 +115,7 @@ namespace TiaMcpServer.Siemens
 
             if (found == null)
             {
-                throw new PortalException(
-                    PortalErrorCode.NotFound,
-                    $"No parameter called '{attributeName}'. Ones with similar names: {FindSimilarNames(all, attributeName)}");
+                throw new PortalException(PortalErrorCode.NotFound, DescribeMissing(all, attributeName));
             }
 
             if (!IsWritable(found))
@@ -130,6 +128,20 @@ namespace TiaMcpServer.Siemens
             }
 
             return found;
+        }
+
+        /// <remarks>
+        /// A parameter TIA Portal has but this device does not expose gets what to do instead of
+        /// near misses, which would read as a misspelling of a name that is spelt right.
+        /// </remarks>
+        private static string DescribeMissing(IReadOnlyList<ObjectAttribute> all, string attributeName)
+        {
+            if (UnreachableParameterGuidance.TryFind(attributeName, out var guidance))
+            {
+                return $"This device does not expose '{attributeName}'. {guidance}";
+            }
+
+            return $"No parameter called '{attributeName}'. Ones with similar names: {FindSimilarNames(all, attributeName)}";
         }
 
         private static bool IsWritable(ObjectAttribute attribute)
