@@ -45,11 +45,17 @@ namespace TiaMcpServer.Governance
         private const string AllowKey = "allow";
         private const string DenyKey = "deny";
 
+        private static readonly (string Name, OperationMode Mode)[] Sections =
+        {
+            (StudySection, OperationMode.Study),
+            (WorkshopSection, OperationMode.Workshop)
+        };
+
         internal static WritePolicy Load(string path)
         {
             if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
             {
-                return WritePolicy.DenyEverything();
+                return WritePolicy.Missing(path);
             }
 
             try
@@ -61,7 +67,7 @@ namespace TiaMcpServer.Governance
                     File.ReadAllText(path),
                     Lenient);
 
-                return new WritePolicy(BuildRules(sections));
+                return new WritePolicy(BuildRules(sections, path), path);
             }
             catch (Exception exception) when (!(exception is PortalException))
             {
@@ -77,7 +83,8 @@ namespace TiaMcpServer.Governance
         }
 
         private static Dictionary<OperationMode, ModeRules> BuildRules(
-            Dictionary<string, Dictionary<string, List<string>>>? sections)
+            Dictionary<string, Dictionary<string, List<string>>>? sections,
+            string path)
         {
             var rules = new Dictionary<OperationMode, ModeRules>();
 
@@ -90,26 +97,16 @@ namespace TiaMcpServer.Governance
             // of a capital letter would look exactly like a policy that denies everything.
             var byName = new Dictionary<string, Dictionary<string, List<string>>>(sections, StringComparer.OrdinalIgnoreCase);
 
-            AddSection(rules, byName, StudySection, OperationMode.Study);
-            AddSection(rules, byName, WorkshopSection, OperationMode.Workshop);
-
-            return rules;
-        }
-
-        private static void AddSection(
-            Dictionary<OperationMode, ModeRules> rules,
-            Dictionary<string, Dictionary<string, List<string>>> sections,
-            string name,
-            OperationMode mode)
-        {
-            if (!sections.TryGetValue(name, out var section) || section == null)
+            foreach (var (name, mode) in Sections)
             {
-                return;
+                if (byName.TryGetValue(name, out var section) && section != null)
+                {
+                    var lists = new Dictionary<string, List<string>>(section, StringComparer.OrdinalIgnoreCase);
+                    rules[mode] = new ModeRules(mode, ListOrEmpty(lists, AllowKey), ListOrEmpty(lists, DenyKey), path);
+                }
             }
 
-            var lists = new Dictionary<string, List<string>>(section, StringComparer.OrdinalIgnoreCase);
-
-            rules[mode] = new ModeRules(mode, ListOrEmpty(lists, AllowKey), ListOrEmpty(lists, DenyKey));
+            return rules;
         }
 
         private static List<string> ListOrEmpty(Dictionary<string, List<string>> lists, string key)

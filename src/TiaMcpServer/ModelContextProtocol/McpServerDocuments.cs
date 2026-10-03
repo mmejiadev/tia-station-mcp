@@ -8,6 +8,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Text.Json.Nodes;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 using TiaMcpServer.Siemens;
@@ -38,26 +39,21 @@ namespace TiaMcpServer.ModelContextProtocol
             try
             {
                 RequireDocumentSupport("ExportAsDocuments");
-                if (Portal.ExportAsDocuments(softwarePath, blockPath, exportPath, preservePath))
+                Portal.ExportAsDocuments(softwarePath, blockPath, exportPath, preservePath);
+
+                return new ResponseExportAsDocuments
                 {
-                    return new ResponseExportAsDocuments
+                    Message = $"Documents exported from '{blockPath}' to '{exportPath}'",
+                    Meta = new JsonObject
                     {
-                        Message = $"Documents exported from '{blockPath}' to '{exportPath}'",
-                        Meta = new JsonObject
-                        {
-                            ["timestamp"] = DateTime.Now,
-                            ["success"] = true
-                        }
-                    };
-                }
-                else
-                {
-                    throw new McpException($"Failed exporting documents from '{blockPath}' to '{exportPath}'", McpErrorCode.InternalError);
-                }
+                        ["timestamp"] = DateTime.Now,
+                        ["success"] = true
+                    }
+                };
             }
             catch (Exception ex) when (ex is not McpException)
             {
-                throw new McpException($"Unexpected error exporting documents from '{blockPath}' to '{exportPath}': {ex.Message}", ex, McpErrorCode.InternalError);
+                throw ToolFailure(ex, $"exporting documents from '{blockPath}' to '{exportPath}'");
             }
         }
 
@@ -68,9 +64,10 @@ namespace TiaMcpServer.ModelContextProtocol
             [Description("softwarePath: defines the path in the project structure to the plc software")] string softwarePath,
             [Description("exportPath: defines the path where to export the documents")] string exportPath,
             [Description("regexName: defines the name or regular expression to find the block. Use empty string (default) to find all")] string regexName = "",
-            [Description("preservePath: preserves the path/structure of the plc software")] bool preservePath = false)
+            [Description("preservePath: preserves the path/structure of the plc software")] bool preservePath = false,
+            CancellationToken cancellationToken = default)
         {
-            var call = new BulkCall(softwarePath, exportPath, regexName);
+            var call = new BulkCall(softwarePath, exportPath, regexName, cancellationToken);
             var progress = ProgressReporter.For(server, context, Logger);
 
             try
@@ -87,20 +84,21 @@ namespace TiaMcpServer.ModelContextProtocol
                     return NoDocumentsExported(call);
                 }
 
-                return await ExportDocuments(call, preservePath, allBlocks.Count, progress);
+                return await ExportDocuments(call, call.ExportRequest(preservePath), allBlocks.Count, progress);
             }
-            catch (Exception ex) when (ex is not McpException)
+            catch (Exception ex) when (ex is not McpException and not OperationCanceledException)
             {
                 await progress.ReportAsync(0, 0, $"Document export failed: {ex.Message}");
                 throw ToolFailure(ex, $"exporting documents to '{exportPath}'");
             }
         }
 
-        private static async Task<ResponseExportBlocksAsDocuments> ExportDocuments(BulkCall call, bool preservePath, int totalBlocks, ProgressReporter progress)
+        private static async Task<ResponseExportBlocksAsDocuments> ExportDocuments(BulkCall call, BulkExportRequest request, int totalBlocks, ProgressReporter progress)
         {
             await progress.ReportAsync(0, totalBlocks, $"Starting export of {totalBlocks} blocks as documents...");
 
-            var report = await Task.Run(() => TiaMcpServer.Siemens.OpennessGate.Run(() => Portal.ExportBlocksAsDocuments(call.SoftwarePath, call.Directory, call.RegexName, preservePath)));
+            var sink = progress.PerItem(totalBlocks, "blocks processed");
+            var report = await Task.Run(() => TiaMcpServer.Siemens.OpennessGate.Run(() => Portal.ExportBlocksAsDocuments(request, sink, call.CancellationToken)), call.CancellationToken);
 
             var response = DocumentsExported(call, totalBlocks, report);
             await progress.ReportAsync(report.Exported.Count, totalBlocks, $"Document export completed: {report.Exported.Count} blocks exported");
@@ -130,7 +128,7 @@ namespace TiaMcpServer.ModelContextProtocol
         /// Unlike the SimaticML exports, inconsistent blocks are read from what was exported: SD
         /// export writes them, so they are among the items rather than missing from them.
         /// </remarks>
-        private static ResponseExportBlocksAsDocuments DocumentsExported(BulkCall call, int totalBlocks, DocumentExportReport report)
+        private static ResponseExportBlocksAsDocuments DocumentsExported(BulkCall call, int totalBlocks, ExportReport<BlockDescription> report)
         {
             var items = DescribeBlocks(report.Exported);
             var inconsistent = items.Where(block => block.IsConsistent == false).ToList();

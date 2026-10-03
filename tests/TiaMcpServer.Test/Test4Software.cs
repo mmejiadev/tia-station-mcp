@@ -1,5 +1,8 @@
-﻿using System.IO;
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Threading;
 using TiaMcpServer.Siemens;
 
 namespace TiaMcpServer.Test
@@ -302,6 +305,30 @@ namespace TiaMcpServer.Test
                 $"No exported file found under {_exportDirectory}");
         }
 
+        /// <remarks>
+        /// The block lookup answers null for an unknown software path as well, and the export used to
+        /// report that as "Block not found", sending the caller looking for the block.
+        /// </remarks>
+        [TestMethod]
+        public void ExportBlock_UnknownSoftwarePath_ThrowsNotFoundNamingTheSoftware()
+        {
+            var failure = Assert.ThrowsException<PortalException>(
+                () => AssemblyHooks.SharedPortal.ExportBlock(UnknownSoftwarePath, BlockPath, _exportDirectory));
+
+            Assert.AreEqual(PortalErrorCode.NotFound, failure.Code, failure.Message);
+            StringAssert.Contains(failure.Message, "PLC software not found");
+        }
+
+        [TestMethod]
+        public void ExportType_UnknownSoftwarePath_ThrowsNotFoundNamingTheSoftware()
+        {
+            var failure = Assert.ThrowsException<PortalException>(
+                () => AssemblyHooks.SharedPortal.ExportType(UnknownSoftwarePath, TypePath, _exportDirectory));
+
+            Assert.AreEqual(PortalErrorCode.NotFound, failure.Code, failure.Message);
+            StringAssert.Contains(failure.Message, "PLC software not found");
+        }
+
         [TestMethod]
         public void ExportType_ConsistentType_WritesFile()
         {
@@ -315,7 +342,7 @@ namespace TiaMcpServer.Test
         [TestMethod]
         public void ExportBlocks_AllBlocks_WritesFiles()
         {
-            var exported = AssemblyHooks.SharedPortal.ExportBlocks(Settings.Project1PlcSoftwarePath0, _exportDirectory, string.Empty, preservePath: true);
+            var exported = AssemblyHooks.SharedPortal.ExportBlocks(new BulkExportRequest(Settings.Project1PlcSoftwarePath0, _exportDirectory, string.Empty, preservePath: true));
 
             Assert.IsNotNull(exported);
             Assert.IsTrue(
@@ -323,10 +350,38 @@ namespace TiaMcpServer.Test
                 "ExportBlocks wrote no files");
         }
 
+        /// <remarks>
+        /// The bulk tools reported progress only at the start and the end, because the portal took no
+        /// progress sink. Every selected block is counted, the inconsistent ones included, so the
+        /// count reaches the total the tool announces.
+        /// </remarks>
+        [TestMethod]
+        public void ExportBlocks_WithAProgressSink_CountsEveryBlockInOrder()
+        {
+            var selected = AssemblyHooks.SharedPortal.GetBlocks(Settings.Project1PlcSoftwarePath0, string.Empty).Count;
+            var progress = new RecordedProgress();
+
+            AssemblyHooks.SharedPortal.ExportBlocks(new BulkExportRequest(Settings.Project1PlcSoftwarePath0, _exportDirectory, string.Empty, preservePath: false), progress);
+
+            CollectionAssert.AreEqual(Enumerable.Range(1, selected).ToList(), progress.Values);
+        }
+
+        [TestMethod]
+        public void ExportBlocks_CancelledBeforeStarting_ThrowsAndWritesNothing()
+        {
+            using var cancellation = new CancellationTokenSource();
+            cancellation.Cancel();
+
+            Assert.ThrowsException<OperationCanceledException>(
+                () => AssemblyHooks.SharedPortal.ExportBlocks(new BulkExportRequest(Settings.Project1PlcSoftwarePath0, _exportDirectory, string.Empty, preservePath: false), null, cancellation.Token));
+
+            Assert.IsFalse(Directory.Exists(_exportDirectory) && Directory.EnumerateFiles(_exportDirectory).Any(), "A cancelled export wrote files");
+        }
+
         [TestMethod]
         public void ExportTypes_AllTypes_WritesFiles()
         {
-            var exported = AssemblyHooks.SharedPortal.ExportTypes(Settings.Project1PlcSoftwarePath0, _exportDirectory, string.Empty, preservePath: true);
+            var exported = AssemblyHooks.SharedPortal.ExportTypes(new BulkExportRequest(Settings.Project1PlcSoftwarePath0, _exportDirectory, string.Empty, preservePath: true));
 
             Assert.IsNotNull(exported);
             Assert.IsTrue(
@@ -409,6 +464,20 @@ namespace TiaMcpServer.Test
                 () => AssemblyHooks.SharedPortal.ImportType(Settings.Project1PlcSoftwarePath0, TypeGroupPath, missingFile, BackupDirectory));
 
             Assert.AreEqual(PortalErrorCode.NotFound, failure.Code, failure.Message);
+        }
+
+        /// <remarks>
+        /// Synchronous, unlike Progress&lt;T&gt;, which posts each report to the thread pool and so
+        /// could record them out of order or after the assertion.
+        /// </remarks>
+        private sealed class RecordedProgress : IProgress<int>
+        {
+            public List<int> Values { get; } = new List<int>();
+
+            public void Report(int value)
+            {
+                Values.Add(value);
+            }
         }
     }
 }

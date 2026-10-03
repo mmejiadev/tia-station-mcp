@@ -108,12 +108,9 @@ namespace TiaMcpServer.Siemens
         /// </remarks>
         private PlcBlockComposition PrepareDocumentDestination(DocumentImportRequest request)
         {
-            if (Engineering.TiaMajorVersion < FirstTiaVersionWithDocuments)
-            {
-                throw new PortalException(PortalErrorCode.InvalidState, $"Importing SIMATIC SD documents requires TIA Portal V{FirstTiaVersionWithDocuments} or newer");
-            }
+            RequireDocumentSupport();
 
-            var software = RequireSoftware(request.SoftwarePath);
+            var software = RequireOfflineSoftware(request.SoftwarePath);
             var group = string.IsNullOrWhiteSpace(request.GroupPath)
                 ? software.BlockGroup
                 : GetPlcBlockGroupByPath(request.SoftwarePath, request.GroupPath)

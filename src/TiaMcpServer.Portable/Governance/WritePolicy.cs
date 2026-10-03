@@ -15,13 +15,23 @@ namespace TiaMcpServer.Governance
     public sealed class WritePolicy : IWritePolicy
     {
         private readonly IReadOnlyDictionary<OperationMode, ModeRules> _rules;
+        private readonly string? _source;
+        private readonly bool _isSourceMissing;
 
         /// <summary>Creates a policy from per-mode rules.</summary>
         /// <param name="rules">The rules, keyed by the mode they govern.</param>
+        /// <param name="source">The policy file they came from; null when built in code.</param>
         /// <exception cref="ArgumentNullException"><paramref name="rules"/> is null.</exception>
-        public WritePolicy(IReadOnlyDictionary<OperationMode, ModeRules> rules)
+        public WritePolicy(IReadOnlyDictionary<OperationMode, ModeRules> rules, string? source = null)
+            : this(rules, source, isSourceMissing: false)
+        {
+        }
+
+        private WritePolicy(IReadOnlyDictionary<OperationMode, ModeRules> rules, string? source, bool isSourceMissing)
         {
             _rules = rules ?? throw new ArgumentNullException(nameof(rules));
+            _source = source;
+            _isSourceMissing = isSourceMissing;
         }
 
         /// <summary>A policy that refuses everything.</summary>
@@ -35,13 +45,29 @@ namespace TiaMcpServer.Governance
             return new WritePolicy(new Dictionary<OperationMode, ModeRules>());
         }
 
+        /// <summary>A policy that refuses everything because its file is not there.</summary>
+        /// <param name="path">Where the file was looked for.</param>
+        /// <returns>The policy; its refusals name the path.</returns>
+        public static WritePolicy Missing(string path)
+        {
+            return new WritePolicy(new Dictionary<OperationMode, ModeRules>(), path, isSourceMissing: true);
+        }
+
         /// <inheritdoc />
         public PolicyDecision Decide(OperationMode mode, string target)
         {
-            if (!_rules.TryGetValue(mode, out var rules))
+            if (_isSourceMissing)
             {
                 return PolicyDecision.Refuse(
-                    $"no policy is configured for {mode} mode, so nothing is permitted in it");
+                    $"no policy file was found at '{_source}', so nothing is permitted. " +
+                    "A person copies .tia-mcp/policy.example.json there, lists what this session may write, and reconnects the server.");
+            }
+
+            if (!_rules.TryGetValue(mode, out var rules))
+            {
+                var where = _source == null ? string.Empty : $" in '{_source}'";
+                return PolicyDecision.Refuse(
+                    $"no policy is configured for {mode} mode{where}, so nothing is permitted in it");
             }
 
             return rules.Decide(target);

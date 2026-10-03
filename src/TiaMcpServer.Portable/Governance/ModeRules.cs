@@ -17,17 +17,23 @@ namespace TiaMcpServer.Governance
     {
         private readonly IReadOnlyList<TargetPattern> _allow;
         private readonly IReadOnlyList<TargetPattern> _deny;
+        private readonly string? _source;
 
         /// <summary>Creates the rules for one mode.</summary>
         /// <param name="mode">The mode these rules govern.</param>
         /// <param name="allow">Patterns that may be written to.</param>
         /// <param name="deny">Patterns that may not, whatever the allow list says.</param>
+        /// <param name="source">
+        /// The policy file the rules came from, so a refusal can say where to list a target; null
+        /// when they were built in code.
+        /// </param>
         /// <exception cref="PortalException">
         /// A Workshop rule contains a wildcard. See <see cref="RequireNoWildcards"/>.
         /// </exception>
-        public ModeRules(OperationMode mode, IEnumerable<string> allow, IEnumerable<string> deny)
+        public ModeRules(OperationMode mode, IEnumerable<string> allow, IEnumerable<string> deny, string? source = null)
         {
             Mode = mode;
+            _source = source;
             _allow = (allow ?? Array.Empty<string>()).Select(TargetPattern.Parse).ToList();
             _deny = (deny ?? Array.Empty<string>()).Select(TargetPattern.Parse).ToList();
 
@@ -65,7 +71,29 @@ namespace TiaMcpServer.Governance
             }
 
             return PolicyDecision.Refuse(
-                $"'{target}' is on no allow list for {Mode} mode. Nothing is permitted unless it is listed.");
+                $"'{target}' is on no allow list for {Mode} mode. Nothing is permitted unless it is listed. {HowToList(target)}");
+        }
+
+        /// <remarks>
+        /// A refusal that does not say how to lift it sends the reader looking for the policy file
+        /// and its syntax; on 2026-09-30 a class project was refused this way and the file had to be
+        /// found by hand. The instruction is addressed to a person: the policy is theirs to change.
+        /// Study may be offered a wildcard; Workshop may not, since its rules refuse them on load.
+        /// </remarks>
+        private string HowToList(string target)
+        {
+            var where = _source == null ? "the write policy" : $"'{_source}'";
+
+            return Mode switch
+            {
+                OperationMode.Study =>
+                    $"To permit it, a person adds \"{target}\" (or \"{target}/*\" for everything below it) to study.allow in {where}, " +
+                    "then reconnects the server, which reads the policy when it starts.",
+                OperationMode.Workshop =>
+                    $"Workshop targets are added by a person, written out in full, to workshop.allow in {where}; " +
+                    "the server reads the policy when it starts.",
+                _ => throw new PortalException(PortalErrorCode.InvalidState, $"Unrecognised operation mode: {Mode}")
+            };
         }
 
         /// <summary>

@@ -5,6 +5,7 @@ using Siemens.Engineering.SW.Types;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using System.Linq;
 
 namespace TiaMcpServer.Siemens
@@ -158,10 +159,9 @@ namespace TiaMcpServer.Siemens
 
             try
             {
-                if (IsProjectNull())
-                {
-                    throw new PortalException(PortalErrorCode.InvalidState, "No project is open in TIA Portal");
-                }
+                // Resolved first, as in ExportBlock, so an unknown software path is not reported as a
+                // missing type.
+                RequireOfflineSoftware(softwarePath);
 
                 var type = FindType(softwarePath, typePath);
 
@@ -231,7 +231,7 @@ namespace TiaMcpServer.Siemens
 
             try
             {
-                var software = RequireSoftware(softwarePath);
+                var software = RequireOfflineSoftware(softwarePath);
                 var group = GetPlcTypeGroupByPath(softwarePath, groupPath)
                     ?? throw new PortalException(PortalErrorCode.NotFound, $"Type group not found: '{groupPath}' in {softwarePath}");
 
@@ -252,102 +252,55 @@ namespace TiaMcpServer.Siemens
         }
 
         /// <summary>Exports every consistent user-defined type whose name matches as SimaticML.</summary>
-        /// <param name="softwarePath">Full path to the PLC software.</param>
-        /// <param name="exportPath">Directory the files are written to.</param>
-        /// <param name="regexName">Name or regular expression selecting the types; empty for all.</param>
-        /// <param name="preservePath">Mirror the type group structure below the export directory.</param>
-        /// <returns>The types exported. Inconsistent types and types that failed are left out.</returns>
+        /// <param name="request">What to export and where to.</param>
+        /// <param name="progress">
+        /// Told how many of the selected items have been processed, after each one; null for none.
+        /// </param>
+        /// <param name="cancellationToken">Checked before each item; the files already written stay.</param>
+        /// <returns>
+        /// The types exported and the failures met. Inconsistent types are skipped, since
+        /// SimaticML refuses them; the caller lists them from IsConsistent.
+        /// </returns>
         /// <exception cref="PortalException">
         /// No project is open, there is no PLC software at the path, or the filter is not valid.
         /// </exception>
-        public IReadOnlyList<TypeDescription> ExportTypes(string softwarePath, string exportPath, string regexName = "", bool preservePath = false)
+        /// <exception cref="OperationCanceledException">The export was cancelled.</exception>
+        public ExportReport<TypeDescription> ExportTypes(BulkExportRequest request, IProgress<int>? progress = null, CancellationToken cancellationToken = default)
         {
             _logger?.LogInformation("Exporting types...");
 
-            var exportList = new List<PlcType>();
+            RequireOfflineSoftware(request.SoftwarePath);
+            var selected = FindTypes(request.SoftwarePath, request.RegexName);
+            var exported = new List<PlcType>();
             var failures = new List<string>();
 
-            var list = FindTypes(softwarePath, regexName).ToArray();
-
-            for (int i = 0; i < list.Count(); i++)
+            for (var index = 0; index < selected.Count; index++)
             {
-                var type = list[i];
+                cancellationToken.ThrowIfCancellationRequested();
 
-                _logger?.LogDebug("- Exporting type {Index}/{Total} : {Name}", i, list.Count(), type.Name);
-
-                string path;
-                if (preservePath)
+                if (TryExportTypeXml(selected[index], request, failures))
                 {
-                    var groupPath = "";
-                    if (type.Parent is PlcTypeGroup parentGroup)
-                    {
-                        groupPath = GetPlcTypeGroupPath(parentGroup);
-                    }
-                    path = Path.Combine(exportPath, groupPath.Replace('/', '\\'), $"{type.Name}.xml");
-                }
-                else
-                {
-                    path = Path.Combine(exportPath, $"{type.Name}.xml");
+                    exported.Add(selected[index]);
                 }
 
-                try
-                {
-                    if (!type.IsConsistent)
-                    {
-                        _logger?.LogWarning("Skipping inconsistent type {Name}", type.Name);
-                        continue;
-                    }
-
-                    var dir = Path.GetDirectoryName(path);
-                    if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-                    {
-                        Directory.CreateDirectory(dir);
-                    }
-
-                    if (File.Exists(path))
-                    {
-                        try
-                        {
-                            File.Delete(path);
-                        }
-                        catch (Exception ioEx)
-                        {
-                            failures.Add($"{type.Name}: cannot delete existing file ({ioEx.Message})");
-                            _logger?.LogError(ioEx, "Delete failed for {File}", path);
-                            continue;
-                        }
-                    }
-
-                    try
-                    {
-                        type.Export(new FileInfo(path), ExportOptions.None);
-                    }
-                    catch (Exception ex)
-                    {
-                        failures.Add($"{type.Name}: export failed ({ex.Message})");
-                        _logger?.LogError(ex, "Export failed for type {Type}", type.Name);
-                        continue;
-                    }
-
-                    exportList.Add(type);
-                }
-                catch (Exception ex)
-                {
-                    failures.Add($"{type.Name}: unexpected exception ({ex.Message})");
-                    _logger?.LogError(ex, "Unexpected error at type {Type}", type.Name);
-                }
+                progress?.Report(index + 1);
             }
 
-            if (failures.Count > 0)
+            LogBulkExport("ExportTypes", exported.Count, failures);
+            return new ExportReport<TypeDescription>(DescribeTypes(exported), failures);
+        }
+
+        private bool TryExportTypeXml(PlcType type, BulkExportRequest request, List<string> failures)
+        {
+            if (!type.IsConsistent)
             {
-                _logger?.LogWarning($"ExportTypes completed with {failures.Count} failures out of {list.Count()}. First failure: {failures[0]}");
-            }
-            else
-            {
-                _logger?.LogInformation($"ExportTypes completed successfully. Exported {exportList.Count} types.");
+                return false;
             }
 
-            return DescribeTypes(exportList);
+            var groupPath = request.PreservePath && type.Parent is PlcTypeGroup parentGroup ? GetPlcTypeGroupPath(parentGroup) : string.Empty;
+            var path = XmlExportPath(request.ExportPath, groupPath, type.Name);
+
+            return TryExportXml(type.Name, path, file => type.Export(file, ExportOptions.None), failures);
         }
     }
 }

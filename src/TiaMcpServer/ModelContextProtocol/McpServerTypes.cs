@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Text.Json.Nodes;
+using System.Threading;
 using System.Threading.Tasks;
 using TiaMcpServer.Siemens;
 
@@ -144,9 +145,10 @@ namespace TiaMcpServer.ModelContextProtocol
             [Description("softwarePath: defines the path in the project structure to the plc software")] string softwarePath,
             [Description("exportPath: defines the path where to export the types")] string exportPath,
             [Description("regexName: defines the name or regular expression to find the block. Use empty string (default) to find all")] string regexName = "",
-            [Description("preservePath: preserves the path/structure of the plc software")] bool preservePath = false)
+            [Description("preservePath: preserves the path/structure of the plc software")] bool preservePath = false,
+            CancellationToken cancellationToken = default)
         {
-            var call = new BulkCall(softwarePath, exportPath, regexName);
+            var call = new BulkCall(softwarePath, exportPath, regexName, cancellationToken);
             var progress = ProgressReporter.For(server, context, Logger);
 
             try
@@ -163,13 +165,14 @@ namespace TiaMcpServer.ModelContextProtocol
 
                 await progress.ReportAsync(0, allTypes.Count, $"Starting export of {allTypes.Count} types...");
 
-                var exportedTypes = await Task.Run(() => TiaMcpServer.Siemens.OpennessGate.Run(() => Portal.ExportTypes(softwarePath, exportPath, regexName, preservePath)));
+                var sink = progress.PerItem(allTypes.Count, "types processed");
+                var report = await Task.Run(() => TiaMcpServer.Siemens.OpennessGate.Run(() => Portal.ExportTypes(call.ExportRequest(preservePath), sink, cancellationToken)), cancellationToken);
 
-                var response = TypesExported(call, allTypes, exportedTypes);
-                await progress.ReportAsync(exportedTypes.Count, allTypes.Count, $"Export completed: {exportedTypes.Count} types exported successfully");
+                var response = TypesExported(call, allTypes, report);
+                await progress.ReportAsync(report.Exported.Count, allTypes.Count, response.Message ?? string.Empty);
                 return response;
             }
-            catch (Exception ex) when (ex is not McpException)
+            catch (Exception ex) when (ex is not McpException and not OperationCanceledException)
             {
                 await progress.ReportAsync(0, 0, $"Type export failed: {ex.Message}");
                 throw ToolFailure(ex, $"exporting types '{regexName}' from '{softwarePath}' to {exportPath}");
@@ -197,24 +200,26 @@ namespace TiaMcpServer.ModelContextProtocol
         /// Inconsistent types are reported from the list read before the export, not from what it
         /// returned: SimaticML export skips them, so they are exactly the ones missing from it.
         /// </remarks>
-        private static ResponseExportTypes TypesExported(BulkCall call, IReadOnlyList<TypeDescription> allTypes, IReadOnlyList<TypeDescription> exportedTypes)
+        private static ResponseExportTypes TypesExported(BulkCall call, IReadOnlyList<TypeDescription> allTypes, ExportReport<TypeDescription> report)
         {
-            var items = DescribeTypes(exportedTypes);
+            var items = DescribeTypes(report.Exported);
             var inconsistent = DescribeTypes(allTypes.Where(type => !type.IsConsistent));
             Logger?.LogInformation($"Type export completed: {items.Count} types exported in {call.ElapsedSeconds:F2} seconds");
 
             return new ResponseExportTypes
             {
-                Message = $"Export completed: {items.Count} types with regex '{call.RegexName}' exported from '{call.SoftwarePath}' to '{call.Directory}'",
+                Message = BulkExportMessage($"Export completed: {items.Count} types with regex '{call.RegexName}' exported from '{call.SoftwarePath}' to '{call.Directory}'", report.Failures.Count),
                 Items = items,
                 Inconsistent = inconsistent,
+                Failed = report.Failures,
                 Meta = new JsonObject
                 {
                     ["timestamp"] = DateTime.Now,
-                    ["success"] = true,
+                    ["success"] = report.Failures.Count == 0,
                     ["totalTypes"] = allTypes.Count,
                     ["exportedTypes"] = items.Count,
                     ["inconsistentTypes"] = inconsistent.Count,
+                    ["failedTypes"] = report.Failures.Count,
                     ["duration"] = call.ElapsedSeconds
                 }
             };

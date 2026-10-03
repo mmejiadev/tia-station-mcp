@@ -82,7 +82,7 @@ namespace TiaMcpServer.Siemens
 
             try
             {
-                var software = RequireSoftware(softwarePath);
+                var software = RequireOfflineSoftware(softwarePath);
 
                 // Deliberately a full export rather than the text snapshot: a snapshot cannot
                 // represent LAD, and a backup that silently omits half the program is not a backup.

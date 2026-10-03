@@ -5,6 +5,7 @@ using Siemens.Engineering.SW.Blocks;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using System.Linq;
 
 namespace TiaMcpServer.Siemens
@@ -188,10 +189,9 @@ namespace TiaMcpServer.Siemens
 
             try
             {
-                if (IsProjectNull())
-                {
-                    throw new PortalException(PortalErrorCode.InvalidState, "No project is open in TIA Portal");
-                }
+                // Resolved first so an unknown software path is named as such: the block lookup
+                // answers null for it too, and "Block not found" sent callers looking for the block.
+                RequireOfflineSoftware(softwarePath);
 
                 var block = FindBlock(softwarePath, blockPath);
 
@@ -265,7 +265,7 @@ namespace TiaMcpServer.Siemens
 
             try
             {
-                var software = RequireSoftware(softwarePath);
+                var software = RequireOfflineSoftware(softwarePath);
                 var group = GetPlcBlockGroupByPath(softwarePath, groupPath)
                     ?? throw new PortalException(PortalErrorCode.NotFound, $"Block group not found: '{groupPath}' in {softwarePath}");
 
@@ -310,119 +310,55 @@ namespace TiaMcpServer.Siemens
         }
 
         /// <summary>Exports every consistent block whose name matches as SimaticML.</summary>
-        /// <param name="softwarePath">Full path to the PLC software.</param>
-        /// <param name="exportPath">Directory the files are written to.</param>
-        /// <param name="regexName">Name or regular expression selecting the blocks; empty for all.</param>
-        /// <param name="preservePath">Mirror the block group structure below the export directory.</param>
-        /// <returns>The blocks exported. Inconsistent blocks and blocks that failed are left out.</returns>
+        /// <param name="request">What to export and where to.</param>
+        /// <param name="progress">
+        /// Told how many of the selected items have been processed, after each one; null for none.
+        /// </param>
+        /// <param name="cancellationToken">Checked before each item; the files already written stay.</param>
+        /// <returns>
+        /// The blocks exported and the failures met. Inconsistent blocks are skipped, since
+        /// SimaticML refuses them; the caller lists them from IsConsistent.
+        /// </returns>
         /// <exception cref="PortalException">
         /// No project is open, there is no PLC software at the path, or the filter is not valid.
         /// </exception>
-        public IReadOnlyList<BlockDescription> ExportBlocks(string softwarePath, string exportPath, string regexName = "", bool preservePath = false)
+        /// <exception cref="OperationCanceledException">The export was cancelled.</exception>
+        public ExportReport<BlockDescription> ExportBlocks(BulkExportRequest request, IProgress<int>? progress = null, CancellationToken cancellationToken = default)
         {
             _logger?.LogInformation("Exporting blocks...");
 
-            var exportList = new List<PlcBlock>();
+            RequireOfflineSoftware(request.SoftwarePath);
+            var selected = FindBlocks(request.SoftwarePath, request.RegexName);
+            var exported = new List<PlcBlock>();
             var failures = new List<string>();
-            
-            var list = FindBlocks(softwarePath, regexName).ToArray();
 
-            for (int k = 0; k < list.Count(); k++)
+            for (var index = 0; index < selected.Count; index++)
             {
-                var block = list[k];
+                cancellationToken.ThrowIfCancellationRequested();
 
-                _logger?.LogDebug($"- Exporting block {k}/{list.Count()} : {block.Name}");
-
-                string path;
-                if (preservePath)
+                if (TryExportBlockXml(selected[index], request, failures))
                 {
-                    var groupPath = "";
-                    if (block.Parent is PlcBlockGroup parentGroup)
-                    {
-                        groupPath = GetPlcBlockGroupPath(parentGroup);
-                    }
-                    path = Path.Combine(exportPath, groupPath.Replace('/', '\\'), $"{block.Name}.xml");
-                }
-                else
-                {
-                    path = Path.Combine(exportPath, $"{block.Name}.xml");
+                    exported.Add(selected[index]);
                 }
 
-                try
-                {
-                    if (!block.IsConsistent)
-                    {
-                        _logger?.LogWarning("Skipping inconsistent block {Name}", block.Name);
-
-                        continue;
-                    }
-
-                    var dir = Path.GetDirectoryName(path);
-                    if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-                    {
-                        Directory.CreateDirectory(dir);
-                    }
-
-                    if (File.Exists(path))
-                    {
-                        try { File.Delete(path); }
-                        catch (Exception ioEx)
-                        {
-                            failures.Add($"{block.Name}: cannot delete existing file ({ioEx.Message})");
-                            _logger?.LogError(ioEx, "Delete failed for {File}", path);
-
-                            continue;
-                        }
-                    }
-
-                    try
-                    {
-                        block.Export(new FileInfo(path), ExportOptions.None);
-                    }
-                    catch (LicenseNotFoundException licEx)
-                    {
-                        failures.Add($"{block.Name}: license not found ({licEx.Message})");
-                        _logger?.LogError(licEx, "License issue exporting {Block}", block.Name);
-
-                        continue;
-                    }
-                    catch (EngineeringTargetInvocationException engEx)
-                    {
-                        failures.Add($"{block.Name}: target invocation failed ({engEx.Message})");
-                        _logger?.LogError(engEx, "TargetInvocationException exporting {Block}", block.Name);
-
-                        continue;
-                    }
-                    catch (Exception ex)
-                    {
-                        failures.Add($"{block.Name}: export failed ({ex.Message})");
-                        _logger?.LogError(ex, "Export failed for {Block}", block.Name);
-
-                        continue;
-                    }
-
-                    exportList.Add(block);
-                }
-                catch (Exception ex)
-                {
-                    // Catch only truly unexpected wrapper-level errors
-                    failures.Add($"{block.Name}: unexpected exception ({ex.Message})");
-                    _logger?.LogError(ex, "Unexpected error at block {Block}", block.Name);
-                    // continue with next block
-                }
+                progress?.Report(index + 1);
             }
 
-            if (failures.Count > 0)
+            LogBulkExport("ExportBlocks", exported.Count, failures);
+            return new ExportReport<BlockDescription>(DescribeBlocks(exported), failures);
+        }
+
+        private bool TryExportBlockXml(PlcBlock block, BulkExportRequest request, List<string> failures)
+        {
+            if (!block.IsConsistent)
             {
-                _logger?.LogWarning($"ExportBlocks completed with {failures.Count} failures out of {list.Count()}. First failure: {failures[0]}");
-                // Optionally: _logger?.LogDebug("All failures: {Failures}", string.Join("; ", failures));
-            }
-            else
-            {
-                _logger?.LogInformation($"ExportBlocks completed successfully. Exported {exportList.Count} blocks.");
+                return false;
             }
 
-            return DescribeBlocks(exportList);
+            var groupPath = request.PreservePath && block.Parent is PlcBlockGroup parentGroup ? GetPlcBlockGroupPath(parentGroup) : string.Empty;
+            var path = XmlExportPath(request.ExportPath, groupPath, block.Name);
+
+            return TryExportXml(block.Name, path, file => block.Export(file, ExportOptions.None), failures);
         }
     }
 }

@@ -131,6 +131,73 @@ namespace TiaMcpServer.Governance.Tests
             Assert.IsFalse(decision.IsAllowed, decision.Reason);
         }
 
+        /// <remarks>
+        /// On 2026-09-30 a class project was refused with only "on no allow list", and the policy
+        /// file and its syntax had to be found by hand. The refusal now says both.
+        /// </remarks>
+        [TestMethod]
+        public void Decide_UnlistedTargetInStudy_SaysWhichFileAndWhatToAdd()
+        {
+            var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".json");
+            File.WriteAllText(path, "{\"study\":{\"allow\":[\"PLC_0/*\"],\"deny\":[]}}");
+
+            try
+            {
+                var decision = WritePolicy.Load(path).Decide(OperationMode.Study, "S7-1200 station_1/controlador_1");
+
+                Assert.IsFalse(decision.IsAllowed);
+                StringAssert.Contains(decision.Reason, path, StringComparison.Ordinal);
+                StringAssert.Contains(decision.Reason, "\"S7-1200 station_1/controlador_1\"", StringComparison.Ordinal);
+                StringAssert.Contains(decision.Reason, "study.allow", StringComparison.Ordinal);
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        /// <remarks>
+        /// Workshop rules refuse wildcards on load, so a refusal that offered one would send the
+        /// reader to write a policy that cannot be loaded.
+        /// </remarks>
+        [TestMethod]
+        public void Decide_UnlistedTargetInWorkshop_DoesNotOfferAWildcard()
+        {
+            var policy = PolicyFor(OperationMode.Workshop, allow: new[] { "PLC_0/Blocks/FB_Station" }, deny: Array.Empty<string>());
+
+            var decision = policy.Decide(OperationMode.Workshop, "PLC_0/Blocks/FB_Other");
+
+            Assert.IsFalse(decision.IsAllowed);
+            Assert.IsFalse(decision.Reason.Contains("/*"), decision.Reason);
+            StringAssert.Contains(decision.Reason, "written out in full", StringComparison.Ordinal);
+        }
+
+        /// <remarks>
+        /// The instruction depends on the mode, so an unforeseen mode must not fall through to
+        /// either wording: the absence of a decision is a refusal, and here a loud one.
+        /// </remarks>
+        [TestMethod]
+        public void Decide_UnlistedTargetInAnUnknownMode_Throws()
+        {
+            var rules = new ModeRules((OperationMode)99, new[] { "PLC_0/*" }, Array.Empty<string>());
+
+            var exception = Assert.ThrowsException<PortalException>(() => rules.Decide("PLC_1/Blocks/FB_Station"));
+
+            Assert.AreEqual(PortalErrorCode.InvalidState, exception.Code);
+        }
+
+        [TestMethod]
+        public void Load_MissingFile_RefusalSaysWhereItLooked()
+        {
+            var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "policy.json");
+
+            var decision = WritePolicy.Load(path).Decide(OperationMode.Study, "PLC_0/Blocks/FB_Station");
+
+            Assert.IsFalse(decision.IsAllowed);
+            StringAssert.Contains(decision.Reason, path, StringComparison.Ordinal);
+            StringAssert.Contains(decision.Reason, "policy.example.json", StringComparison.Ordinal);
+        }
+
         private static WritePolicy PolicyFor(OperationMode mode, string[] allow, string[] deny)
         {
             return new WritePolicy(new Dictionary<OperationMode, ModeRules>

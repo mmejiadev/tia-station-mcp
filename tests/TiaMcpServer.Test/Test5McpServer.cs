@@ -1,6 +1,8 @@
 ﻿using ModelContextProtocol;
+using System;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using TiaMcpServer.ModelContextProtocol;
 
@@ -29,6 +31,13 @@ namespace TiaMcpServer.Test
         public void TestCleanup()
         {
             McpServer.CloseProject();
+        }
+
+        private static string CreateDirectory()
+        {
+            var directory = AssemblyHooks.CreateTestDirectory();
+            Directory.CreateDirectory(directory);
+            return directory;
         }
 
         /// <remarks>
@@ -88,6 +97,65 @@ namespace TiaMcpServer.Test
                 () => McpServer.ExportBlocks(null!, null!, "NoSuchDevice/NoSuchPlc", Path.GetTempPath()));
 
             Assert.AreEqual(McpErrorCode.InvalidParams, failure.ErrorCode, failure.Message);
+        }
+
+        /// <remarks>
+        /// The target file is held open with no sharing, so the export cannot write it. A block that
+        /// could not be exported used to reach only the log, and the tool answered success.
+        /// </remarks>
+        [TestMethod]
+        public async Task ExportBlocks_AFileThatCannotBeWritten_IsNamedInFailed()
+        {
+            var directory = CreateDirectory();
+
+            ResponseExportBlocks response;
+            using (File.Open(Path.Combine(directory, "FC_Block_1.xml"), FileMode.Create, FileAccess.ReadWrite, FileShare.None))
+            {
+                response = await McpServer.ExportBlocks(null!, null!, Settings.Project1PlcSoftwarePath0, directory, "^FC_Block_1$");
+            }
+
+            Assert.IsTrue(response.Failed?.Any(line => line.StartsWith("FC_Block_1:")) == true, $"The locked block is not named in Failed: {response.Message}");
+            Assert.AreEqual(false, response.Meta?["success"]?.GetValue<bool>(), "An export with a failed block reported success");
+        }
+
+        [TestMethod]
+        public async Task ExportTypes_AFileThatCannotBeWritten_IsNamedInFailed()
+        {
+            var directory = CreateDirectory();
+
+            ResponseExportTypes response;
+            using (File.Open(Path.Combine(directory, "ML_SubstratState.xml"), FileMode.Create, FileAccess.ReadWrite, FileShare.None))
+            {
+                response = await McpServer.ExportTypes(null!, null!, Settings.Project1PlcSoftwarePath0, directory, "^ML_SubstratState$");
+            }
+
+            Assert.IsTrue(response.Failed?.Any(line => line.StartsWith("ML_SubstratState:")) == true, $"The locked type is not named in Failed: {response.Message}");
+            Assert.AreEqual(false, response.Meta?["success"]?.GetValue<bool>(), "An export with a failed type reported success");
+        }
+
+        /// <remarks>
+        /// A cancelled call is not a failure: the tools' catch-all turned every exception into an
+        /// internal error, which would tell the client that a call it cancelled itself had broken.
+        /// </remarks>
+        [TestMethod]
+        public async Task ExportBlocks_CancelledCall_IsNotReportedAsAFailure()
+        {
+            using var cancellation = new CancellationTokenSource();
+            cancellation.Cancel();
+
+            try
+            {
+                await McpServer.ExportBlocks(null!, null!, Settings.Project1PlcSoftwarePath0, CreateDirectory(), string.Empty, false, cancellation.Token);
+                Assert.Fail("A cancelled export completed");
+            }
+            catch (McpException failure)
+            {
+                Assert.Fail($"A cancelled export was reported as a failure: {failure.Message}");
+            }
+            catch (OperationCanceledException)
+            {
+                // The cancellation reached the client as a cancellation.
+            }
         }
 
         [TestMethod]
