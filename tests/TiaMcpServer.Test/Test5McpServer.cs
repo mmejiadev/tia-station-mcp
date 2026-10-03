@@ -2,6 +2,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using TiaMcpServer.ModelContextProtocol;
@@ -219,6 +220,32 @@ namespace TiaMcpServer.Test
 
             Assert.IsNotNull(response.Items);
             Assert.IsTrue(response.Items.Any(), "The project has devices but none were returned");
+        }
+
+        /// <remarks>
+        /// The step the test above never took. The SDK writes a tool's answer to JSON after the tool
+        /// has returned, outside its catch, so an answer that cannot be written reaches the caller as
+        /// "An error occurred." with no reason — which is how GetDevices failed on a class project,
+        /// on the live engineering objects some attributes hold.
+        /// </remarks>
+        [TestMethod]
+        public void GetDevices_ProjectOpen_AnswerCanBeWrittenAsJson()
+        {
+            var response = McpServer.GetDevices();
+
+            var json = JsonSerializer.Serialize(response, McpJsonUtilities.DefaultOptions);
+
+            StringAssert.Contains(json, "HMI_0");
+        }
+
+        [TestMethod]
+        public void GetDeviceItemInfo_ThePlc_AnswerCanBeWrittenAsJson()
+        {
+            var response = McpServer.GetDeviceItemInfo(Settings.Project1PlcSoftwarePath0);
+
+            var json = JsonSerializer.Serialize(response, McpJsonUtilities.DefaultOptions);
+
+            StringAssert.Contains(json, "PLC_0");
         }
 
         [TestMethod]

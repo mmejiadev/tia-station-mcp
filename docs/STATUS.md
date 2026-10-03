@@ -42,8 +42,35 @@ that every class activity feed the knowledge layer and the MCP's ease of use. Wh
    (CPU properties, "System and clock memory"). Class exercises rely on them: `Clock_1Hz` counts
    seconds, `FirstScan` initialises. She had to tick it by hand. The installed version has no
    device-parameter tool at all; the repository's `SetDeviceParameter` (phase 7) may reach the
-   attributes — to be measured on an S7-1200: which attribute names, whether the tags `Clock_1Hz`
-   and friends are created with them, and a test that enables them and reads the tag back.
+   attributes.
+   **Measured on 2026-10-03: on an S7-1200, Openness V20 does not reach them.** On `Project1`'s CPU
+   1214C DC/DC/DC (`6ES7 214-1AG40-0XB0`, firmware V4.7) `GetAttributeInfos` lists 31 attributes and
+   none is the clock or system memory; asked by name, `SystemMemoryByte`, `SystemMemoryByteAddress`,
+   `ClockMemoryByte` and `ClockMemoryByteAddress` each throw `EngineeringNotSupportedException`, on
+   the CPU and on every item under it. The CAx (AML) export of the project carries none of them
+   either. Those four names come from Siemens' own *TIA Portal Openness Hardware parameters* PDF
+   (`PublicAPI\V20\HW Parameter description`), which documents them for the S7-1500 only — so
+   `SetDeviceParameter` should reach them there, still unmeasured. With the setting ticked by hand,
+   the tags are in `Default tag table`: `Clock_Byte` `%MB0`, `Clock_10Hz` `%M0.0` to `Clock_0.5Hz`
+   `%M0.7`, and `FirstScan` `%M1.0`, `DiagStatusUpdate` `%M1.1`, `AlwaysTRUE` `%M1.2`,
+   `AlwaysFALSE` `%M1.3`. The measurement was a read-only probe attached to the open TIA Portal.
+   Same session, a friction of the installed 0.0.18: `GetDevices` and `GetDeviceItemInfo` answered
+   "An error occurred." on `Project1`, with no reason. **Found and fixed in the repository**, on
+   `work/cpu-clock-memory`: `EngineeringAttributeReader` put the raw Openness value in
+   `ObjectAttribute.Value`, and some attributes hold live engineering objects. Serialised one by
+   one with System.Text.Json on `Project1`, 8 of 55 failed with an object cycle: `CommentML`
+   (`MultilingualText`, through `Culture.Parent`), `Container` and `Items` (through
+   `Container.DeviceItems`). The SDK writes the answer after the tool returns, outside its catch,
+   hence no reason. `AttributeValueDetacher` (Portable) keeps plain values and arrays of them and
+   turns anything else into its text; the reader applies it, so `GetDevices`, `GetDeviceInfo`,
+   `GetDeviceItemInfo`, `GetBlockInfo` and `GetTypeInfo` are all covered. `SetDeviceParameter`
+   still parses against the raw value, so its refusals do not change. Tests:
+   `AttributeValueDetacherTests` (six, no TIA Portal) and, in `Test5McpServer`,
+   `GetDevices_ProjectOpen_AnswerCanBeWrittenAsJson` and `GetDeviceItemInfo_ThePlc_AnswerCanBeWrittenAsJson`,
+   which serialise with `McpJsonUtilities.DefaultOptions` — the existing tests called the tools
+   but never wrote their answers. 0 warnings. **Verified on 2026-10-03**: Governance 219/219;
+   `Test3Devices`, `Test5McpServer` and `Test30Parameters`, 52/52. With the detach removed from the
+   reader, both JSON tests fail.
 
 On the same branch as the bulk exports below, `work/batch2-bulk-exports`, since both are uncommitted.
 

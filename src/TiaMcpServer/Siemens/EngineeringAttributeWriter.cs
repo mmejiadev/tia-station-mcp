@@ -88,11 +88,13 @@ namespace TiaMcpServer.Siemens
 
             var current = RequireWritable(engineeringObject, attributeName);
 
-            var converted = ParameterValueParser.Parse(current.Value, value, current.Name);
+            // The type comes from the value as Openness holds it, not from the detached copy in
+            // `current`, which turns an object the parser cannot write into text it would accept.
+            var converted = ParameterValueParser.Parse(engineeringObject.GetAttribute(current.Name), value, current.Name);
 
             Apply(engineeringObject, converted, current);
 
-            var after = engineeringObject.GetAttribute(current.Name);
+            var after = AttributeValueDetacher.Detach(engineeringObject.GetAttribute(current.Name));
 
             _logger?.LogInformation("{Parameter} set to {Value}", current.Name, after);
 
