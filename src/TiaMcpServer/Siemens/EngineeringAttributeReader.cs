@@ -17,7 +17,10 @@ namespace TiaMcpServer.Siemens
     {
         /// <summary>Reads every attribute Openness exposes on an object.</summary>
         /// <param name="engineeringObject">The object to read, or null.</param>
-        /// <returns>The attributes. An empty list when there is no object.</returns>
+        /// <returns>
+        /// The attributes, each value detached from TIA Portal by <see cref="AttributeValueDetacher"/>.
+        /// An empty list when there is no object.
+        /// </returns>
         public static IReadOnlyList<ObjectAttribute> Read(IEngineeringObject? engineeringObject)
         {
             var attributes = new List<ObjectAttribute>();
@@ -31,7 +34,7 @@ namespace TiaMcpServer.Siemens
             {
                 attributes.Add(new ObjectAttribute(
                     information.Name,
-                    engineeringObject.GetAttribute(information.Name),
+                    AttributeValueDetacher.Detach(engineeringObject.GetAttribute(information.Name)),
                     Enum.GetName(typeof(EngineeringAttributeAccessMode), information.AccessMode)));
             }
 
