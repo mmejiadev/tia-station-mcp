@@ -50,7 +50,15 @@ that every class activity feed the knowledge layer and the MCP's ease of use. Wh
    the CPU and on every item under it. The CAx (AML) export of the project carries none of them
    either. Those four names come from Siemens' own *TIA Portal Openness Hardware parameters* PDF
    (`PublicAPI\V20\HW Parameter description`), which documents them for the S7-1500 only — so
-   `SetDeviceParameter` should reach them there, still unmeasured. With the setting ticked by hand,
+   `SetDeviceParameter` should reach them there. **Measured the same day on the test project's
+   S7-1500 (`PLC_0`): it does**, and enabling `ClockMemoryByte` creates the tag `Clock_1Hz`
+   (`Test37ClockMemory`; with the write removed the tag test fails, so the CPU started without it).
+   Where a device does not expose them, `SetDeviceParameter` now says so and where to tick it by
+   hand (CPU properties, General > System and clock memory) instead of offering near misses that
+   read as a misspelling: `UnreachableParameterGuidance` in Portable, `UnreachableParameterGuidanceTests`
+   (four, no TIA Portal), and the third test of `Test37ClockMemory` on an HMI runtime, which fails
+   with the guidance removed. Governance 226/226; `Test30` and `Test37`, 14/14. Uncommitted, on
+   `work/clock-memory-guidance`. With the setting ticked by hand,
    the tags are in `Default tag table`: `Clock_Byte` `%MB0`, `Clock_10Hz` `%M0.0` to `Clock_0.5Hz`
    `%M0.7`, and `FirstScan` `%M1.0`, `DiagStatusUpdate` `%M1.1`, `AlwaysTRUE` `%M1.2`,
    `AlwaysFALSE` `%M1.3`. The measurement was a read-only probe attached to the open TIA Portal.
