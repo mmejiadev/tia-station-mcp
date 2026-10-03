@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Text.Json.Nodes;
+using System.Threading;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using TiaMcpServer.Siemens;
@@ -203,9 +204,10 @@ namespace TiaMcpServer.ModelContextProtocol
             [Description("softwarePath: defines the path in the project structure to the plc software")] string softwarePath,
             [Description("exportPath: defines the path where to export the blocks")] string exportPath,
             [Description("regexName: defines the name or regular expression to find the block. Use empty string (default) to find all")] string regexName = "",
-            [Description("preservePath: preserves the path/structure of the plc software")] bool preservePath = false)
+            [Description("preservePath: preserves the path/structure of the plc software")] bool preservePath = false,
+            CancellationToken cancellationToken = default)
         {
-            var call = new BulkCall(softwarePath, exportPath, regexName);
+            var call = new BulkCall(softwarePath, exportPath, regexName, cancellationToken);
             var progress = ProgressReporter.For(server, context, Logger);
 
             try
@@ -222,13 +224,14 @@ namespace TiaMcpServer.ModelContextProtocol
 
                 await progress.ReportAsync(0, allBlocks.Count, $"Starting export of {allBlocks.Count} blocks...");
 
-                var exportedBlocks = await Task.Run(() => TiaMcpServer.Siemens.OpennessGate.Run(() => Portal.ExportBlocks(softwarePath, exportPath, regexName, preservePath)));
+                var sink = progress.PerItem(allBlocks.Count, "blocks processed");
+                var report = await Task.Run(() => TiaMcpServer.Siemens.OpennessGate.Run(() => Portal.ExportBlocks(call.ExportRequest(preservePath), sink, cancellationToken)), cancellationToken);
 
-                var response = BlocksExported(call, allBlocks, exportedBlocks);
-                await progress.ReportAsync(exportedBlocks.Count, allBlocks.Count, $"Export completed: {exportedBlocks.Count} blocks exported successfully");
+                var response = BlocksExported(call, allBlocks, report);
+                await progress.ReportAsync(report.Exported.Count, allBlocks.Count, response.Message ?? string.Empty);
                 return response;
             }
-            catch (Exception ex) when (ex is not McpException)
+            catch (Exception ex) when (ex is not McpException and not OperationCanceledException)
             {
                 await progress.ReportAsync(0, 0, $"Export failed: {ex.Message}");
                 throw ToolFailure(ex, $"exporting blocks with '{regexName}' from '{softwarePath}' to {exportPath}");
@@ -256,27 +259,38 @@ namespace TiaMcpServer.ModelContextProtocol
         /// Inconsistent blocks are reported from the list read before the export, not from what it
         /// returned: SimaticML export skips them, so they are exactly the ones missing from it.
         /// </remarks>
-        private static ResponseExportBlocks BlocksExported(BulkCall call, IReadOnlyList<BlockDescription> allBlocks, IReadOnlyList<BlockDescription> exportedBlocks)
+        private static ResponseExportBlocks BlocksExported(BulkCall call, IReadOnlyList<BlockDescription> allBlocks, ExportReport<BlockDescription> report)
         {
-            var items = DescribeBlocks(exportedBlocks);
+            var items = DescribeBlocks(report.Exported);
             var inconsistent = DescribeBlocks(allBlocks.Where(block => !block.IsConsistent));
             Logger?.LogInformation($"Export completed: {items.Count} blocks exported in {call.ElapsedSeconds:F2} seconds");
 
             return new ResponseExportBlocks
             {
-                Message = $"Export completed: {items.Count} blocks with regex '{call.RegexName}' exported from '{call.SoftwarePath}' to '{call.Directory}'",
+                Message = BulkExportMessage($"Export completed: {items.Count} blocks with regex '{call.RegexName}' exported from '{call.SoftwarePath}' to '{call.Directory}'", report.Failures.Count),
                 Items = items,
                 Inconsistent = inconsistent,
+                Failed = report.Failures,
                 Meta = new JsonObject
                 {
                     ["timestamp"] = DateTime.Now,
-                    ["success"] = true,
+                    ["success"] = report.Failures.Count == 0,
                     ["totalBlocks"] = allBlocks.Count,
                     ["exportedBlocks"] = items.Count,
                     ["inconsistentBlocks"] = inconsistent.Count,
+                    ["failedBlocks"] = report.Failures.Count,
                     ["duration"] = call.ElapsedSeconds
                 }
             };
+        }
+
+        /// <remarks>
+        /// A failure never passes for success: the count goes into the sentence a caller reads first,
+        /// and the names with their reasons into Failed.
+        /// </remarks>
+        private static string BulkExportMessage(string completed, int failureCount)
+        {
+            return failureCount == 0 ? completed : $"{completed}; {failureCount} could not be exported (see Failed)";
         }
 
         /// <remarks>

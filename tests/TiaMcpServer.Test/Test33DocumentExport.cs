@@ -118,12 +118,35 @@ END_FUNCTION
             Assert.IsTrue(failures.Any(line => line.StartsWith($"{BrokenName}:")), $"The block whose document is locked is not named in Failed: {response.Message}");
         }
 
+        [TestMethod]
+        public void ExportAsDocuments_ABlockThatDoesNotCompile_WritesItsDocument()
+        {
+            ImportBrokenBlock();
+            var exportDirectory = Path.Combine(_directory, "export");
+
+            AssemblyHooks.SharedPortal.ExportAsDocuments(Software, BrokenName, exportDirectory);
+
+            Assert.IsTrue(File.Exists(Path.Combine(exportDirectory, $"{BrokenName}.s7dcl")), $"No document was written to {exportDirectory}");
+        }
+
+        /// <remarks>
+        /// It used to answer false, and the tool could only say "failed".
+        /// </remarks>
+        [TestMethod]
+        public void ExportAsDocuments_ABlockThatDoesNotExist_ThrowsNotFound()
+        {
+            var failure = Assert.ThrowsException<PortalException>(
+                () => AssemblyHooks.SharedPortal.ExportAsDocuments(Software, "NoSuchBlock", Path.Combine(_directory, "export")));
+
+            Assert.AreEqual(PortalErrorCode.NotFound, failure.Code, failure.Message);
+        }
+
         private IReadOnlyList<BlockDescription> ExportBroken(out string exportDirectory)
         {
             ImportBrokenBlock();
 
             exportDirectory = Path.Combine(_directory, "export");
-            var report = AssemblyHooks.SharedPortal.ExportBlocksAsDocuments(Software, exportDirectory, BrokenName);
+            var report = AssemblyHooks.SharedPortal.ExportBlocksAsDocuments(new BulkExportRequest(Software, exportDirectory, BrokenName, preservePath: false));
 
             Assert.IsNotNull(report, "The document export returned nothing");
             return report.Exported;

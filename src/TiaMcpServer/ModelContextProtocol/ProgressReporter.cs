@@ -84,5 +84,14 @@ namespace TiaMcpServer.ModelContextProtocol
                 _logger?.LogWarning(notifyFailure, "Could not send a progress notification: {Message}", message);
             }
         }
+
+        /// <summary>Progress the portal layer can report to item by item, without knowing about MCP.</summary>
+        /// <param name="total">Items to process in all.</param>
+        /// <param name="noun">What is counted, for the message, for example <c>blocks exported</c>.</param>
+        /// <returns>A sink that turns each count into a notification.</returns>
+        public IProgress<int> PerItem(int total, string noun)
+        {
+            return new ItemProgress(this, total, noun);
+        }
     }
 }

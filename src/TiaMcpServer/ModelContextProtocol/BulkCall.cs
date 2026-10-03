@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Threading;
+using TiaMcpServer.Siemens;
 
 namespace TiaMcpServer.ModelContextProtocol
 {
@@ -15,11 +17,13 @@ namespace TiaMcpServer.ModelContextProtocol
         /// <param name="softwarePath">Full path to the PLC software.</param>
         /// <param name="directory">The directory exported to or imported from.</param>
         /// <param name="regexName">Name or regular expression selecting the items; empty for all.</param>
-        public BulkCall(string softwarePath, string directory, string regexName)
+        /// <param name="cancellationToken">Cancels the call when the client asks to.</param>
+        public BulkCall(string softwarePath, string directory, string regexName, CancellationToken cancellationToken = default)
         {
             SoftwarePath = softwarePath;
             Directory = directory;
             RegexName = regexName;
+            CancellationToken = cancellationToken;
             StartTime = DateTime.Now;
         }
 
@@ -32,10 +36,21 @@ namespace TiaMcpServer.ModelContextProtocol
         /// <summary>Name or regular expression selecting the items; empty for all.</summary>
         public string RegexName { get; }
 
+        /// <summary>Cancels the call when the client asks to.</summary>
+        public CancellationToken CancellationToken { get; }
+
         /// <summary>When the call started.</summary>
         public DateTime StartTime { get; }
 
         /// <summary>Seconds since the call started.</summary>
         public double ElapsedSeconds => (DateTime.Now - StartTime).TotalSeconds;
+
+        /// <summary>The portal layer's request for this call, as an export.</summary>
+        /// <param name="preservePath">Mirror the group structure below the export directory.</param>
+        /// <returns>The request.</returns>
+        public BulkExportRequest ExportRequest(bool preservePath)
+        {
+            return new BulkExportRequest(SoftwarePath, Directory, RegexName, preservePath);
+        }
     }
 }

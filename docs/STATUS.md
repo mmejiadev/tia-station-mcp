@@ -5,6 +5,105 @@
 
 ## ▶ RESUME HERE
 
+### A class activity found four frictions; the first is fixed — 2026-09-30
+
+The user did a class exercise through the installed MCP (0.0.18): a motor with an hour counter and a
+start counter on an S7-1200 in LAD, project `Project1`, PLC `S7-1200 station_1/controlador_1`. It
+compiled with 0 errors; the facts of TIA measured on the way are in the agent's memory. She asked
+that every class activity feed the knowledge layer and the MCP's ease of use. What it found:
+
+1. **A policy refusal did not say how to lift it.** Only "on no allow list"; the policy file of the
+   installation and its syntax had to be found by hand. **Fixed**: `ModeRules` now carries the file
+   it came from, and an unlisted target is refused with the file, the exact entry to add to
+   `study.allow` (or, in Workshop, that a person writes it out in full, with no wildcard offered),
+   and that the server reads the policy when it starts. A missing file names where it was looked for
+   and the template to copy. The switch over the mode throws on an unknown one. Tests in
+   `WritePolicyTests`: `Decide_UnlistedTargetInStudy_SaysWhichFileAndWhatToAdd`,
+   `Decide_UnlistedTargetInWorkshop_DoesNotOfferAWildcard`, `Decide_UnlistedTargetInAnUnknownMode_Throws`,
+   `Load_MissingFile_RefusalSaysWhereItLooked`. 0 warnings; **not yet run**.
+2. **TIA Portal online** makes every export fail with "This function is not supported in online mode";
+   the MCP passed it on instead of saying "go offline first". **Addressed, not yet measured online**:
+   `RequireOfflineSoftware` (`PortalOnlineState.cs`) asks Openness for the CPU's `OnlineProvider.State`
+   — the class, its `State` and the seven `OnlineState` values were checked by reflection on the V20
+   DLL — and refuses with `InvalidState` and "go offline" before the ten exports, imports and
+   `WriteScl` that go through it. It asks the state rather than matching the message, which is in
+   TIA Portal's UI language. Reads are not checked: `GetSoftwareTree` was measured to work online.
+   States other than Offline, NotReachable and Incompatible are refused with Online; only Online is
+   measured. Offline behaviour is covered by the existing tests; the online refusal needs a CPU
+   online, by hand in TIA Portal or through PLCSIM Advanced in `Test11Download`.
+3. **No tag tools in the installed version**; the repository has `CreateTag`. Solved by installing a
+   newer build, which waits on the order decided on 2026-09-27.
+4. **`ImportFromDocuments` failed with no reason** on invalid syntax: fixed in the repository by PR #32,
+   not yet installed.
+   The same activity measured that the SD import **refuses absolute addresses** (`Contact( %I0.3 )`
+   does not import) but accepts tag names that do not exist yet, so a program for new I/O always
+   needs its tags created first — one more reason for the tag tools to reach the installation.
+5. **TO DO, asked by the user: the MCP cannot enable the CPU's clock memory or system memory byte**
+   (CPU properties, "System and clock memory"). Class exercises rely on them: `Clock_1Hz` counts
+   seconds, `FirstScan` initialises. She had to tick it by hand. The installed version has no
+   device-parameter tool at all; the repository's `SetDeviceParameter` (phase 7) may reach the
+   attributes — to be measured on an S7-1200: which attribute names, whether the tags `Clock_1Hz`
+   and friends are created with them, and a test that enables them and reads the tag back.
+
+On the same branch as the bulk exports below, `work/batch2-bulk-exports`, since both are uncommitted.
+
+---
+
+### Batch 2, last item: the bulk exports name what they could not write — 2026-09-30
+
+**`ExportBlocks` and `ExportTypes` return an `ExportReport<T>`** with the items exported and the
+failures, and the tools carry them in `Failed`, with `failedBlocks`/`failedTypes` in `Meta`, a
+sentence in the message and `success` false when there are any. They used to answer success and
+leave the failures in the log. `ExportReport<T>` replaces `DocumentExportReport`, so the three bulk
+exports share one report. The two loops, over a hundred lines each with four catch blocks, are one
+`TryExportXml` in `PortalXmlExport.cs`.
+
+**The single `ExportAsDocuments` throws with the reason** instead of answering false, and goes
+through the bulk export's per-block routine. With `preservePath` it now mirrors the block's group
+the way every other export does, rather than the path the caller typed. The three copies of the V20
+check are one `RequireDocumentSupport`.
+
+**`ExportBlock` and `ExportType` resolve the software path first**, so an unknown one is "PLC
+software not found" instead of "Block not found".
+
+**The three bulk exports report progress per item and can be cancelled**, both of which
+`CLAUDE.md` asks of a long operation and the 2026-09-27 entry left for this batch. The portal
+methods take a `BulkExportRequest` (path, directory, filter, `preservePath`), an `IProgress<int>`
+told after each selected item, the inconsistent ones included so the count reaches the total the
+tool announced, and a `CancellationToken` checked before each item. The tools take the token the
+MCP SDK passes, carry it in `BulkCall`, and turn the counts into notifications through
+`ProgressReporter.PerItem`, an `ItemProgress` that sends them in order — `Progress<T>` would post
+them to the thread pool. A cancelled call is let through as a cancellation; the tools' catch-all
+used to turn every exception into an internal error.
+
+**Tests**: `Test5McpServer` gains `ExportBlocks_` and `ExportTypes_AFileThatCannotBeWritten_IsNamedInFailed`
+(the target file held open with no sharing); `Test4Software` gains `ExportBlock_` and
+`ExportType_UnknownSoftwarePath_ThrowsNotFoundNamingTheSoftware`; `Test33DocumentExport` gains
+`ExportAsDocuments_ABlockThatDoesNotCompile_WritesItsDocument` and `_ABlockThatDoesNotExist_ThrowsNotFound`.
+`Test4Software` also gains `ExportBlocks_WithAProgressSink_CountsEveryBlockInOrder` and
+`ExportBlocks_CancelledBeforeStarting_ThrowsAndWritesNothing`; `Test5McpServer`,
+`ExportBlocks_CancelledCall_IsNotReportedAsAFailure`.
+It compiles with 0 warnings. **Not yet run against TIA Portal**: the user had TIA Portal open, and
+the round of tests is planned for after the next piece of work.
+
+**Uncommitted, on `work/batch2-bulk-exports`**, cut from `main` after PR #33. Several files show as
+staged; that was not done in this session.
+
+**Verified on 2026-09-30**, with the offline check and the policy guidance of the entry above in
+place: Governance 213/213, Spec 44/44, OpcUa 33/33; `Test4`, `Test5`, `Test9`, `Test33`, `Test35` and
+`Test36`, 83/83. Each change was removed and its tests run: without the `Failed` entry in
+`TryExportXml`, both locked-file tests fail; without `progress?.Report`, the progress test; without the
+tool's cancellation filter and the portal's `ThrowIfCancellationRequested`, the two cancellation
+tests; without the file in a policy refusal, the Study test, and without the missing-file branch, the
+missing-file test. No other test failed in any round. The first governance mutants did not compile —
+an unused private member is a build error here — so subtler ones were used.
+
+**The next action.** Batch 2 is done: this branch is ready for its pull request. The online refusal
+itself still needs a CPU online to be measured. After it: the
+database and cache the user asked for (see the entry below).
+
+---
+
 ### Batch 2, fourth item: the imports throw with a reason, and every program write takes a full backup — 2026-09-30
 
 **`ImportBlock` and `ImportType` no longer answer `false`.** A file or a group that does not exist is

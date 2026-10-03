@@ -5,6 +5,7 @@ using Siemens.Engineering.SW.Blocks;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 
 namespace TiaMcpServer.Siemens
 {
@@ -32,38 +33,42 @@ namespace TiaMcpServer.Siemens
         /// the result, never by their absence. A block that fails to export is left out and named in
         /// the report's failures; the others are still exported.
         /// </remarks>
-        /// <param name="softwarePath">Full path to the PLC software.</param>
-        /// <param name="exportPath">Directory the documents are written to.</param>
-        /// <param name="regexName">Name or regular expression selecting the blocks; empty for all.</param>
-        /// <param name="preservePath">Mirror the block group structure below the export directory.</param>
+        /// <param name="request">What to export and where to.</param>
+        /// <param name="progress">
+        /// Told how many of the selected items have been processed, after each one; null for none.
+        /// </param>
+        /// <param name="cancellationToken">Checked before each item; the files already written stay.</param>
         /// <returns>The blocks exported and the failures met.</returns>
         /// <exception cref="PortalException">
         /// TIA Portal is older than V20, no project is open, there is no PLC software at the path, or
         /// the filter is not valid.
         /// </exception>
-        public DocumentExportReport ExportBlocksAsDocuments(string softwarePath, string exportPath, string regexName = "", bool preservePath = false)
+        /// <exception cref="OperationCanceledException">The export was cancelled.</exception>
+        public ExportReport<BlockDescription> ExportBlocksAsDocuments(BulkExportRequest request, IProgress<int>? progress = null, CancellationToken cancellationToken = default)
         {
             _logger?.LogInformation("Exporting blocks as documents...");
 
-            if (Engineering.TiaMajorVersion < FirstTiaVersionWithDocuments)
-            {
-                throw new PortalException(PortalErrorCode.InvalidState, $"Exporting SIMATIC SD documents requires TIA Portal V{FirstTiaVersionWithDocuments} or newer");
-            }
+            RequireDocumentSupport();
+            RequireOfflineSoftware(request.SoftwarePath);
 
-            var blocks = FindBlocks(softwarePath, regexName).ToArray();
+            var selected = FindBlocks(request.SoftwarePath, request.RegexName);
             var exported = new List<PlcBlock>();
             var failures = new List<string>();
 
-            foreach (var block in blocks)
+            for (var index = 0; index < selected.Count; index++)
             {
-                if (TryExportBlockAsDocument(block, exportPath, preservePath, failures))
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (TryExportBlockAsDocument(selected[index], request.ExportPath, request.PreservePath, failures))
                 {
-                    exported.Add(block);
+                    exported.Add(selected[index]);
                 }
+
+                progress?.Report(index + 1);
             }
 
-            LogDocumentExport(exported.Count, failures, blocks.Length);
-            return new DocumentExportReport(DescribeBlocks(exported), failures);
+            LogBulkExport("ExportBlocksAsDocuments", exported.Count, failures);
+            return new ExportReport<BlockDescription>(DescribeBlocks(exported), failures);
         }
 
         private bool TryExportBlockAsDocument(PlcBlock block, string exportPath, bool preservePath, List<string> failures)
@@ -180,104 +185,41 @@ namespace TiaMcpServer.Siemens
             return null;
         }
 
-        private void LogDocumentExport(int exportedCount, IReadOnlyList<string> failures, int total)
-        {
-            if (failures.Count > 0)
-            {
-                _logger?.LogWarning($"ExportBlocksAsDocuments completed with {failures.Count} failures out of {total}. First failure: {failures[0]}");
-                return;
-            }
-
-            _logger?.LogInformation($"ExportBlocksAsDocuments completed successfully. Exported {exportedCount} blocks.");
-        }
-
-        public bool ExportAsDocuments(string softwarePath, string blockPath, string exportPath, bool preservePath = false)
+        /// <summary>Exports one block as SIMATIC SD documents (.s7dcl/.s7res).</summary>
+        /// <param name="softwarePath">Full path to the PLC software.</param>
+        /// <param name="blockPath">Full path to the block, for example <c>Group/Subgroup/Name</c>.</param>
+        /// <param name="exportPath">Directory the documents are written to.</param>
+        /// <param name="preservePath">Mirror the block's group below the export directory, as the bulk export does.</param>
+        /// <remarks>
+        /// Exported even when the block does not compile, like the bulk export. It goes through the
+        /// same per-block routine, so the two write to the same place and fail the same way. It used
+        /// to answer false for a block it did not find, and the tool could only say "failed".
+        /// </remarks>
+        /// <exception cref="PortalException">
+        /// TIA Portal is older than V20, no project is open, the software or the block does not exist,
+        /// or the documents could not be written; the message says which.
+        /// </exception>
+        public void ExportAsDocuments(string softwarePath, string blockPath, string exportPath, bool preservePath = false)
         {
             _logger?.LogInformation($"Exporting block as documents by path: {blockPath}");
-            var success = false;
+
             try
             {
-                if (IsProjectNull())
+                RequireDocumentSupport();
+                RequireOfflineSoftware(softwarePath);
+
+                var block = FindBlock(softwarePath, blockPath)
+                    ?? throw new PortalException(PortalErrorCode.NotFound, $"Block not found: {blockPath}");
+                var failures = new List<string>();
+
+                if (!TryExportBlockAsDocument(block, exportPath, preservePath, failures))
                 {
-                    throw new PortalException(PortalErrorCode.InvalidState, "No project is open in TIA Portal");
+                    throw new PortalException(PortalErrorCode.ExportFailed, $"Exporting '{blockPath}' as documents failed: {string.Join("; ", failures)}");
                 }
-
-                if (Engineering.TiaMajorVersion < FirstTiaVersionWithDocuments)
-                {
-                    throw new PortalException(PortalErrorCode.InvalidState, $"ExportAsDocuments requires TIA Portal V{FirstTiaVersionWithDocuments} or newer");
-                }
-
-                
-                var softwareContainer = GetSoftwareContainer(softwarePath);
-                if (softwareContainer?.Software is PlcSoftware plcSoftware)
-                {
-                    if (plcSoftware != null)
-                    {
-                        // Export code blocks as documents
-                        // https://docs.tia.siemens.cloud/r/en-us/v20/creating-and-managing-blocks/exporting-and-importing-blocks-in-simatic-sd-format-s7-1200-s7-1500/exporting-and-importing-blocks-in-simatic-sd-format-s7-1200-s7-1500
-
-                        var target = ProjectPath.Parse(blockPath);
-                        var groupPath = target.Parent;
-                        var blockName = target.Name;
-
-                        var group = GetPlcBlockGroupByPath(softwarePath, groupPath);
-
-                        // join exportPath and groupPath
-                        if (!Directory.Exists(exportPath))
-                        {
-                            Directory.CreateDirectory(exportPath);
-                        }
-
-                        if (preservePath && !string.IsNullOrEmpty(groupPath))
-                        {
-                            exportPath = Path.Combine(exportPath, groupPath);
-
-                            if (!Directory.Exists(exportPath))
-                            {
-                                Directory.CreateDirectory(exportPath);
-                            }
-                        }
-
-                        try
-                        {
-                            // delete files s7dcl/s7res if already exists
-                            var blockFiles7dclPath = Path.Combine(exportPath, $"{blockName}.s7dcl");
-                            if (File.Exists(blockFiles7dclPath))
-                            {
-                                File.Delete(blockFiles7dclPath);
-                            }
-                            var blockFiles7resPath = Path.Combine(exportPath, $"{blockName}.s7res");
-                            if (File.Exists(blockFiles7resPath))
-                            {
-                                File.Delete(blockFiles7resPath);
-                            }
-
-                            var result = group?.Blocks.Find(blockName)?.ExportAsDocuments(new DirectoryInfo(exportPath), blockName);
-
-                            if (result != null && result.State == DocumentResultState.Success)
-                            {
-                                success = true;
-                            }
-                        }
-                        catch (EngineeringNotSupportedException ex)
-                        {
-                            // The export or import of blocks with mixed programming languages is not possible
-                            throw new PortalException(PortalErrorCode.ExportFailed, $"EngineeringNotSupportedException at block '{blockName}'. {ex.Message}", null, ex);
-                        }
-                        catch (Exception ex)
-                        {
-                            throw new PortalException(PortalErrorCode.ExportFailed, $"Exception at block '{blockName}'. {ex.Message}", null, ex);
-                        }
-
-                    }
-
-                }
-
-
             }
             catch (Exception ex)
             {
-                var pex = ex as PortalException ?? new PortalException(PortalErrorCode.ExportFailed, "Export failed", null, ex);
+                var pex = ex as PortalException ?? new PortalException(PortalErrorCode.ExportFailed, $"Export as documents failed: {ex.Message}", null, ex);
 
                 pex.Data["softwarePath"] = softwarePath;
                 pex.Data["blockPath"] = blockPath;
@@ -286,7 +228,18 @@ namespace TiaMcpServer.Siemens
                 _logger?.LogError(pex, "ExportAsDocuments failed for {SoftwarePath} {BlockPath} -> {ExportPath}", softwarePath, blockPath, exportPath);
                 throw pex;
             }
-            return success;
+        }
+
+        /// <remarks>
+        /// SIMATIC SD documents arrived with TIA Portal V20; older versions have no API for them, and
+        /// asking one fails with an error that does not say so.
+        /// </remarks>
+        private static void RequireDocumentSupport()
+        {
+            if (Engineering.TiaMajorVersion < FirstTiaVersionWithDocuments)
+            {
+                throw new PortalException(PortalErrorCode.InvalidState, $"SIMATIC SD documents require TIA Portal V{FirstTiaVersionWithDocuments} or newer");
+            }
         }
     }
 }
