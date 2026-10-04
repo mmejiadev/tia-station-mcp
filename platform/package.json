@@ -1,0 +1,28 @@
+{
+  "name": "tia-station-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The web platform's database: an index of what the MCP server recorded, rebuilt from its files. See docs/WEB-PLATFORM.md.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.9.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --env-file-if-exists=../.env --test --test-concurrency=1 \"test/**/*.test.ts\"",
+    "check": "npm run typecheck && npm run test",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node --env-file-if-exists=../.env src/db/migrateCli.ts",
+    "import:audit": "node --env-file-if-exists=../.env src/import/auditImportCli.ts"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.3",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.11",
+    "typescript": "^5.6.0"
+  }
+}

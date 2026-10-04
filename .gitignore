@@ -56,6 +56,7 @@ harness/dist/
 dashboard/node_modules/
 dashboard/dist/
 dashboard/.vite/
+platform/node_modules/
 
 # The Anthropic API key the generator uses. Never history, on any machine.
 .env

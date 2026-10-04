@@ -1,9 +1,53 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-09-30**
+> Last updated: **2026-10-03**
 
 ## ▶ RESUME HERE
+
+### The web platform: designed, not built — 2026-10-03
+
+The database and cache asked for on 2026-09-29 grew into a web platform: projects in folders, their
+change history and compilations, descriptions written by hand or by AI, engineer profiles, and
+sign-in so that the teacher and colleagues can read it. **The design is `docs/WEB-PLATFORM.md`**,
+on `work/web-platform-design`. The user decided: Better Auth with Google and GitHub, PostgreSQL
+with Drizzle, Docker Desktop for development, the harness importing the server's files (the C#
+server keeps writing `audit.jsonl` and does not talk to the database), and access for people on
+other machines. Personal data stays minimal and optional.
+
+Two findings shaped it. Compiling is in the audit trail already — `CompileSoftware` goes through
+`GuardedTool` — but without its error and warning counts or messages, so the server will write a
+`compilations.jsonl`. And the harness API listens on loopback on purpose, so the public server is a
+new package, `platform/`, rather than an extension of it.
+
+Docker Desktop 4.93.0 was installed with winget on 2026-10-03; the user is in `docker-users`.
+
+**Phase 1 is done**, same day, uncommitted on the same branch:
+
+- `docker-compose.yml` at the root: `postgres:18`, a named volume, bound to `127.0.0.1:5433`. Port
+  5433 because the machine already runs a **native PostgreSQL 18 service** (`postgresql-x64-18`) on
+  5432, left untouched. `platform/docker/init/` creates `tia_platform_test` when the volume is new.
+  The password lives in the root `.env` (ignored), generated at random; `.env.example` is committed.
+- `platform/`, a new Node package with the harness's conventions (types stripped, no build,
+  `node --test`): the Drizzle schema (`station`, `change`), the first migration in `drizzle/`,
+  `npm run db:migrate`, and `npm run import:audit -- --station <name> --file <audit.jsonl>`.
+- `importAuditTrail` verifies the chain with the harness's own `verifyAuditChain` and judges each
+  line with its `parseEntry` (now exported), so a line the workshop gate counts as unreadable is
+  unreadable here too. A broken chain or an unreadable line refuses the whole trail, naming the
+  line, and writes nothing. Entries are keyed by their chain hash (a hash of the line for entries
+  from before chaining), which makes the import idempotent.
+- `.gitignore` gains `platform/node_modules/`, which was not covered.
+
+**Verified**: `platform` 9/9 against the test database; harness `auditTrail`, `auditChain` and `gate`
+41/41 after the export. Removing the chain check fails the edited-entry test; removing
+`onConflictDoNothing` fails the two idempotence tests. The installation's real trail (264 entries,
+2026-09-23 to 2026-10-03) imported as station `MANUELA`: 264 new, then 0 on the second run.
+
+**The next action**: phase 2 — the C# server writes `compilations.jsonl` (counts and messages) and
+`projects.jsonl` (author, creation, modification), and the importer reads them. Still open: where
+the server lives once others need it, which decides the HTTPS address the sign-in providers require.
+
+---
 
 ### A class activity found four frictions; the first is fixed — 2026-09-30
 

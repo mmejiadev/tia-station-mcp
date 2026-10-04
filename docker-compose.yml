@@ -1,0 +1,32 @@
+# PostgreSQL for the web platform, for development. See docs/WEB-PLATFORM.md.
+#
+#   docker compose up -d        starts it
+#   docker compose down         stops it; the data stays in the named volume
+#
+# Port 5433 rather than the standard 5432, because a PostgreSQL installed natively on Windows already
+# holds 5432 on the machine this was written on. Bound to 127.0.0.1 only: a development database has
+# no business accepting connections from the network.
+name: tia-station
+
+services:
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tia}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env - copy .env.example}
+      POSTGRES_DB: ${POSTGRES_DB:-tia_platform}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      # Runs once, when the volume is empty: creates the database the tests use.
+      - ./platform/docker/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:
