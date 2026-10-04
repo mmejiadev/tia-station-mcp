@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using TiaMcpServer.History;
 using TiaMcpServer.Siemens;
 
 namespace TiaMcpServer.ModelContextProtocol
@@ -94,7 +95,7 @@ namespace TiaMcpServer.ModelContextProtocol
                 {
                     return new ResponseOpenProject
                     {
-                        Message = $"Project '{path}' opened",
+                        Message = RecordOpenProject(ProjectEvent.Opened, $"Project '{path}' opened"),
                         Meta = new JsonObject
                         {
                             ["timestamp"] = DateTime.Now,
@@ -127,7 +128,7 @@ namespace TiaMcpServer.ModelContextProtocol
 
                 return new ResponseRetrieveProject(projectPath)
                 {
-                    Message = $"Archive '{archivePath}' retrieved to '{projectPath}'",
+                    Message = RecordOpenProject(ProjectEvent.Retrieved, $"Archive '{archivePath}' retrieved to '{projectPath}'"),
                     Meta = new JsonObject
                     {
                         ["timestamp"] = DateTime.Now,

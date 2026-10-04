@@ -1,9 +1,88 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-09-30**
+> Last updated: **2026-10-03**
 
 ## ▶ RESUME HERE
+
+### The web platform: designed, not built — 2026-10-03
+
+The database and cache asked for on 2026-09-29 grew into a web platform: projects in folders, their
+change history and compilations, descriptions written by hand or by AI, engineer profiles, and
+sign-in so that the teacher and colleagues can read it. **The design is `docs/WEB-PLATFORM.md`**,
+on `work/web-platform-design`. The user decided: Better Auth with Google and GitHub, PostgreSQL
+with Drizzle, Docker Desktop for development, the harness importing the server's files (the C#
+server keeps writing `audit.jsonl` and does not talk to the database), and access for people on
+other machines. Personal data stays minimal and optional.
+
+Two findings shaped it. Compiling is in the audit trail already — `CompileSoftware` goes through
+`GuardedTool` — but without its error and warning counts or messages, so the server will write a
+`compilations.jsonl`. And the harness API listens on loopback on purpose, so the public server is a
+new package, `platform/`, rather than an extension of it.
+
+Docker Desktop 4.93.0 was installed with winget on 2026-10-03; the user is in `docker-users`.
+
+**Phase 1 is done**, same day, uncommitted on the same branch:
+
+- `docker-compose.yml` at the root: `postgres:18`, a named volume, bound to `127.0.0.1:5433`. Port
+  5433 because the machine already runs a **native PostgreSQL 18 service** (`postgresql-x64-18`) on
+  5432, left untouched. `platform/docker/init/` creates `tia_platform_test` when the volume is new.
+  The password lives in the root `.env` (ignored), generated at random; `.env.example` is committed.
+- `platform/`, a new Node package with the harness's conventions (types stripped, no build,
+  `node --test`): the Drizzle schema (`station`, `change`), the first migration in `drizzle/`,
+  `npm run db:migrate`, and `npm run import:audit -- --station <name> --file <audit.jsonl>`.
+- `importAuditTrail` verifies the chain with the harness's own `verifyAuditChain` and judges each
+  line with its `parseEntry` (now exported), so a line the workshop gate counts as unreadable is
+  unreadable here too. A broken chain or an unreadable line refuses the whole trail, naming the
+  line, and writes nothing. Entries are keyed by their chain hash (a hash of the line for entries
+  from before chaining), which makes the import idempotent.
+- `.gitignore` gains `platform/node_modules/`, which was not covered.
+
+**Verified**: `platform` 9/9 against the test database; harness `auditTrail`, `auditChain` and `gate`
+41/41 after the export. Removing the chain check fails the edited-entry test; removing
+`onConflictDoNothing` fails the two idempotence tests. The installation's real trail (264 entries,
+2026-09-23 to 2026-10-03) imported as station `MANUELA`: 264 new, then 0 on the second run.
+
+**Phase 2 is written**, same day, unstaged on the same branch (phase 1 is staged and not yet
+committed; committing without `-a` keeps the two apart):
+
+- **The server writes two journals** beside the audit trail, `.tia-mcp/compilations.jsonl` and
+  `.tia-mcp/projects.jsonl` (`--compilations` and `--projects` to move them).
+  `JsonlJournal<T>` in a new Portable folder, `History/`: append-only, UTF-8 without a BOM, appends
+  under a lock, no hash chain — it records facts, not decisions. `HistoryRecorder` writes them, and
+  **a failed record never fails the tool**: the compilation already happened, so the failure comes
+  back as a sentence in the tool's answer and an error in the log. `CompileSoftware` records every
+  message, not only the errors; `OpenProject` and `RetrieveProject` record the project's path,
+  name, author, creation and last change, read through `ProjectBase`'s typed properties
+  (`GetProjectSummary`, checked by reflection on the V20 DLL). Registered by `HistoryRegistration`,
+  its own class because `Program.cs` is at the size limit.
+- `CompilationReport`, `CompilationMessage` and `CompilationSeverity` moved to Portable — they never
+  used Openness — and the enum got its own file.
+- **The contract between the two languages is a pair of golden files**, `platform/test/assets/
+  compilations-golden.jsonl` and `projects-golden.jsonl`. `JournalContractTests` asserts the server
+  writes them byte for byte; the platform's tests import them. It caught the first guess at once:
+  the journal writes `+` in a timestamp where the audit trail writes `+`.
+- The platform gains `project`, `compilation` and `compilation_message` (migration `0001`), and
+  importers for both journals: all or nothing, naming the line that is not a record. Compilations
+  are idempotent by a hash of their line; a project record updates its row only when it is newer,
+  so the latest wins in any import order. A compilation of a project never described creates the
+  project from its path. `npm run import -- --station <name> --directory <.tia-mcp>` imports the
+  audit trail, then projects, then compilations, and skips a file that is not there, saying so.
+
+**Verified**: Governance 237/237 (nine new: `JsonlJournalTests`, `HistoryRecorderTests`,
+`JournalContractTests`); `platform` 19/19. Removing the newer-wins condition, the compilation
+`onConflictDoNothing` or the message insert each fails its test. 0 warnings. With TIA Portal:
+`Test38History` 3/3, and with `Test5McpServer` and `Test17WritesApplied`, whose tools changed,
+32/32. With the compile tool made to skip the record (a mutation that still compiles; removing
+the call outright leaves a private method unused, which is a build error, and the first attempt
+ran stale binaries), both compilation tests fail. `AssemblyHooks` registers the journals under
+the run's working root.
+
+**The next action**: phase 3 — Better Auth with
+Google and GitHub, profiles, organisations and the TIA identity claim. Still open: where the server
+lives once others need it, which decides the HTTPS address the sign-in providers require.
+
+---
 
 ### A class activity found four frictions; the first is fixed — 2026-09-30
 

@@ -99,8 +99,17 @@ export function readAuditChain(path: string): AuditChainReport {
   return verifyAuditChain(readFileSync(path, 'utf8').split('\n'));
 }
 
-/** One line, or nothing when it is not an entry. */
-function parseEntry(line: string): AuditEntry | undefined {
+/**
+ * One line, or nothing when it is not an entry.
+ *
+ * @param line One line of the trail.
+ * @returns The entry, or undefined when the line is not one.
+ * @remarks
+ * Exported for the platform's importer (`platform/src/import/auditImport.ts`), which has to judge
+ * lines exactly as the gate does: an entry the gate counts as unreadable must not reach the
+ * database as one with blanks in it.
+ */
+export function parseEntry(line: string): AuditEntry | undefined {
   let parsed: unknown;
 
   try {
