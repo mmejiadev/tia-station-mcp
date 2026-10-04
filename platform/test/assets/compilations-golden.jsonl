@@ -1,0 +1,2 @@
+{"timestamp":"2026-10-03T12:00:00+00:00","projectPath":"C:\\Projects\\Cell\\Cell.ap20","softwarePath":"PLC_0","severity":"Error","errorCount":1,"warningCount":0,"messages":[{"severity":"Error","path":"Main","description":"Tag not defined"}]}
+{"timestamp":"2026-10-03T12:00:00+00:00","projectPath":"C:\\Projects\\Cell\\Cell.ap20","softwarePath":"PLC_0","severity":"Success","errorCount":0,"warningCount":0,"messages":[]}

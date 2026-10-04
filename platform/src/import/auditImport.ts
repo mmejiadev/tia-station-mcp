@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import { verifyAuditChain } from '../../../harness/src/auditChain.ts';
 import { parseEntry } from '../../../harness/src/auditTrail.ts';
 import type { PlatformDatabase } from '../db/connection.ts';
-import { change, station } from '../db/schema.ts';
+import { change } from '../db/schema.ts';
+import { ensureStation, parseMoment } from './stationRows.ts';
 
 /** What one import of an audit trail did. */
 export type AuditImportResult =
@@ -166,26 +167,6 @@ async function insertRows(
   });
 }
 
-type Transaction = Parameters<Parameters<PlatformDatabase['transaction']>[0]>[0];
-
-async function ensureStation(transaction: Transaction, name: string): Promise<number> {
-  await transaction.insert(station).values({ name }).onConflictDoNothing();
-
-  const found = await transaction.query.station.findFirst({ where: (table, { eq }) => eq(table.name, name) });
-
-  if (found === undefined) {
-    throw new Error(`The station '${name}' was neither found nor created.`);
-  }
-
-  return found.id;
-}
-
-/** The moment a timestamp names, or null when it names none. */
-function parseMoment(timestamp: string): Date | null {
-  const moment = new Date(timestamp);
-
-  return Number.isNaN(moment.getTime()) ? null : moment;
-}
 
 function textOf(raw: Record<string, unknown>, field: string): string {
   return typeof raw[field] === 'string' ? (raw[field] as string) : '';

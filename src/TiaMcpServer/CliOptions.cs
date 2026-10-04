@@ -12,6 +12,13 @@
         /// <summary>Where the audit trail is written when none is given.</summary>
         public const string DefaultAuditPath = ".tia-mcp/audit.jsonl";
 
+        /// <summary>Where compilations are recorded when no path is given.</summary>
+        /// <remarks>Beside the audit trail, so the web platform's importer finds both in one place.</remarks>
+        public const string DefaultCompilationsPath = ".tia-mcp/compilations.jsonl";
+
+        /// <summary>Where the projects the server opens are recorded when no path is given.</summary>
+        public const string DefaultProjectsPath = ".tia-mcp/projects.jsonl";
+
         /// <summary>Where the previous state of anything overwritten is kept when none is given.</summary>
         /// <remarks>
         /// Beside the project for the same reason as the policy: a backup of this project's blocks
@@ -52,6 +59,12 @@
 
         /// <summary>Path to the append-only audit trail.</summary>
         public string? AuditPath { get; set; }
+
+        /// <summary>Path to the compilation journal.</summary>
+        public string? CompilationsPath { get; set; }
+
+        /// <summary>Path to the journal of projects opened.</summary>
+        public string? ProjectsPath { get; set; }
 
         /// <summary>Root directory every backup is written under.</summary>
         public string? BackupRoot { get; set; }
@@ -148,6 +161,24 @@
                         if (i + 1 < args.Length)
                         {
                             options.OpcUaRoot = args[i + 1];
+                            i++;
+                        }
+                        break;
+
+                    case "-compilations":
+                    case "--compilations":
+                        if (i + 1 < args.Length)
+                        {
+                            options.CompilationsPath = args[i + 1];
+                            i++;
+                        }
+                        break;
+
+                    case "-projects":
+                    case "--projects":
+                        if (i + 1 < args.Length)
+                        {
+                            options.ProjectsPath = args[i + 1];
                             i++;
                         }
                         break;

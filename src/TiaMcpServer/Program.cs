@@ -142,6 +142,7 @@ namespace TiaMcpServer
                 builder.Services.AddSingleton<SimulationRuntime>();
 
                 RegisterGovernance(builder.Services, options);
+                HistoryRegistration.Register(builder.Services, options);
                 RegisterOpcUa(builder.Services, options);
 
                 var host = builder.Build();

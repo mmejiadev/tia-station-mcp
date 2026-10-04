@@ -7,6 +7,9 @@ import * as schema from './schema.ts';
 /** The database, typed by the schema. */
 export type PlatformDatabase = NodePgDatabase<typeof schema>;
 
+/** A transaction on the database, as `database.transaction` hands it to its callback. */
+export type PlatformTransaction = Parameters<Parameters<PlatformDatabase['transaction']>[0]>[0];
+
 /** A database and the means to let go of it. */
 export type DatabaseConnection = {
   readonly database: PlatformDatabase;

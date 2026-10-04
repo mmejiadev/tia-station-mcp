@@ -244,10 +244,14 @@ namespace TiaMcpServer.ModelContextProtocol
                     {
                         var report = Portal.CompileSoftware(softwarePath, password);
 
-                        return Describe(
+                        var response = Describe(
                             report,
                             $"Software '{softwarePath}' compiled: {report.WarningCount} warning(s)",
                             $"Software '{softwarePath}' has {report.ErrorCount} error(s) and {report.WarningCount} warning(s); see Messages");
+
+                        response.Message = RecordCompilation(softwarePath, report, response.Message ?? string.Empty);
+
+                        return response;
                     },
                     () => new ResponseCompileSoftware(0, 0, Array.Empty<string>()));
             }

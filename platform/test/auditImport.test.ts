@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, beforeEach, describe, it } from 'node:test';
-import { sql } from 'drizzle-orm';
-import { migrateDatabase, openDatabase, type DatabaseConnection } from '../src/db/connection.ts';
+import type { DatabaseConnection } from '../src/db/connection.ts';
 import { change } from '../src/db/schema.ts';
 import { importAuditTrail } from '../src/import/auditImport.ts';
+import { emptyTestDatabase, openTestDatabase } from './testDatabase.ts';
 
 /**
  * The importer is what the web's change history is built from, so the ways it can be wrong are the
@@ -21,12 +21,11 @@ describe('audit import', () => {
   let connection: DatabaseConnection;
 
   before(async () => {
-    connection = openDatabase(process.env['TEST_DATABASE_URL']);
-    await migrateDatabase(connection.database);
+    connection = await openTestDatabase();
   });
 
   beforeEach(async () => {
-    await connection.database.execute(sql`TRUNCATE TABLE change, station RESTART IDENTITY CASCADE`);
+    await emptyTestDatabase(connection);
   });
 
   after(async () => {

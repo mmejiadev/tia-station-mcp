@@ -76,6 +76,12 @@ namespace TiaMcpServer.Test
             McpServer.SetServiceProvider(_services);
         }
 
+        /// <summary>Where this run's compilations are recorded.</summary>
+        public static string CompilationsPath => Path.Combine(WorkingRoot, "compilations.jsonl");
+
+        /// <summary>Where this run's opened projects are recorded.</summary>
+        public static string ProjectsPath => Path.Combine(WorkingRoot, "projects.jsonl");
+
         /// <summary>
         /// Builds the container the MCP tools resolve everything from, governance included.
         /// </summary>
@@ -103,6 +109,12 @@ namespace TiaMcpServer.Test
                 PolicyPath = policyPath,
                 AuditPath = Path.Combine(WorkingRoot, "audit.jsonl"),
                 BackupRoot = Path.Combine(WorkingRoot, "backups")
+            });
+
+            HistoryRegistration.Register(services, new CliOptions
+            {
+                CompilationsPath = CompilationsPath,
+                ProjectsPath = ProjectsPath
             });
 
             Program.RegisterOpcUa(services, new CliOptions

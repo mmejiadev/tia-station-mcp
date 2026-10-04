@@ -171,7 +171,8 @@ names, devices, tags, comments — and never the audit trail's personal data.
    `change`, a second import changes nothing, and a broken chain is refused with the line that
    breaks it. **Done 2026-10-03.**
 2. **Compilations.** The C# server writes `compilations.jsonl` and `projects.jsonl`; the importer
-   reads them. Done when a compile through the MCP appears with its messages.
+   reads them. Done when a compile through the MCP appears with its messages. **Done
+   2026-10-03.**
 3. **People.** Better Auth with Google and GitHub, profiles, organisations, roles, the TIA identity
    claim and its confirmation. Done when a second account sees only what its role allows.
 4. **The web.** Sidebar, folders, project page, changes and compilations views. Done when the

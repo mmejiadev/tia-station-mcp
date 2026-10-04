@@ -13,7 +13,7 @@
     "check": "npm run typecheck && npm run test",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node --env-file-if-exists=../.env src/db/migrateCli.ts",
-    "import:audit": "node --env-file-if-exists=../.env src/import/auditImportCli.ts"
+    "import": "node --env-file-if-exists=../.env src/import/importCli.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.3",
