@@ -1,9 +1,49 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-10-03**
+> Last updated: **2026-10-04**
 
 ## ▶ RESUME HERE
+
+### The web platform, phase 3: people can sign in — 2026-10-04
+
+**Signing in with Google works**, tried by the user in a browser: one person, one Google account,
+an active session, the e-mail verified and the photo read. GitHub is configured the same way and
+not yet tried. Phases 1 and 2 were merged as PR #37; this is `work/platform-auth`, uncommitted.
+
+- **Better Auth 1.7.7** with Google and GitHub, **telemetry off**. Its seven tables were written from
+  what Better Auth itself reports it needs (`getAuthTables` with the organisation plugin), not from
+  memory. The schema is now split: `src/db/schema/history.ts`, `auth.ts` and `people.ts`, re-exported
+  by `schema.ts`. Migration `0002`.
+- **Roles in one table** (`src/auth/permissions.ts`), read by Better Auth and by the platform:
+  viewer, engineer, supervisor, admin. The creator of an organisation is its admin. `roleCan`
+  grants nothing to a role it does not know.
+- **Profiles**: job title, specialty, company, bio, languages, certifications — all optional, each
+  bounded. **TIA identities**: a member claims "I am this author on that station"; only a supervisor
+  or admin of the same organisation confirms; **nobody confirms their own, an admin included**; a
+  partial unique index keeps one confirmed person per author and station.
+- **`npm run serve`**: 127.0.0.1:4318, Better Auth under `/api/auth/*`, plus `/api/me`,
+  `/api/me/profile` and `/api/identities`. A change must be JSON from the web's own origin, against
+  cross-site request forgery. The dashboard's development server forwards those paths to it, so the
+  providers return to `http://localhost:5173/api/auth/callback/<provider>`.
+- **Dashboard**: an account menu in the header (sign in with either provider, name and photo, sign
+  out); `better-auth` client added.
+- `.env` holds the six sign-in variables (the secret generated at random, never printed);
+  `.env.example` documents them.
+- **Dependencies at their latest stable**, asked for by the user: TypeScript 7.0.2; `@types/node`
+  follows the installed Node 24 rather than the latest 26, so the compiler accepts no API the
+  runtime lacks.
+
+**Verified**: `platform` 47/47, exit code 0, eight runs in a row. Removing the own-claim rule, the
+role check, the duplicate-author handling or the origin check each fails its test. The server test
+uses a real Better Auth session with its cookie signed as Better Auth signs it. Dashboard: types,
+12/12 and a build. **Seen once, not explained**: in one full run `projectImport.test.ts` ended
+without reporting its tests, right after a mutation run; it passed alone and in the eight runs since.
+
+**The next action**: try GitHub sign-in; commit; then phase 4 — the sidebar with folders and
+projects, the project page, and the change and compilation views.
+
+---
 
 ### The web platform: designed, not built — 2026-10-03
 

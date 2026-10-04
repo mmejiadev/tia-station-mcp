@@ -13,6 +13,19 @@ import { defineConfig } from 'vite';
  */
 const ApiOrigin = 'http://127.0.0.1:4317';
 
+/**
+ * Where the web platform listens (platform/src/server/serveCli.ts).
+ *
+ * @remarks
+ * Its paths are listed before `/api`, because the first matching entry wins: sign-in and the
+ * person's own data go to the platform, everything else under `/api` to the harness. The sign-in
+ * providers return to `/api/auth/callback/...` on this page's origin, which is why the platform is
+ * reached through here rather than on its own port.
+ */
+const PlatformOrigin = 'http://127.0.0.1:4318';
+
+const PlatformPaths = ['/api/auth', '/api/me', '/api/identities'];
+
 export default defineConfig({
   plugins: [react(), tailwind()],
   resolve: {
@@ -26,6 +39,7 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     proxy: {
+      ...Object.fromEntries(PlatformPaths.map((path) => [path, { target: PlatformOrigin, changeOrigin: false }])),
       '/api': { target: ApiOrigin, changeOrigin: false }
     }
   }

@@ -174,7 +174,9 @@ names, devices, tags, comments — and never the audit trail's personal data.
    reads them. Done when a compile through the MCP appears with its messages. **Done
    2026-10-03.**
 3. **People.** Better Auth with Google and GitHub, profiles, organisations, roles, the TIA identity
-   claim and its confirmation. Done when a second account sees only what its role allows.
+   claim and its confirmation. Done when a second account sees only what its role allows. **2026-10-04: sign-in with Google
+   works; roles, profiles and identity confirmation are enforced by the API and tested. What a
+   second account sees is for phase 4, which has the screens to show it.**
 4. **The web.** Sidebar, folders, project page, changes and compilations views. Done when the
    teacher can sign in from another machine and read a project.
 5. **Extras.** AI descriptions, images and drawings, snapshots, metrics, the diff.
