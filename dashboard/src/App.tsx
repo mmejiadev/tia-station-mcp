@@ -2,6 +2,7 @@ import { Moon, Radio, RadioTower, Sun } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { AccountMenu } from './components/AccountMenu.tsx';
 import { ModeBanner } from './components/ModeBanner.tsx';
 import { useLive } from './live.tsx';
 import { useTheme } from './theme.tsx';
@@ -57,6 +58,7 @@ export function App(): ReactNode {
           </div>
 
           <div className="flex items-center gap-2">
+            <AccountMenu />
             <LiveIndicator />
             <ThemeButton />
           </div>

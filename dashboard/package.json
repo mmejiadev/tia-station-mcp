@@ -16,6 +16,7 @@
     "check": "npm run typecheck && npm run test"
   },
   "dependencies": {
+    "better-auth": "^1.7.7",
     "chart.js": "^4.5.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

@@ -15,6 +15,13 @@
       "when": 1791037953875,
       "tag": "0001_compilations_and_projects",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791111109888,
+      "tag": "0002_auth_and_people",
+      "breakpoints": true
     }
   ]
 }
