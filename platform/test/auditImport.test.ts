@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, beforeEach, describe, it } from 'node:test';
 import type { DatabaseConnection } from '../src/db/connection.ts';
-import { change } from '../src/db/schema.ts';
+import { change, project } from '../src/db/schema.ts';
 import { importAuditTrail } from '../src/import/auditImport.ts';
 import { emptyTestDatabase, openTestDatabase } from './testDatabase.ts';
 
@@ -102,6 +102,28 @@ describe('audit import', () => {
     const first = await connection.database.query.change.findFirst({ where: (table, { eq }) => eq(table.sequence, 1) });
 
     assert.equal(first?.occurredAt?.toISOString(), '2026-09-05T12:00:00.000Z');
+  });
+
+  it('files a version 3 change under the project the trail recorded', async () => {
+    await importAuditTrail(connection.database, { stationName: 'PC-1', lines: readTrail('audit-chain-golden-v3.jsonl') });
+
+    const rows = await connection.database.select().from(change).orderBy(change.sequence);
+    const [cell] = await connection.database.select().from(project);
+
+    assert.equal(cell?.name, 'Cell');
+    assert.deepEqual(
+      rows.map((row) => row.projectId),
+      [cell?.id, cell?.id, null]
+    );
+  });
+
+  it('leaves a change from before version 3 unfiled rather than guessing its project', async () => {
+    await importAuditTrail(connection.database, { stationName: 'PC-1', lines: golden });
+
+    const rows = await connection.database.select().from(change);
+
+    assert.ok(rows.every((row) => row.projectId === null));
+    assert.equal(await connection.database.$count(project), 0);
   });
 
   it('throws when no station is named', async () => {

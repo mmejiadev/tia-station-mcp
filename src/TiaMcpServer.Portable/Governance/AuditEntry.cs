@@ -55,6 +55,7 @@ namespace TiaMcpServer.Governance
             Outcome = outcome;
             Detail = detail ?? string.Empty;
             Documentation = documentation ?? plan.Documentation.Summarise();
+            Project = plan.Project;
         }
 
         /// <summary>When it happened, in UTC.</summary>
@@ -101,5 +102,13 @@ namespace TiaMcpServer.Governance
         /// citation is. A change made with no documentation behind it is a fact about that change.
         /// </remarks>
         public string Documentation { get; }
+
+        /// <summary>The TIA Portal project the change was made in, or empty when none was open.</summary>
+        /// <remarks>
+        /// Recorded since version 3 of the trail's canonical form, and hashed with the rest, so an
+        /// entry cannot be moved to another project afterwards without breaking the chain. Entries
+        /// written before it carry none, and say so by being empty rather than by guessing.
+        /// </remarks>
+        public string Project { get; }
     }
 }

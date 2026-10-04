@@ -17,7 +17,7 @@ namespace TiaMcpServer.Siemens
     {
         private Device? GetDeviceByPath(string devicePath)
         {
-            if (_project?.Devices == null || string.IsNullOrWhiteSpace(devicePath))
+            if (CurrentProject?.Devices == null || string.IsNullOrWhiteSpace(devicePath))
                 return null;
 
             var pathSegments = ProjectPath.Parse(devicePath).Segments.ToArray();
@@ -25,11 +25,11 @@ namespace TiaMcpServer.Siemens
             // Try top-level device first
             if (pathSegments.Length == 1)
             {
-                return _project.Devices.FirstOrDefault(d => d.Name.Equals(pathSegments[0], StringComparison.OrdinalIgnoreCase));
+                return CurrentProject.Devices.FirstOrDefault(d => d.Name.Equals(pathSegments[0], StringComparison.OrdinalIgnoreCase));
             }
 
             // Traverse device groups
-            DeviceUserGroupComposition? groups = _project.DeviceGroups;
+            DeviceUserGroupComposition? groups = CurrentProject.DeviceGroups;
             DeviceUserGroup? group = groups?.FirstOrDefault(g => g.Name.Equals(pathSegments[0], StringComparison.OrdinalIgnoreCase));
 
             if (group == null)
@@ -59,7 +59,7 @@ namespace TiaMcpServer.Siemens
 
         private DeviceItem? GetDeviceItemByPath(string deviceItemPath)
         {
-            if (_project == null || _project.Devices == null)
+            if (CurrentProject == null || CurrentProject.Devices == null)
             {
                 return null;
             }
@@ -69,8 +69,8 @@ namespace TiaMcpServer.Siemens
             DeviceItem? deviceItem = null;
 
             // initial devices and groups
-            var devices = _project.Devices;
-            var groups = _project.DeviceGroups;
+            var devices = CurrentProject.Devices;
+            var groups = CurrentProject.DeviceGroups;
 
             for (int index = 0; index < pathSegments.Length; index++)
             {
@@ -163,7 +163,7 @@ namespace TiaMcpServer.Siemens
 
         private PlcBlockGroup? GetPlcBlockGroupByPath(string softwarePath, string groupPath)
         {
-            if (_project == null)
+            if (CurrentProject == null)
             {
                 return null;
             }
@@ -199,7 +199,7 @@ namespace TiaMcpServer.Siemens
 
         private PlcTypeGroup? GetPlcTypeGroupByPath(string softwarePath, string groupPath)
         {
-            if (_project == null)
+            if (CurrentProject == null)
             {
                 return null;
             }

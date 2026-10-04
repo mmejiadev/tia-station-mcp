@@ -38,8 +38,8 @@ namespace TiaMcpServer.Siemens
             if (devices.Count == 0) return;
             
             // Check if this is the last main section
-            var hasOtherSections = (_project?.DeviceGroups != null && _project.DeviceGroups.Count > 0) ||
-                                  (_project?.UngroupedDevicesGroup != null);
+            var hasOtherSections = (CurrentProject?.DeviceGroups != null && CurrentProject.DeviceGroups.Count > 0) ||
+                                  (CurrentProject?.UngroupedDevicesGroup != null);
             var isLastMainSection = !hasOtherSections;
             
             sb.AppendLine($"{GetTreePrefix(ancestorStates, isLastMainSection)}Devices [Collection]");
@@ -65,7 +65,7 @@ namespace TiaMcpServer.Siemens
         {
             if (groups.Count == 0) return;
             
-            var isLastMainSection = _project?.UngroupedDevicesGroup == null;
+            var isLastMainSection = CurrentProject?.UngroupedDevicesGroup == null;
             
             sb.AppendLine($"{GetTreePrefix(ancestorStates, isLastMainSection)}Groups [Collection]");
 

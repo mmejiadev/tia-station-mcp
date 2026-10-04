@@ -24,24 +24,24 @@ namespace TiaMcpServer.Siemens
 
             StringBuilder sb = new();
 
-            sb.AppendLine($"{_project?.Name}");
+            sb.AppendLine($"{CurrentProject?.Name}");
 
             var ancestorStates = new List<bool>();
             var sections = new List<Action>();
             
-            if (_project?.Devices != null && _project.Devices.Count > 0)
+            if (CurrentProject?.Devices != null && CurrentProject.Devices.Count > 0)
             {
-                sections.Add(() => GetProjectTreeDevices(sb, _project.Devices, ancestorStates));
+                sections.Add(() => GetProjectTreeDevices(sb, CurrentProject.Devices, ancestorStates));
             }
             
-            if (_project?.DeviceGroups != null && _project.DeviceGroups.Count > 0)
+            if (CurrentProject?.DeviceGroups != null && CurrentProject.DeviceGroups.Count > 0)
             {
-                sections.Add(() => GetProjectTreeGroups(sb, _project.DeviceGroups, ancestorStates));
+                sections.Add(() => GetProjectTreeGroups(sb, CurrentProject.DeviceGroups, ancestorStates));
             }
             
-            if (_project?.UngroupedDevicesGroup != null)
+            if (CurrentProject?.UngroupedDevicesGroup != null)
             {
-                sections.Add(() => GetProjectTreeUngroupedDeviceGroup(sb, _project.UngroupedDevicesGroup, ancestorStates));
+                sections.Add(() => GetProjectTreeUngroupedDeviceGroup(sb, CurrentProject.UngroupedDevicesGroup, ancestorStates));
             }
             
             for (int i = 0; i < sections.Count; i++)
@@ -77,14 +77,14 @@ namespace TiaMcpServer.Siemens
             var filter = NameFilter.Parse(regexName);
             var list = new List<Device>();
 
-            if (_project?.Devices == null)
+            if (CurrentProject?.Devices == null)
             {
                 return list;
             }
 
-            list.AddRange(_project.Devices.Where(device => filter.Matches(device.Name)));
+            list.AddRange(CurrentProject.Devices.Where(device => filter.Matches(device.Name)));
 
-            foreach (var group in _project.DeviceGroups)
+            foreach (var group in CurrentProject.DeviceGroups)
             {
                 GetDevicesRecursive(group, list, regexName);
             }
@@ -181,7 +181,7 @@ namespace TiaMcpServer.Siemens
 
                 // Three arguments, not two: the device gets a name and so does the item inside it.
                 // Create() without an item makes an empty station with no CPU in it.
-                var device = _project!.Devices.CreateWithItem(typeIdentifier, deviceName, deviceName);
+                var device = CurrentProject!.Devices.CreateWithItem(typeIdentifier, deviceName, deviceName);
 
                 return device.Name;
             }

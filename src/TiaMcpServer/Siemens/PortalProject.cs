@@ -75,10 +75,10 @@ namespace TiaMcpServer.Siemens
                 return false;
             }
 
-            if (_project != null)
+            if (CurrentProject != null)
             {
-                (_project as Project)?.Close();
-                _project = null;
+                (CurrentProject as Project)?.Close();
+                CurrentProject = null;
             }
 
             if (_session != null)
@@ -95,16 +95,16 @@ namespace TiaMcpServer.Siemens
                 if (!string.IsNullOrEmpty(projectName) && projects.Any(p => p.Name.Equals(projectName)))
                 {
                     // Project is already open
-                    _project = _portal?.Projects.FirstOrDefault(p => p.Name == projectName);
+                    CurrentProject = _portal?.Projects.FirstOrDefault(p => p.Name == projectName);
 
-                    return _project != null;
+                    return CurrentProject != null;
                 }
                 else
                 {
                     // see [5.3.1 Projekt öffnen, S.113]
-                    _project = _portal?.Projects.OpenWithUpgrade(new FileInfo(projectPath));
+                    CurrentProject = _portal?.Projects.OpenWithUpgrade(new FileInfo(projectPath));
 
-                    return _project != null;
+                    return CurrentProject != null;
                 }
             }
             catch (Exception)
@@ -140,14 +140,14 @@ namespace TiaMcpServer.Siemens
                 // Retrieve() upgrades nothing: an archive from an older TIA version needs
                 // RetrieveWithUpgrade instead, which rewrites the project irreversibly.
                 // Staying on Retrieve keeps this operation non-destructive by default.
-                _project = _portal!.Projects.Retrieve(new FileInfo(archivePath), new DirectoryInfo(targetDirectory));
+                CurrentProject = _portal!.Projects.Retrieve(new FileInfo(archivePath), new DirectoryInfo(targetDirectory));
 
-                if (_project == null)
+                if (CurrentProject == null)
                 {
                     throw new PortalException(PortalErrorCode.RetrieveFailed, $"TIA Portal returned no project for archive: {archivePath}");
                 }
 
-                return _project.Path.FullName;
+                return CurrentProject.Path.FullName;
             }
             catch (Exception ex)
             {
@@ -181,14 +181,14 @@ namespace TiaMcpServer.Siemens
                 ValidateCreateRequest(targetDirectory, projectName);
                 CloseOpenProject();
 
-                _project = _portal!.Projects.Create(new DirectoryInfo(targetDirectory), projectName);
+                CurrentProject = _portal!.Projects.Create(new DirectoryInfo(targetDirectory), projectName);
 
-                if (_project == null)
+                if (CurrentProject == null)
                 {
                     throw new PortalException(PortalErrorCode.RetrieveFailed, $"TIA Portal returned no project for '{projectName}'");
                 }
 
-                return _project.Path.FullName;
+                return CurrentProject.Path.FullName;
             }
             catch (Exception ex)
             {
@@ -251,8 +251,8 @@ namespace TiaMcpServer.Siemens
 
         private void CloseOpenProject()
         {
-            (_project as Project)?.Close();
-            _project = null;
+            (CurrentProject as Project)?.Close();
+            CurrentProject = null;
 
             _session?.Close();
             _session = null;
@@ -272,7 +272,7 @@ namespace TiaMcpServer.Siemens
                 return null;
             }
 
-            var project = _project!;
+            var project = CurrentProject!;
 
             var info = new
             {
@@ -296,7 +296,7 @@ namespace TiaMcpServer.Siemens
                 return false;
             }
 
-            (_project as Project)?.Save();
+            (CurrentProject as Project)?.Save();
 
             return true;
         }
@@ -312,7 +312,7 @@ namespace TiaMcpServer.Siemens
 
             var di = new DirectoryInfo(path);
 
-            (_project as Project)?.SaveAs(di);
+            (CurrentProject as Project)?.SaveAs(di);
 
             return true;
         }
@@ -326,8 +326,8 @@ namespace TiaMcpServer.Siemens
                 return false;
             }
 
-            (_project as Project)?.Close();
-            _project = null;
+            (CurrentProject as Project)?.Close();
+            CurrentProject = null;
 
             return true;
         }

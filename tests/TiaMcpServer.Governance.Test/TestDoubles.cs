@@ -21,6 +21,21 @@ namespace TiaMcpServer.Governance.Tests
         }
     }
 
+    /// <summary>A project context that names whichever project a test has open, and can change it.</summary>
+    /// <remarks>
+    /// Settable, because the case that matters is a project changing between proposing a plan and
+    /// confirming it.
+    /// </remarks>
+    internal sealed class FixedProjectContext : IProjectContext
+    {
+        public FixedProjectContext(string projectPath)
+        {
+            CurrentProjectPath = projectPath;
+        }
+
+        public string CurrentProjectPath { get; set; }
+    }
+
     /// <summary>A gate in whichever mode a test needs.</summary>
     /// <remarks>
     /// Workshop Mode is compiled out of the ordinary build, so its rules could not otherwise be

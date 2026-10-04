@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
 import { verifyAuditChain } from '../../../harness/src/auditChain.ts';
 import { parseEntry } from '../../../harness/src/auditTrail.ts';
-import type { PlatformDatabase } from '../db/connection.ts';
+import type { PlatformDatabase, PlatformTransaction } from '../db/connection.ts';
 import { change } from '../db/schema.ts';
-import { ensureStation, parseMoment } from './stationRows.ts';
+import { ensureProject, ensureStation, parseMoment } from './stationRows.ts';
 
 /** What one import of an audit trail did. */
 export type AuditImportResult =
@@ -117,6 +117,29 @@ function readRows(lines: readonly string[]): ReadResult {
 }
 
 /**
+ * The project row of every project the trail names, created on first sight.
+ *
+ * @remarks
+ * Only what the trail recorded (version 3 onwards). An entry with no project stays unfiled: placing
+ * it by guessing — the last project opened before it, say — would put changes under the wrong
+ * project whenever the server attached to one somebody had opened by hand.
+ */
+async function ensureProjects(
+  transaction: PlatformTransaction,
+  stationId: number,
+  rows: readonly Omit<ChangeRow, 'stationId'>[]
+): Promise<Map<string, number>> {
+  const paths = new Set(rows.map((row) => row.projectPath ?? '').filter((path) => path.length > 0));
+  const ids = new Map<string, number>();
+
+  for (const path of paths) {
+    ids.set(path, await ensureProject(transaction, stationId, path));
+  }
+
+  return ids;
+}
+
+/**
  * One line as a row, or nothing when it is not an entry.
  *
  * @remarks
@@ -131,12 +154,14 @@ function toRow(line: string, lineNumber: number): Omit<ChangeRow, 'stationId'> |
     return undefined;
   }
 
+  const { project, ...fields } = entry;
   const raw = JSON.parse(line) as Record<string, unknown>;
   const chainHash = textOf(raw, 'hash');
   const sequence = Number.parseInt(textOf(raw, 'seq'), 10);
 
   return {
-    ...entry,
+    ...fields,
+    projectPath: project,
     entryKey: chainHash.length > 0 ? chainHash : createHash('sha256').update(line.trim(), 'utf8').digest('hex'),
     lineNumber,
     sequence: Number.isNaN(sequence) ? null : sequence,
@@ -154,10 +179,13 @@ async function insertRows(
 ): Promise<number> {
   return database.transaction(async (transaction) => {
     const stationId = await ensureStation(transaction, stationName);
+    const projectIds = await ensureProjects(transaction, stationId, rows);
     let inserted = 0;
 
     for (let start = 0; start < rows.length; start += RowsPerInsert) {
-      const batch = rows.slice(start, start + RowsPerInsert).map((row) => ({ ...row, stationId }));
+      const batch = rows
+        .slice(start, start + RowsPerInsert)
+        .map((row) => ({ ...row, stationId, projectId: projectIds.get(row.projectPath ?? '') ?? null }));
       const written = await transaction.insert(change).values(batch).onConflictDoNothing().returning({ id: change.id });
 
       inserted += written.length;

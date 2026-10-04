@@ -16,6 +16,71 @@ namespace TiaMcpServer.Governance.Tests
         private static readonly DateTimeOffset Now = new DateTimeOffset(2026, 8, 17, 6, 0, 0, TimeSpan.Zero);
         private const string AllowedTarget = "PLC_0/Blocks/FB_Station";
         private const string ForbiddenTarget = "PLC_0/Safety/FB_Estop";
+        private const string OpenProject = @"C:\Projects\Cell\Cell.ap20";
+
+        /// <remarks>
+        /// The target names a path inside a project and not the project, so this is the only place
+        /// the trail learns which project a change was made in. Both lines carry it: a process that
+        /// dies after planning still left a record of where it was going to write.
+        /// </remarks>
+        [TestMethod]
+        public void Propose_InStudy_RecordsTheOpenProjectOnEveryLine()
+        {
+            var audit = new RecordingAuditTrail();
+            var guard = GuardFor(OperationMode.Study, audit);
+
+            guard.Propose(Request(AllowedTarget), () => "written", Now);
+
+            CollectionAssert.AreEqual(
+                new[] { OpenProject, OpenProject },
+                audit.Entries.Select(entry => entry.Project).ToArray());
+        }
+
+        /// <remarks>
+        /// Workshop Mode: proposed with one project open, confirmed after another was opened. The work
+        /// would land in the second while the trail, under its hash, says the first — so it is refused,
+        /// as a plan confirmed in another mode is, and the refusal is recorded.
+        /// </remarks>
+        [TestMethod]
+        public void Confirm_WithAnotherProjectOpen_IsRefusedAndRunsNothing()
+        {
+            var project = new FixedProjectContext(OpenProject);
+            var audit = new RecordingAuditTrail();
+            var guard = GuardFor(OperationMode.Workshop, audit, project);
+            var ran = false;
+
+            var proposed = guard.Propose(Request(AllowedTarget), () => { ran = true; return "written"; }, Now);
+            project.CurrentProjectPath = @"C:\Projects\Other\Other.ap20";
+            var confirmed = guard.Confirm(proposed.Plan!.Id, Now);
+
+            Assert.AreEqual(ChangeOutcomeKind.Refused, confirmed.Kind);
+            Assert.IsFalse(ran, "a plan confirmed in another project must not run");
+            Assert.AreEqual(AuditOutcome.Refused, audit.Entries[audit.Entries.Count - 1].Outcome);
+        }
+
+        [TestMethod]
+        public void Confirm_TheSameProjectInOtherCase_RunsThePlan()
+        {
+            var project = new FixedProjectContext(OpenProject);
+            var guard = GuardFor(OperationMode.Workshop, new RecordingAuditTrail(), project);
+
+            var proposed = guard.Propose(Request(AllowedTarget), () => "written", Now);
+            project.CurrentProjectPath = OpenProject.ToUpperInvariant();
+            var confirmed = guard.Confirm(proposed.Plan!.Id, Now);
+
+            Assert.AreEqual(ChangeOutcomeKind.Applied, confirmed.Kind);
+        }
+
+        [TestMethod]
+        public void Propose_ARefusedChange_RecordsTheProjectItWasRefusedIn()
+        {
+            var audit = new RecordingAuditTrail();
+            var guard = GuardFor(OperationMode.Study, audit);
+
+            guard.Propose(Request(ForbiddenTarget), () => "written", Now);
+
+            Assert.AreEqual(OpenProject, audit.Entries.Single().Project);
+        }
 
         [TestMethod]
         public void Propose_InStudy_RunsAndRecordsBothPlanAndOutcome()
@@ -184,11 +249,38 @@ namespace TiaMcpServer.Governance.Tests
             return new ChangeRequest("WriteScl", target, "FUNCTION_BLOCK ...", "test");
         }
 
+        private static GuardedWrite GuardFor(OperationMode mode, IAuditTrail audit, FixedProjectContext project)
+        {
+            return GuardFor(mode, audit, new GuardDependencies(null, null, project));
+        }
+
         private static GuardedWrite GuardFor(
             OperationMode mode,
             IAuditTrail audit,
             FixedClock? clock = null,
             IHardwareLookup? lookup = null)
+        {
+            return GuardFor(mode, audit, new GuardDependencies(clock, lookup, null));
+        }
+
+        /// <summary>The collaborators a test may replace; null keeps the default.</summary>
+        private sealed class GuardDependencies
+        {
+            public GuardDependencies(FixedClock? clock, IHardwareLookup? lookup, FixedProjectContext? project)
+            {
+                Clock = clock;
+                Lookup = lookup;
+                Project = project;
+            }
+
+            public FixedClock? Clock { get; }
+
+            public IHardwareLookup? Lookup { get; }
+
+            public FixedProjectContext? Project { get; }
+        }
+
+        private static GuardedWrite GuardFor(OperationMode mode, IAuditTrail audit, GuardDependencies dependencies)
         {
             var policy = new WritePolicy(new Dictionary<OperationMode, ModeRules>
             {
@@ -200,8 +292,9 @@ namespace TiaMcpServer.Governance.Tests
                 new StubModeGate(mode),
                 policy,
                 audit,
-                new ChangePlanStore(clock ?? new FixedClock(Now)),
-                lookup ?? new UnavailableHardwareLookup());
+                new ChangePlanStore(dependencies.Clock ?? new FixedClock(Now)),
+                dependencies.Lookup ?? new UnavailableHardwareLookup(),
+                dependencies.Project ?? new FixedProjectContext(OpenProject));
         }
     }
 }

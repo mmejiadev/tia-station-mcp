@@ -40,9 +40,10 @@ namespace TiaMcpServer.Governance
             Origin = origin ?? string.Empty;
             BackupPath = string.Empty;
             Documentation = HardwareContext.Unavailable(NotLookedUp);
+            Project = string.Empty;
         }
 
-        private ChangeRequest(ChangeRequest request, string backupPath, HardwareContext documentation)
+        private ChangeRequest(ChangeRequest request, string backupPath, HardwareContext documentation, string project)
         {
             Tool = request.Tool;
             Target = request.Target;
@@ -50,6 +51,7 @@ namespace TiaMcpServer.Governance
             Origin = request.Origin;
             BackupPath = backupPath ?? string.Empty;
             Documentation = documentation;
+            Project = project ?? string.Empty;
         }
 
         /// <summary>The tool asking.</summary>
@@ -75,6 +77,14 @@ namespace TiaMcpServer.Governance
         /// </remarks>
         public HardwareContext Documentation { get; }
 
+        /// <summary>The TIA Portal project open when the change was asked for, or empty when none was.</summary>
+        /// <remarks>
+        /// The target names a path inside a project — <c>PLC_1/Blocks/FC_Motor</c> — and not the
+        /// project, so without this an audit line could not say which project it changed. Opening a
+        /// project is a read and is not audited, so it cannot be inferred from the trail either.
+        /// </remarks>
+        public string Project { get; }
+
         /// <summary>The same request, naming where the previous state was saved.</summary>
         /// <param name="backupPath">The directory or file the previous state went to.</param>
         /// <returns>A copy carrying the backup path.</returns>
@@ -86,7 +96,7 @@ namespace TiaMcpServer.Governance
         /// </remarks>
         public ChangeRequest WithBackup(string backupPath)
         {
-            return new ChangeRequest(this, backupPath, Documentation);
+            return new ChangeRequest(this, backupPath, Documentation, Project);
         }
 
         /// <summary>The same request, carrying what the documentation says about it.</summary>
@@ -106,7 +116,20 @@ namespace TiaMcpServer.Governance
                 throw new ArgumentNullException(nameof(documentation));
             }
 
-            return new ChangeRequest(this, BackupPath, documentation);
+            return new ChangeRequest(this, BackupPath, documentation, Project);
+        }
+
+        /// <summary>The same request, naming the project open when it was asked for.</summary>
+        /// <param name="project">The project file's path, or empty when no project is open.</param>
+        /// <returns>A copy carrying the project.</returns>
+        /// <remarks>
+        /// Attached by the guard rather than by each tool, like the documentation: every write
+        /// passes through the guard, and a field set at forty call sites is a field some of them
+        /// forget.
+        /// </remarks>
+        public ChangeRequest WithProject(string project)
+        {
+            return new ChangeRequest(this, BackupPath, Documentation, project);
         }
     }
 }

@@ -109,7 +109,7 @@ namespace TiaMcpServer.Siemens
         /// </remarks>
         private IReadOnlyList<Subnet> AllSubnets()
         {
-            return new SubnetLookup().All(_project!.Subnets, FindDevices());
+            return new SubnetLookup().All(CurrentProject!.Subnets, FindDevices());
         }
 
         /// <summary>

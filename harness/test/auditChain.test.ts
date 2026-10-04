@@ -79,6 +79,15 @@ const GoldenTrail: readonly string[] = TrailLines.slice(1);
  */
 const VersionTwoTrail: readonly string[] = linesOf('audit-chain-golden-v2.jsonl');
 
+/**
+ * A trail written under version 3, which added the project each change was made in.
+ *
+ * @remarks
+ * Written by the server too: `AuditTrailContractTests` in the governance tests asserts it writes
+ * this file byte for byte, so the two languages are checked against the same bytes from both ends.
+ */
+const VersionThreeTrail: readonly string[] = linesOf('audit-chain-golden-v3.jsonl');
+
 describe('audit chain, against what .NET actually wrote', () => {
   it('builds the canonical form byte for byte as System.Text.Json does', () => {
     const canonical = canonicalForm(EscapingVector.sequence, EscapingVector.previousHash, EscapingVector.fields);
@@ -194,6 +203,24 @@ describe('audit chain, tampered with', () => {
 });
 
 describe('audit chain, across versions of the canonical form', () => {
+  it('accepts a trail the server wrote with the project field', () => {
+    const report = verifyAuditChain(VersionThreeTrail);
+
+    assert.equal(report.intact, true, report.reason);
+    assert.equal(report.chained, 3);
+  });
+
+  it('catches an entry moved to another project after the fact', () => {
+    // The project is inside the hash: a change cannot be refiled under somebody else's project.
+    const moved = VersionThreeTrail.map((line, index) =>
+      index === 0 ? line.replace('Cell.ap20', 'Other.ap20') : line);
+
+    const report = verifyAuditChain(moved);
+
+    assert.equal(report.intact, false);
+    assert.equal(report.brokenAtLine, 1);
+  });
+
   it('accepts a trail the server wrote with the citation field', () => {
     const report = verifyAuditChain(VersionTwoTrail);
 

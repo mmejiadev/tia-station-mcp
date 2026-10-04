@@ -225,6 +225,7 @@ function entry(overrides: Partial<AuditEntry>): AuditEntry {
     origin: 'harness',
     outcome: 'Applied',
     detail: '',
+    project: '',
     ...overrides
   };
 }

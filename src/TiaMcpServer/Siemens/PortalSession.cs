@@ -46,7 +46,7 @@ namespace TiaMcpServer.Siemens
 
             if (_session != null)
             {
-                _project = null;
+                CurrentProject = null;
                 _session?.Close();
                 _session = null;
             }
@@ -64,8 +64,8 @@ namespace TiaMcpServer.Siemens
                     if (_session != null)
                     {
                         // Correctly cast MultiuserProject to Project  
-                        _project = _session.Project;
-                        return _project != null;
+                        CurrentProject = _session.Project;
+                        return CurrentProject != null;
                     }
                 }
                 else
@@ -74,8 +74,8 @@ namespace TiaMcpServer.Siemens
                     if (_session != null)
                     {
                         // Correctly cast MultiuserProject to Project  
-                        _project = _session.Project;
-                        return _project != null;
+                        CurrentProject = _session.Project;
+                        return CurrentProject != null;
                     }
                 }
             }
@@ -111,7 +111,7 @@ namespace TiaMcpServer.Siemens
                 return false;
             }
 
-            _project = null;
+            CurrentProject = null;
             _session?.Close();
             _session = null;
 

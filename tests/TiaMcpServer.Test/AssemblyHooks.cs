@@ -76,6 +76,9 @@ namespace TiaMcpServer.Test
             McpServer.SetServiceProvider(_services);
         }
 
+        /// <summary>Where this run's audit trail is written.</summary>
+        public static string AuditPath => Path.Combine(WorkingRoot, "audit.jsonl");
+
         /// <summary>Where this run's compilations are recorded.</summary>
         public static string CompilationsPath => Path.Combine(WorkingRoot, "compilations.jsonl");
 
@@ -107,7 +110,7 @@ namespace TiaMcpServer.Test
             Program.RegisterGovernance(services, new CliOptions
             {
                 PolicyPath = policyPath,
-                AuditPath = Path.Combine(WorkingRoot, "audit.jsonl"),
+                AuditPath = AuditPath,
                 BackupRoot = Path.Combine(WorkingRoot, "backups")
             });
 

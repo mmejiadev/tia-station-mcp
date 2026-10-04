@@ -15,7 +15,7 @@ namespace TiaMcpServer.Siemens
     {
         private SoftwareContainer? GetSoftwareContainer(string softwarePath)
         {
-            if (_project == null)
+            if (CurrentProject == null)
             {
                 return null;
             }
@@ -29,9 +29,9 @@ namespace TiaMcpServer.Siemens
             SoftwareContainer? softwareContainer = null;
 
             // in Devices
-            if (_project.Devices != null)
+            if (CurrentProject.Devices != null)
             {
-                softwareContainer = GetSoftwareContainerInDevices(_project.Devices, pathSegments, index);
+                softwareContainer = GetSoftwareContainerInDevices(CurrentProject.Devices, pathSegments, index);
                 if (softwareContainer != null)
                 {
                     return softwareContainer;
@@ -39,9 +39,9 @@ namespace TiaMcpServer.Siemens
             }
 
             // in Groups
-            if (_project.DeviceGroups != null)
+            if (CurrentProject.DeviceGroups != null)
             {
-                softwareContainer = GetSoftwareContainerInGroups(_project.DeviceGroups, pathSegments, index);
+                softwareContainer = GetSoftwareContainerInGroups(CurrentProject.DeviceGroups, pathSegments, index);
                 if (softwareContainer != null)
                 {
                     return softwareContainer;

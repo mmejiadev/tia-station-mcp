@@ -38,7 +38,32 @@ namespace TiaMcpServer.Siemens
         private readonly char[] _regexChars = ['.', '^', '$', '*', '+', '?', '(', '[', '{', '\\', '|'];
 
         private TiaPortal? _portal;
-        private ProjectBase? _project;
+        private ProjectBase? _openProject;
+
+        /// <summary>The project the server works on, or null when none is open.</summary>
+        /// <remarks>
+        /// A property so that the path is remembered wherever the project changes — opened,
+        /// retrieved, created, attached to or closed, seventeen places in all — without each of them
+        /// having to remember to. See <see cref="OpenProjectPath"/> for why the path is kept at all.
+        /// </remarks>
+        private ProjectBase? CurrentProject
+        {
+            get => _openProject;
+            set
+            {
+                _openProject = value;
+                OpenProjectPath = value?.Path?.FullName ?? string.Empty;
+            }
+        }
+
+        /// <summary>The open project's file path, or empty when none is open.</summary>
+        /// <remarks>
+        /// Remembered when the project changes rather than read from TIA Portal when asked. The
+        /// guard asks for it on every write, some of those writes do not hold the Openness gate, and
+        /// a read that does not reach TIA Portal can neither interleave with a job that does nor fail
+        /// because TIA Portal did — so it cannot turn a refusal into an operation failure.
+        /// </remarks>
+        public string OpenProjectPath { get; private set; } = string.Empty;
         private LocalSession? _session;
 
         // True only when this instance started the TIA Portal process. It decides whether we may
@@ -64,19 +89,19 @@ namespace TiaMcpServer.Siemens
         {
             get
             {
-                if (_project == null)
+                if (CurrentProject == null)
                 {
                     return false;
                 }
 
                 // Check if the project is a valid Project instance
-                if ((_session == null) && (_project is Project))
+                if ((_session == null) && (CurrentProject is Project))
                 {
                     return true;
                 }
 
                 // If it's a MultiuserProject, we can also check its validity
-                if ((_session != null) && (_project is MultiuserProject))
+                if ((_session != null) && (CurrentProject is MultiuserProject))
                 {
                     return true;
                 }
@@ -188,7 +213,7 @@ namespace TiaMcpServer.Siemens
         {
             if (!_ownsPortalProcess)
             {
-                _project = null;
+                CurrentProject = null;
                 _session = null;
 
                 return;
@@ -196,7 +221,7 @@ namespace TiaMcpServer.Siemens
 
             try
             {
-                (_project as Project)?.Close();
+                (CurrentProject as Project)?.Close();
                 _session?.Close();
             }
             catch (Exception ex)
@@ -204,7 +229,7 @@ namespace TiaMcpServer.Siemens
                 _logger?.LogError(ex, "Failed to close the project while releasing the portal");
             }
 
-            _project = null;
+            CurrentProject = null;
             _session = null;
         }
 
@@ -229,7 +254,7 @@ namespace TiaMcpServer.Siemens
 
             try
             {
-                _project = null;
+                CurrentProject = null;
                 _session = null;
                 _portal = null;
                 _ownsPortalProcess = false;
@@ -275,13 +300,13 @@ namespace TiaMcpServer.Siemens
             if (_portal.LocalSessions.Any())
             {
                 _session = _portal.LocalSessions.First();
-                _project = _session.Project;
+                CurrentProject = _session.Project;
                 return;
             }
 
             if (_portal.Projects.Any())
             {
-                _project = _portal.Projects.First();
+                CurrentProject = _portal.Projects.First();
             }
         }
 
@@ -332,19 +357,19 @@ namespace TiaMcpServer.Siemens
                 if (_portal.LocalSessions.Any())
                 {
                     _session = _portal.LocalSessions.First();
-                    _project = _session.Project;
+                    CurrentProject = _session.Project;
                 }
                 // checks for existing projects
                 else if (_portal.Projects.Any())
                 {
-                    _project = _portal.Projects.First();
+                    CurrentProject = _portal.Projects.First();
                 }
             }
 
             return new State
             {
                 IsConnected = IsConnected(),
-                Project = _project != null ? _project.Name : "-",
+                Project = CurrentProject != null ? CurrentProject.Name : "-",
                 Session = _session != null ? _session.Project.Name : "-"
             };
         }
@@ -367,7 +392,7 @@ namespace TiaMcpServer.Siemens
 
         private bool IsProjectNull()
         {
-            if (_project == null)
+            if (CurrentProject == null)
             {
                 _logger?.LogWarning("No TIA project available.");
 

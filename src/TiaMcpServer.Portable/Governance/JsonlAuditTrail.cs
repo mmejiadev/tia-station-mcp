@@ -32,7 +32,10 @@ namespace TiaMcpServer.Governance
     public sealed class JsonlAuditTrail : IAuditTrail
     {
         /// <summary>The version of the canonical form this server writes.</summary>
-        private const string CurrentChainVersion = "2";
+        private const string CurrentChainVersion = "3";
+
+        /// <summary>The version that added the citation, written from 2026-09-05 to 2026-10-04.</summary>
+        private const string CitationChainVersion = "2";
 
         /// <summary>The version assumed for a line that names none.</summary>
         private const string OriginalChainVersion = "1";
@@ -57,6 +60,10 @@ namespace TiaMcpServer.Governance
         /// records none and is read as version 1. <c>v</c> is not itself hashed and does not need to
         /// be: editing it makes the entry verify against the wrong field list, and the hash stops
         /// matching. It fails closed.
+        ///
+        /// Version 3 (2026-10-04) added <c>project</c>, the TIA Portal project the change was made
+        /// in, which the web platform needs to file each change under its project and which the
+        /// target alone does not name.
         /// </remarks>
         private static readonly Dictionary<string, string[]> ChainedFieldsByVersion =
             new Dictionary<string, string[]>(StringComparer.Ordinal)
@@ -65,10 +72,15 @@ namespace TiaMcpServer.Governance
                 {
                     "timestamp", "planId", "mode", "tool", "target", "value", "backupPath", "origin", "outcome", "detail"
                 },
-                [CurrentChainVersion] = new[]
+                [CitationChainVersion] = new[]
                 {
                     "timestamp", "planId", "mode", "tool", "target", "value", "backupPath", "origin", "outcome", "detail",
                     "documentation"
+                },
+                [CurrentChainVersion] = new[]
+                {
+                    "timestamp", "planId", "mode", "tool", "target", "value", "backupPath", "origin", "outcome", "detail",
+                    "documentation", "project"
                 }
             };
 
@@ -329,7 +341,8 @@ namespace TiaMcpServer.Governance
                 ["origin"] = entry.Origin,
                 ["outcome"] = entry.Outcome.ToString(),
                 ["detail"] = entry.Detail,
-                ["documentation"] = entry.Documentation
+                ["documentation"] = entry.Documentation,
+                ["project"] = entry.Project
             };
         }
 
@@ -404,7 +417,8 @@ namespace TiaMcpServer.Governance
             }
 
             var request = new ChangeRequest(Field(record, "tool"), Field(record, "target"), Field(record, "value"), Field(record, "origin"))
-                .WithBackup(Field(record, "backupPath"));
+                .WithBackup(Field(record, "backupPath"))
+                .WithProject(Field(record, "project"));
             var plan = new ChangePlan(
                 PlanId.Parse(Field(record, "planId")),
                 request,

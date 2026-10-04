@@ -274,6 +274,10 @@ namespace TiaMcpServer
                 knowledgeIndex,
                 LookupTimeout));
 
+            // The project each change is made in, recorded in its plan and on the trail (version 3).
+            services.AddSingleton<IProjectContext>(provider =>
+                new PortalProjectContext(() => provider.GetRequiredService<Portal>()));
+
             services.AddSingleton<GuardedWrite>();
 
             // Long operations, so a compile or a download does not block the caller. A singleton

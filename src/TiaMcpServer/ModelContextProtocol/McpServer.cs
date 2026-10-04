@@ -84,6 +84,18 @@ namespace TiaMcpServer.ModelContextProtocol
 #pragma warning restore CA1065
 
         /// <summary>
+        /// The portal, reached without the Openness gate, for reading what it remembers.
+        /// </summary>
+        /// <remarks>
+        /// Only for state the portal keeps in memory, such as the open project's path, which the
+        /// guard records with every write — including the simulation writes that do not hold the
+        /// gate. Anything that reaches TIA Portal goes through <see cref="Portal"/> and its check.
+        /// Null until a portal exists.
+        /// </remarks>
+        private static Portal? PortalForBookkeeping =>
+            _services != null ? _services.GetRequiredService<Portal>() : _portal;
+
+        /// <summary>
         /// The one simulation runtime the server shares.
         /// </summary>
         /// <remarks>
@@ -168,7 +180,8 @@ namespace TiaMcpServer.ModelContextProtocol
                 // Nothing was configured on this path — that is what makes it the fallback — so
                 // there is no index to point at and no path to guess. Plans made here say the
                 // hardware context is unavailable, which is true and is the point.
-                new Knowledge.UnavailableHardwareLookup());
+                new Knowledge.UnavailableHardwareLookup(),
+                new Siemens.PortalProjectContext(() => PortalForBookkeeping));
 
             internal static readonly Governance.IBackupRegistry Backups = new Governance.BackupRegistry(
                 CliOptions.DefaultBackupRoot,

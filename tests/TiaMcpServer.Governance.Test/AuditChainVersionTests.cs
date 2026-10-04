@@ -31,6 +31,15 @@ namespace TiaMcpServer.Governance.Tests
             "\"origin\":\"agent\",\"outcome\":\"Applied\",\"detail\":\"\",\"seq\":\"1\",\"prev\":\"\"," +
             "\"hash\":\"7607e107cc1c8b783dd2508df865ce2b15f72d42fb8c66bebe11f676f918c985\"}";
 
+        /// <summary>
+        /// One line exactly as the server wrote it under version 2, before the project field: the
+        /// first line of the harness's golden trail, which the server itself produced.
+        /// </summary>
+        private const string VersionTwoLine =
+            @"{""timestamp"":""2026-09-05T12:00:00.0000000\u002B00:00"",""planId"":""AAA-111"",""mode"":""Study"",""tool"":""WriteScl"",""target"":""PLC_0/Blocks/FB_Estacion_1"",""value"":"""",""backupPath"":"""",""origin"":""agent"",""outcome"":""Applied"",""detail"":"""",""documentation"":""1 citation(s): Universal Robots e-Series User Manual UR5e (SW 5.16), page 47"",""v"":""2"",""seq"":""1"",""prev"":"""",""hash"":""c382213ccc35f58e9a1fd5fa56f2eccdeb4bbeec23fc89b871c6f7a4e52db679""}";
+
+        private const string OpenProject = @"C:\Projects\Cell\Cell.ap20";
+
         private string _path = string.Empty;
 
         [TestInitialize]
@@ -82,7 +91,49 @@ namespace TiaMcpServer.Governance.Tests
         {
             new JsonlAuditTrail(_path).Append(Entry(AnUnavailableLookup()));
 
-            Assert.AreEqual("2", Record(1)["v"]);
+            Assert.AreEqual("3", Record(1)["v"]);
+        }
+
+        /// <remarks>
+        /// Version 3 added the project, and every trail written under version 2 — the workshop
+        /// sessions of September 2026 among them — has to keep verifying, exactly as version 1 did
+        /// when version 2 arrived.
+        /// </remarks>
+        [TestMethod]
+        public void VerifyChain_ALineWrittenUnderVersionTwo_StillVerifies()
+        {
+            File.WriteAllLines(_path, new[] { VersionTwoLine });
+
+            var report = new JsonlAuditTrail(_path).VerifyChain();
+
+            Assert.IsTrue(report.IsIntact, report.Reason);
+            Assert.AreEqual(1, report.Chained);
+        }
+
+        [TestMethod]
+        public void Read_AnEntryWithAProject_KeepsItThroughTheFile()
+        {
+            new JsonlAuditTrail(_path).Append(Entry(AnUnavailableLookup(), OpenProject));
+
+            var read = new JsonlAuditTrail(_path).Read();
+
+            Assert.AreEqual(OpenProject, read[0].Project);
+        }
+
+        /// <remarks>
+        /// The project is inside the hash, so a change cannot be refiled under another project —
+        /// another student's, say — without the chain saying so.
+        /// </remarks>
+        [TestMethod]
+        public void VerifyChain_AnEntryMovedToAnotherProject_IsCaught()
+        {
+            new JsonlAuditTrail(_path).Append(Entry(AnUnavailableLookup(), OpenProject));
+
+            Rewrite(1, line => line.Replace("Cell.ap20", "Other.ap20"));
+
+            var report = new JsonlAuditTrail(_path).VerifyChain();
+
+            Assert.IsFalse(report.IsIntact);
         }
 
         /// <remarks>
@@ -93,7 +144,7 @@ namespace TiaMcpServer.Governance.Tests
         public void VerifyChain_AnEntryWhoseVersionWasChanged_IsCaught()
         {
             new JsonlAuditTrail(_path).Append(Entry(AnUnavailableLookup()));
-            Rewrite(1, line => line.Replace("\"v\":\"2\"", "\"v\":\"1\""));
+            Rewrite(1, line => line.Replace("\"v\":\"3\"", "\"v\":\"1\""));
 
             var report = new JsonlAuditTrail(_path).VerifyChain();
 
@@ -109,7 +160,7 @@ namespace TiaMcpServer.Governance.Tests
         public void VerifyChain_AVersionThisServerDoesNotKnow_SaysSoRatherThanCryingTampering()
         {
             new JsonlAuditTrail(_path).Append(Entry(AnUnavailableLookup()));
-            Rewrite(1, line => line.Replace("\"v\":\"2\"", "\"v\":\"99\""));
+            Rewrite(1, line => line.Replace("\"v\":\"3\"", "\"v\":\"99\""));
 
             var report = new JsonlAuditTrail(_path).VerifyChain();
 
@@ -166,10 +217,11 @@ namespace TiaMcpServer.Governance.Tests
             StringAssert.Contains(report.Reason, "do not match its hash", StringComparison.Ordinal);
         }
 
-        private static AuditEntry Entry(HardwareContext documentation)
+        private static AuditEntry Entry(HardwareContext documentation, string project = "")
         {
             var request = new ChangeRequest("WriteScl", "PLC_0/Blocks/FB_1", string.Empty, "test")
-                .WithDocumentation(documentation);
+                .WithDocumentation(documentation)
+                .WithProject(project);
             var plan = new ChangePlan(PlanId.Create(), request, OperationMode.Study, Now.AddMinutes(10));
 
             return new AuditEntry(Now, plan, AuditOutcome.Applied, string.Empty);

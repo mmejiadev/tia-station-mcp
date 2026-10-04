@@ -90,7 +90,7 @@ namespace TiaMcpServer.Test
             var job = WaitUntilFinished(jobId!);
 
             Assert.AreEqual("Failed", job.State);
-            StringAssert.Contains(job.Detail, "no policy is configured", StringComparison.Ordinal);
+            StringAssert.Contains(job.Detail, "no policy file was found", StringComparison.Ordinal);
         }
 
         [TestMethod]
@@ -473,7 +473,7 @@ namespace TiaMcpServer.Test
         private static void AssertRefused(string? message, string? outcome)
         {
             Assert.AreEqual("Refused", outcome, $"the change was not refused: {message}");
-            StringAssert.Contains(message ?? string.Empty, "no policy is configured", StringComparison.Ordinal);
+            StringAssert.Contains(message ?? string.Empty, "no policy file was found", StringComparison.Ordinal);
         }
 
         private static ServiceProvider BuildDenyEverythingServices(string policyPath)

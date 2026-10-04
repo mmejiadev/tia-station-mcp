@@ -27,6 +27,7 @@ namespace TiaMcpServer.Governance
         private readonly IAuditTrail _audit;
         private readonly ChangePlanStore _plans;
         private readonly IHardwareLookup _documentation;
+        private readonly IProjectContext _project;
 
         /// <summary>Creates the guard.</summary>
         /// <param name="gate">What this session may act on.</param>
@@ -34,28 +35,31 @@ namespace TiaMcpServer.Governance
         /// <param name="audit">Where every decision is written down.</param>
         /// <param name="plans">Where plans wait for confirmation.</param>
         /// <param name="documentation">What the manuals say about the equipment being changed.</param>
+        /// <param name="project">Which project is open, recorded with every change.</param>
         /// <exception cref="ArgumentNullException">Any argument is null.</exception>
         /// <remarks>
-        /// Five collaborators against the repository's limit of four parameters, and a parameter
+        /// Six collaborators against the repository's limit of four parameters, and a parameter
         /// object is deliberately not used here. The limit exists so that a long positional list
         /// cannot be passed in the wrong order — which, for a guard, would mean auditing through
-        /// the wrong trail. These five are distinct interface types, so a wrong order does not
-        /// compile, and wrapping them would move the same five arguments one level out while adding
-        /// a class that means nothing on its own. Stated rather than assumed, per the closing note
-        /// of CLAUDE.md.
+        /// the wrong trail. These six are distinct types, five of them interfaces, so a wrong order
+        /// does not compile, and wrapping them would move the same six arguments one level out while
+        /// adding a class that means nothing on its own. Stated rather than assumed, per the closing
+        /// note of CLAUDE.md.
         /// </remarks>
         public GuardedWrite(
             IModeGate gate,
             IWritePolicy policy,
             IAuditTrail audit,
             ChangePlanStore plans,
-            IHardwareLookup documentation)
+            IHardwareLookup documentation,
+            IProjectContext project)
         {
             _gate = gate ?? throw new ArgumentNullException(nameof(gate));
             _policy = policy ?? throw new ArgumentNullException(nameof(policy));
             _audit = audit ?? throw new ArgumentNullException(nameof(audit));
             _plans = plans ?? throw new ArgumentNullException(nameof(plans));
             _documentation = documentation ?? throw new ArgumentNullException(nameof(documentation));
+            _project = project ?? throw new ArgumentNullException(nameof(project));
         }
 
         /// <summary>Proposes a change, and runs it when this mode confirms automatically.</summary>
@@ -75,6 +79,9 @@ namespace TiaMcpServer.Governance
             {
                 throw new ArgumentNullException(nameof(execute));
             }
+
+            // Before the decision, so that a refusal records the project it was refused in too.
+            request = request.WithProject(_project.CurrentProjectPath);
 
             var decision = _policy.Decide(_gate.Mode, request.Target);
 
@@ -139,18 +146,48 @@ namespace TiaMcpServer.Governance
         public ChangeOutcome Confirm(PlanId id, DateTimeOffset now)
         {
             var pending = _plans.Take(id);
+            var mismatch = MismatchWithSession(pending.Plan);
 
-            if (pending.Plan.Mode != _gate.Mode)
+            if (mismatch.Length > 0)
             {
-                // A plan made in one mode confirmed in another describes work nobody approved.
-                var reason = $"Plan '{id}' was made in {pending.Plan.Mode} mode and this session is in {_gate.Mode}.";
+                var unrecorded = Record(pending.Plan, AuditOutcome.Refused, mismatch, now);
 
-                var unrecorded = Record(pending.Plan, AuditOutcome.Refused, reason, now);
-
-                return ChangeOutcome.Refused(Combine(reason, unrecorded), pending.Plan);
+                return ChangeOutcome.Refused(Combine(mismatch, unrecorded), pending.Plan);
             }
 
             return Run(pending.Plan, pending.Execute, now, string.Empty);
+        }
+
+        /// <summary>Why a plan no longer describes what confirming it would do, or empty when it still does.</summary>
+        /// <param name="plan">The plan a person is confirming.</param>
+        /// <returns>The reason, or an empty string.</returns>
+        /// <remarks>
+        /// Both are the same failure: a plan approved for one thing that would do another. Made in
+        /// one mode and confirmed in another, or proposed with one project open and confirmed with
+        /// another — where the work would land in the second project while the trail, under its
+        /// hash, says the first. Paths are compared without regard to case, as Windows compares them.
+        /// </remarks>
+        private string MismatchWithSession(ChangePlan plan)
+        {
+            if (plan.Mode != _gate.Mode)
+            {
+                return $"Plan '{plan.Id}' was made in {plan.Mode} mode and this session is in {_gate.Mode}.";
+            }
+
+            var open = _project.CurrentProjectPath;
+
+            if (!string.Equals(plan.Project, open, StringComparison.OrdinalIgnoreCase))
+            {
+                return $"Plan '{plan.Id}' was made with project '{Describe(plan.Project)}' open, and the project " +
+                       $"open now is '{Describe(open)}'. Open the project it was made for, or propose it again.";
+            }
+
+            return string.Empty;
+        }
+
+        private static string Describe(string projectPath)
+        {
+            return projectPath.Length == 0 ? "none" : projectPath;
         }
 
         /// <summary>Runs a plan and records how it went.</summary>
