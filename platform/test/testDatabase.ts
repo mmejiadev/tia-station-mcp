@@ -26,7 +26,7 @@ export async function openTestDatabase(): Promise<DatabaseConnection> {
  */
 export async function emptyTestDatabase(connection: DatabaseConnection): Promise<void> {
   await connection.database.execute(
-    sql`TRUNCATE TABLE tia_identity, profile, invitation, member, organization, verification, account, session, "user", compilation_message, compilation, project, change, station RESTART IDENTITY CASCADE`
+    sql`TRUNCATE TABLE folder, tia_identity, profile, invitation, member, organization, verification, account, session, "user", compilation_message, compilation, project, change, station RESTART IDENTITY CASCADE`
   );
 }
 

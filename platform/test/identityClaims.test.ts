@@ -22,7 +22,8 @@ describe('identity claims', () => {
     const database = connection.database;
 
     await anOrganization(database, 'class');
-    await aStation(database, 'MANUELA');
+    await aStation(database, 'MANUELA', 'class');
+    await aStation(database, 'ELSEWHERE');
 
     for (const [person, role] of [
       ['student', 'engineer'],
@@ -59,6 +60,18 @@ describe('identity claims', () => {
       userId: 'student',
       organizationId: 'class',
       stationName: 'NOWHERE',
+      tiaAuthor: 'mamem'
+    });
+
+    assert.equal(result.kind, 'refused');
+  });
+
+  it('refuses a claim on a station not linked to the organisation', async () => {
+    // A confirmation about another organisation's machine would name nobody on anything it sees.
+    const result = await claimIdentity(connection.database, {
+      userId: 'student',
+      organizationId: 'class',
+      stationName: 'ELSEWHERE',
       tiaAuthor: 'mamem'
     });
 

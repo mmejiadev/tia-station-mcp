@@ -29,6 +29,27 @@
       "when": 1791130747458,
       "tag": "0003_change_project",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791133876173,
+      "tag": "0004_workspace",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791138444687,
+      "tag": "0005_station_pairing",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791145050821,
+      "tag": "0006_workspace_indexes",
+      "breakpoints": true
     }
   ]
 }

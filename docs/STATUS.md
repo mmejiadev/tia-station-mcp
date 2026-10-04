@@ -5,6 +5,61 @@
 
 ## ▶ RESUME HERE
 
+### The web platform, phase 4, step 2: the workspace behind the screens — 2026-10-04
+
+On `work/platform-workspace`, uncommitted. Step 1 (audit chain v3) was merged as PR #39.
+
+- **Who sees what.** A station belongs to one organisation (`station.organization_id`), and its
+  projects are seen by that organisation's members, as their role allows; a station nobody linked
+  is seen by nobody.
+- **Linking takes a pairing code issued on the station's own machine** (`npm run pair -- --station
+  MANUELA`): eight characters with no 0/O or 1/I/L, single use, 30 minutes, stored as its SHA-256.
+  The code review found the first version let **any signed-in person take any unlinked station**:
+  anybody can create an organisation and be its admin, and the admin role was all linking asked for.
+  Holding a code only the station could print is the proof now. One conditional UPDATE decides it
+  (name, code, expiry, unlinked or already this organisation's), so two admins cannot both win and a
+  linked station is never taken; every failure gives the same answer, so nobody can list stations.
+- **Folders** (`folder`, nested, per organisation) and `project.folder_id`; migrations `0004` and
+  `0005` (pairing). Creating, renaming, moving and deleting folders and filing projects take
+  `project:describe` (engineer and above). Every folder write runs in a transaction holding an
+  advisory lock per organisation, so two concurrent moves cannot loop the tree; folders nest at most
+  32 deep, and a walk that reaches the limit refuses (the first version stopped walking and allowed
+  the move — the bound failed open). A project cannot be filed in another organisation's folder;
+  deleting a folder returns its projects to the top level.
+- **`src/workspace/`**: `readWorkspace` (organisations, folders, projects with a status from their
+  latest compilation: ok, warning, error, unknown), `readProject` (with the confirmed author and
+  changes by outcome; its independent queries run together), `listChanges` (by outcome, paged with
+  `before`), `listCompilations` (with messages, undated ones last as in the status), the folder
+  operations, `issuePairingCode` and `linkStation`. Refusals are results — `invalid`, `not-found`,
+  `forbidden` — and **a project somebody may not read is "not found"**, so a stranger does not learn
+  it exists. A TIA identity can now only be claimed on a station of the claim's organisation.
+- **The server** has a route table (`server/router.ts`, `routes/peopleRoutes.ts`,
+  `routes/workspaceRoutes.ts`), and everything of the platform's own is under `/api/platform/`; the
+  dashboard proxies `/api/auth` and `/api/platform` and nothing else. Client mistakes are 400s, not
+  500s: a body that is not a JSON object, a folder id that is neither a number nor null, a path
+  parameter that does not decode; an id beyond PostgreSQL's integer range is a 404. An empty PATCH
+  returns the folder unchanged. A DELETE must come from the web's origin too.
+
+**A second review round** found no security issue, and ten of robustness and form, all fixed: a
+profile field that is not text, a body folder id beyond the integer range and an unreadable paging
+cursor are 400s (`server/requestFields.ts` reads every body field and query number; `BadRequest`
+has its own file); a folder move checks its subtree's height against the depth limit, not only
+loops; the project page reuses the row its access check read; the workspace is four queries however
+many organisations; `station.organization_id` and `project.folder_id` are indexed (migration
+`0006`); the default page size is named.
+
+**Verified**: platform 87/87. Mutations, each caught by its own test: a stranger told "forbidden";
+the folder loop check removed; the pairing code, its expiry, its single use and the "not another
+organisation's" condition each removed; a folder of another organisation accepted; a text folder id
+read as the top level; an identity claimed on another organisation's station; a non-object body
+let through; a move's subtree height ignored; the batched workspace not filtered by organisation; a
+profile read without checking types. The development database applied `0004` to `0006`.
+
+**Next**: the screens — the control-room sidebar and project page in the dashboard, over these
+endpoints, beside the harness views; creating an organisation and pairing `MANUELA` from the web.
+
+---
+
 ### The web platform, phase 4, step 1: every change records its project — 2026-10-04
 
 On `work/platform-web`, uncommitted. The user chose the "control room" design (artifact

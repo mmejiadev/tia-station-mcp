@@ -32,7 +32,7 @@ export async function addMember(
   await database.insert(member).values({ id: `${organizationId}-${userId}`, organizationId, userId, role, createdAt: new Date() });
 }
 
-/** A station whose history has been imported. */
-export async function aStation(database: PlatformDatabase, name: string): Promise<void> {
-  await database.insert(station).values({ name });
+/** A station whose history has been imported, linked to an organisation or to none. */
+export async function aStation(database: PlatformDatabase, name: string, organizationId: string | null = null): Promise<void> {
+  await database.insert(station).values({ name, organizationId });
 }

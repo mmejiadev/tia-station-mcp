@@ -8,7 +8,7 @@ import { createPlatformServer } from './platformServer.ts';
  *
  * @remarks
  * The loopback address, deliberately, like the harness API: the dashboard's development server
- * forwards `/api/auth` and `/api/me` here, so the browser talks to one origin and this server is
+ * forwards `/api/auth` and `/api/platform` here, so the browser talks to one origin and this server is
  * reachable from nowhere else. Serving others on a network is the deployment question in
  * docs/WEB-PLATFORM.md, and it is answered by a proper HTTPS front, not by changing this address.
  */

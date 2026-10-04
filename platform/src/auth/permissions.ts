@@ -10,14 +10,17 @@ import { defaultStatements } from 'better-auth/plugins/organization/access';
  * would drift, and the drift would be a permission one of them grants and the other was meant to
  * refuse.
  *
- * Better Auth's statements, plus two resources of the platform's own: a project, which is read or
- * described, and a TIA identity, which only a supervisor or an admin confirms. Nothing here
+ * Better Auth's statements, plus three resources of the platform's own: a project, which is read
+ * or described (its description, its folder); a TIA identity, which only a supervisor or an admin
+ * confirms; and a station, which only an admin links to the organisation — the act that decides who
+ * sees a machine's history. Nothing here
  * reaches TIA Portal or a controller — the web never writes to either (docs/WEB-PLATFORM.md).
  */
 export const statements = {
   ...defaultStatements,
   project: ['read', 'describe'],
-  identity: ['confirm']
+  identity: ['confirm'],
+  station: ['link']
 } as const;
 
 export const accessControl = createAccessControl(statements);
@@ -43,6 +46,7 @@ const supervisor = accessControl.newRole({
 const admin = accessControl.newRole({
   project: ['read', 'describe'],
   identity: ['confirm'],
+  station: ['link'],
   organization: ['update', 'delete'],
   member: ['create', 'update', 'delete'],
   invitation: ['create', 'cancel'],
@@ -62,9 +66,11 @@ export const CreatorRole: RoleName = 'admin';
 /** The role a person gets when nothing else says which. */
 export const DefaultRole: RoleName = 'viewer';
 
-type PlatformPermission = {
+/** What the platform's own endpoints ask a role for. */
+export type PlatformPermission = {
   readonly project?: readonly ('read' | 'describe')[];
   readonly identity?: readonly 'confirm'[];
+  readonly station?: readonly 'link'[];
 };
 
 /**
@@ -90,9 +96,14 @@ function isKnownRole(name: string): name is RoleName {
   return Object.prototype.hasOwnProperty.call(roles, name);
 }
 
-function toRequest(permission: PlatformPermission): { project?: ('read' | 'describe')[]; identity?: 'confirm'[] } {
+function toRequest(permission: PlatformPermission): {
+  project?: ('read' | 'describe')[];
+  identity?: 'confirm'[];
+  station?: 'link'[];
+} {
   return {
     ...(permission.project === undefined ? {} : { project: [...permission.project] }),
-    ...(permission.identity === undefined ? {} : { identity: [...permission.identity] })
+    ...(permission.identity === undefined ? {} : { identity: [...permission.identity] }),
+    ...(permission.station === undefined ? {} : { station: [...permission.station] })
   };
 }

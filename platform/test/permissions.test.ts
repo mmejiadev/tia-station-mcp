@@ -22,6 +22,12 @@ describe('permissions', () => {
     assert.deepEqual(confirmers, [false, false, true, true]);
   });
 
+  it('lets only an admin link a station to the organisation', () => {
+    const linkers = ['viewer', 'engineer', 'supervisor', 'admin'].map((role) => roleCan(role, { station: ['link'] }));
+
+    assert.deepEqual(linkers, [false, false, false, true]);
+  });
+
   it('grants nothing to a role it does not know', () => {
     // A role renamed, mistyped or written into the database by hand is a refusal, never a permission.
     assert.equal(roleCan('owner', { project: ['read'] }), false);

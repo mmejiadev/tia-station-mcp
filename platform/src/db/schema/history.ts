@@ -1,4 +1,6 @@
 import { bigint, index, integer, pgTable, text, timestamp, unique, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { organization } from './auth.ts';
+import { folder } from './workspace.ts';
 
 /**
  * A machine that runs TIA Portal and the MCP server, and whose files are imported.
@@ -6,12 +8,28 @@ import { bigint, index, integer, pgTable, text, timestamp, unique, type AnyPgCol
  * @remarks
  * Identified by name for now. Phase 3 of docs/WEB-PLATFORM.md gives each one a token, so that a
  * station can only push its own history; until then the importer runs on the machine itself.
+ *
+ * A station belongs to one organisation, and that is what decides who sees its projects: the
+ * members of that organisation, as their role allows. A station nobody has linked yet is seen by
+ * nobody — its history is imported, and stays out of sight until an admin says whose it is.
+ *
+ * **Linking takes a pairing code issued on the station's own machine** (`npm run pair`). Any
+ * signed-in person can create an organisation and be its admin, so being an admin proves nothing
+ * about a station; holding a code that only its machine could print does. Without it, the first
+ * admin to type a station's name would read its whole history.
  */
 export const station = pgTable('station', {
   id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
   name: text('name').notNull().unique(),
+  organizationId: text('organization_id').references(() => organization.id, { onDelete: 'set null' }),
+  /**
+   * The SHA-256 of the pairing code issued on the station's own machine, or null when none is
+   * pending. Never the code itself: the database is not where it should be readable from.
+   */
+  pairingCodeHash: text('pairing_code_hash'),
+  pairingCodeExpiresAt: timestamp('pairing_code_expires_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
-});
+}, (table) => [index('station_organization').on(table.organizationId)]);
 
 /**
  * One entry of a station's audit trail: a change the MCP server planned, applied, refused or failed.
@@ -84,6 +102,8 @@ export const project = pgTable(
       .notNull()
       .references(() => station.id),
     tiaPath: text('tia_path').notNull(),
+    /** The folder the project is filed in on the web, or null at the top level. */
+    folderId: integer('folder_id').references((): AnyPgColumn => folder.id, { onDelete: 'set null' }),
     name: text('name').notNull(),
     tiaAuthor: text('tia_author'),
     tiaCreatedAt: timestamp('tia_created_at', { withTimezone: true }),
@@ -93,7 +113,7 @@ export const project = pgTable(
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
   },
-  (table) => [unique('project_station_path').on(table.stationId, table.tiaPath)]
+  (table) => [unique('project_station_path').on(table.stationId, table.tiaPath), index('project_folder').on(table.folderId)]
 );
 
 /**
