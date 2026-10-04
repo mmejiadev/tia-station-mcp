@@ -5,6 +5,60 @@
 
 ## ▶ RESUME HERE
 
+### The web platform, phase 4, step 1: every change records its project — 2026-10-04
+
+On `work/platform-web`, uncommitted. The user chose the "control room" design (artifact
+https://claude.ai/artifact/2mm4NEgmLHVdp1faUP78L2, boards prefixed "Sala de control") and that the
+web platform lives beside the harness dashboard rather than replacing it.
+
+**Why this came first**: the audit trail did not say which project a change was made in. The target
+is a path inside a project (`PLC_1/Blocks/FC_Motor`), and opening a project is a read, so it is not
+audited — measured on the installation's real trail: no `OpenProject` entry in 264. Inferring the
+project from the last one opened would misfile changes whenever the server attaches to a project
+somebody opened by hand. So the trail records it:
+
+- **Audit chain version 3** adds `project`, inside the hash. `ChangeRequest.WithProject`, carried to
+  `ChangePlan` and `AuditEntry`; `JsonlAuditTrail` writes `"v":"3"`, and v1 and v2 lines keep
+  verifying with their own field lists.
+- **`GuardedWrite` stamps it**, through a new `IProjectContext` (Portable), before the policy decides,
+  so refusals carry it too; and **`Confirm` refuses a plan when the project open then is not the one
+  it was proposed in** (Workshop Mode), recorded like a mode mismatch. `GuardedWrite` now takes six
+  collaborators; its remark says why that stays.
+- **The project path is remembered, not read from TIA Portal when asked.** `Portal._project` became
+  the private property `CurrentProject`, whose setter keeps `OpenProjectPath` (77 uses across ten
+  files renamed; the compiler checked them). `PortalProjectContext` reads that string, so a write
+  that does not hold the Openness gate — the simulation tools — never touches TIA Portal for it, and
+  a TIA Portal failure cannot turn a refusal into an operation failure. The fallback guard reaches
+  the portal through `PortalForBookkeeping`, which skips the gate check because it only reads memory.
+- **The contract is a golden trail written by the C# code**: `AuditTrailContractTests` asserts the
+  server writes `harness/test/assets/audit-chain-golden-v3.jsonl` byte for byte (on a mismatch it
+  leaves the actual output in a per-run temporary file and names it), and the harness verifies the
+  same file. The harness verifier and reader learned version 3.
+- **The platform** stores `change.project_path` as recorded and `change.project_id` when there is
+  one (migration `0003`, `ON DELETE SET NULL`); a change with no project stays unfiled, never guessed.
+- **`Test16GuardedWrites` was broken on `main` since PR #34**: 34 tests expected the old refusal text
+  "no policy is configured", which batch 2 replaced with "no policy file was found at …". Nobody had
+  run it since. Updated to the current text.
+
+**Code review** (`/code-review high`) found ten things; all fixed. The serious ones: the first
+version read the project from TIA Portal on every write, outside the Openness gate for the
+simulation tools, and broke the fallback guard; a Workshop plan could be confirmed in another
+project; and a TIA failure while reading the project would have become an unrecorded failure.
+
+**Verified**: Governance 245/245 (new: the project on every line and on a refusal; a confirmation in
+another project refused, and one differing only in case run; v3 chain tests; the contract test).
+Harness 287/287. Platform 49/49, the test database migrated from scratch; the development database
+applied `0003`. With TIA Portal: `Test1`, `Test2`, `Test5`, `Test16`, `Test17`, `Test21`, `Test22` and
+`Test38`, 83 passed and 3 ignored (`Test22`, no multiuser session asset — unchanged), including
+`WriteScl_AllowedTarget_RecordsTheOpenProjectOnTheAuditTrail`. Mutations: the guard not stamping
+the project fails both guard tests; confirm not comparing projects fails its test; the importer not
+filing the project fails the v3 import test.
+
+**Next in phase 4**: station-to-organisation link, folders, read-only endpoints for the workspace,
+a project, its changes and compilations, guarded by `roleCan`; then the screens in the dashboard.
+
+---
+
 ### The web platform, phase 3: people can sign in — 2026-10-04
 
 **Signing in with Google works**, tried by the user in a browser: one person, one Google account,

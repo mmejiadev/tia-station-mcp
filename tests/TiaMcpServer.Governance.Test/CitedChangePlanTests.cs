@@ -127,7 +127,8 @@ namespace TiaMcpServer.Governance.Tests
                 policy,
                 new RecordingAuditTrail(),
                 new ChangePlanStore(new FixedClock(Now)),
-                lookup);
+                lookup,
+                new FixedProjectContext(string.Empty));
         }
 
         private static ChangeRequest Request(string target)

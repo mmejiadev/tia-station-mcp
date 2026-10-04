@@ -129,7 +129,8 @@ namespace TiaMcpServer.Governance.Tests
                 policy,
                 new RecordingAuditTrail(),
                 new ChangePlanStore(new FixedClock(Now)),
-                new UnavailableHardwareLookup());
+                new UnavailableHardwareLookup(),
+                new FixedProjectContext(string.Empty));
         }
     }
 }

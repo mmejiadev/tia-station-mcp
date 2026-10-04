@@ -249,6 +249,7 @@ function entry(overrides: Partial<AuditEntry>): AuditEntry {
     origin: 'agent',
     outcome: 'Applied',
     detail: '',
+    project: '',
     ...overrides
   };
 }

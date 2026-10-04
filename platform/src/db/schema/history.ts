@@ -1,4 +1,4 @@
-import { bigint, index, integer, pgTable, text, timestamp, unique } from 'drizzle-orm/pg-core';
+import { bigint, index, integer, pgTable, text, timestamp, unique, type AnyPgColumn } from 'drizzle-orm/pg-core';
 
 /**
  * A machine that runs TIA Portal and the MCP server, and whose files are imported.
@@ -51,11 +51,16 @@ export const change = pgTable(
     outcome: text('outcome').notNull(),
     detail: text('detail').notNull(),
     documentation: text('documentation').notNull(),
+    /** The project the change was made in, as the trail recorded it; empty before version 3. */
+    projectPath: text('project_path').notNull().default(''),
+    /** That project's row, or null when the trail did not record one. Never inferred. */
+    projectId: integer('project_id').references((): AnyPgColumn => project.id, { onDelete: 'set null' }),
     importedAt: timestamp('imported_at', { withTimezone: true }).notNull().defaultNow()
   },
   (table) => [
     unique('change_station_entry_key').on(table.stationId, table.entryKey),
-    index('change_station_occurred_at').on(table.stationId, table.occurredAt)
+    index('change_station_occurred_at').on(table.stationId, table.occurredAt),
+    index('change_project_occurred_at').on(table.projectId, table.occurredAt)
   ]
 );
 

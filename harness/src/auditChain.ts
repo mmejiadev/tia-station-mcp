@@ -20,8 +20,8 @@ export const AuditChainRoot = '';
  *
  * **A published list may never be edited - a field is added by adding a version.** The hash covers
  * the values in order and nothing else, so an eleventh value changes the hash of an entry written
- * with ten. Version 2 added `documentation` on 2026-09-05; version 1 stays because the trails
- * written before it must keep verifying.
+ * with ten. Version 2 added `documentation` on 2026-09-05, and version 3 added `project` on
+ * 2026-10-04; the earlier versions stay because the trails written under them must keep verifying.
  */
 const ChainedFieldsByVersion: Readonly<Record<string, readonly string[]>> = {
   '1': ['timestamp', 'planId', 'mode', 'tool', 'target', 'value', 'backupPath', 'origin', 'outcome', 'detail'],
@@ -37,6 +37,20 @@ const ChainedFieldsByVersion: Readonly<Record<string, readonly string[]>> = {
     'outcome',
     'detail',
     'documentation'
+  ],
+  '3': [
+    'timestamp',
+    'planId',
+    'mode',
+    'tool',
+    'target',
+    'value',
+    'backupPath',
+    'origin',
+    'outcome',
+    'detail',
+    'documentation',
+    'project'
   ]
 };
 

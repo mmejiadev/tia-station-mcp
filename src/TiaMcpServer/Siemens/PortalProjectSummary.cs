@@ -20,18 +20,18 @@ namespace TiaMcpServer.Siemens
         {
             try
             {
-                if (_project == null)
+                if (CurrentProject == null)
                 {
                     return null;
                 }
 
                 return new ProjectSummary(
-                    _project.Path.FullName,
-                    _project.Name,
-                    _project.Author,
-                    new DateTimeOffset(_project.CreationTime),
-                    new DateTimeOffset(_project.LastModified),
-                    _project.LastModifiedBy);
+                    CurrentProject.Path.FullName,
+                    CurrentProject.Name,
+                    CurrentProject.Author,
+                    new DateTimeOffset(CurrentProject.CreationTime),
+                    new DateTimeOffset(CurrentProject.LastModified),
+                    CurrentProject.LastModifiedBy);
             }
             catch (Exception ex)
             {

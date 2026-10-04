@@ -38,6 +38,7 @@ namespace TiaMcpServer.Governance
             Origin = request.Origin;
             BackupPath = request.BackupPath;
             Documentation = request.Documentation;
+            Project = request.Project;
         }
 
         /// <summary>Identifier a person can read and type back.</summary>
@@ -84,6 +85,9 @@ namespace TiaMcpServer.Governance
         /// citations inform the person deciding, they do not decide.
         /// </remarks>
         public HardwareContext Documentation { get; }
+
+        /// <summary>The TIA Portal project open when the change was asked for, or empty when none was.</summary>
+        public string Project { get; }
 
         /// <summary>Whether this plan can still be confirmed.</summary>
         /// <param name="now">The current moment, in UTC.</param>

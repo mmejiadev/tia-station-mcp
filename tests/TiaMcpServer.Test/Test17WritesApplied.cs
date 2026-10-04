@@ -1,5 +1,8 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Text.Json;
 using TiaMcpServer.ModelContextProtocol;
 
 namespace TiaMcpServer.Test
@@ -61,6 +64,23 @@ END_FUNCTION
 
             Assert.IsNotNull(backup, "a write that overwrites blocks must leave a backup the registry knows about");
             Assert.IsTrue(backup!.FileCount > 0, "the backup directory was allocated but nothing was exported into it");
+        }
+
+        /// <remarks>
+        /// The project comes from the portal at the moment of the write, through
+        /// <c>PortalProjectContext</c>; the governance tests use a fixed one, so only a write with
+        /// TIA Portal shows the real one reaching the trail.
+        /// </remarks>
+        [TestMethod]
+        public void WriteScl_AllowedTarget_RecordsTheOpenProjectOnTheAuditTrail()
+        {
+            McpServer.WriteScl(Settings.Project1PlcSoftwarePath0, ValidScl);
+
+            var lastLine = File.ReadAllLines(AssemblyHooks.AuditPath).Last(line => line.Trim().Length > 0);
+            var recorded = JsonSerializer.Deserialize<Dictionary<string, string>>(lastLine)!;
+
+            Assert.AreEqual(Path.GetFullPath(AssemblyHooks.ProjectPath), Path.GetFullPath(recorded["project"]));
+            Assert.AreEqual("3", recorded["v"]);
         }
 
         [TestMethod]

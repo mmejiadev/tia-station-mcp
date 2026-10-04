@@ -146,7 +146,7 @@ namespace TiaMcpServer.Siemens
                 throw new PortalException(PortalErrorCode.InvalidState, "Open a project first");
             }
 
-            return (bool)_project!.GetAttribute(SimulationSupportAttribute);
+            return (bool)CurrentProject!.GetAttribute(SimulationSupportAttribute);
         }
 
         /// <summary>
@@ -174,7 +174,7 @@ namespace TiaMcpServer.Siemens
                 return false;
             }
 
-            _project!.SetAttribute(SimulationSupportAttribute, true);
+            CurrentProject!.SetAttribute(SimulationSupportAttribute, true);
 
             _logger?.LogInformation("Simulation during block compilation enabled; the program must be recompiled");
 

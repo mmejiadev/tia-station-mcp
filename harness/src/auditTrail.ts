@@ -27,6 +27,8 @@ export type AuditEntry = {
   /** Text, for the same reason as mode: an unrecognised outcome has to survive being read. */
   readonly outcome: string;
   readonly detail: string;
+  /** The TIA Portal project the change was made in; empty before version 3 of the trail, or when none was open. */
+  readonly project: string;
 };
 
 /**
@@ -139,7 +141,8 @@ export function parseEntry(line: string): AuditEntry | undefined {
     backupPath: text(raw, 'backupPath'),
     origin: text(raw, 'origin'),
     outcome: text(raw, 'outcome'),
-    detail: text(raw, 'detail')
+    detail: text(raw, 'detail'),
+    project: text(raw, 'project')
   };
 }
 
