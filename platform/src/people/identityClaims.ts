@@ -42,10 +42,15 @@ export async function claimIdentity(database: PlatformDatabase, claim: IdentityC
     return refused('Only a member of the organisation can claim an identity in it.');
   }
 
-  const [found] = await database.select({ id: station.id }).from(station).where(eq(station.name, claim.stationName.trim()));
+  // Only a station of this organisation: a confirmation about another organisation's machine
+  // would name nobody on any project this one can see, and would say who works where elsewhere.
+  const [found] = await database
+    .select({ id: station.id })
+    .from(station)
+    .where(and(eq(station.name, claim.stationName.trim()), eq(station.organizationId, claim.organizationId)));
 
   if (found === undefined) {
-    return refused(`No station is called '${claim.stationName}'. Its history has to be imported first.`);
+    return refused(`No station called '${claim.stationName}' is linked to this organisation.`);
   }
 
   await database
