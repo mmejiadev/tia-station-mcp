@@ -1,12 +1,12 @@
 import { AlertTriangle } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import type { AuditEntry } from '../../../harness/src/auditTrail.ts';
 import { readAudit, type AuditResponse } from '../api.ts';
+import { OutcomeBadge } from '../components/OutcomeBadge.tsx';
 import { Panel } from '../components/Panel.tsx';
 import { WhenLoaded } from '../components/WhenLoaded.tsx';
 import { formatRecordedInstant } from '../format.ts';
@@ -131,7 +131,7 @@ function Trail({ audit }: { audit: AuditResponse }): ReactNode {
                 <TableCell className="font-medium">{entry.tool}</TableCell>
                 <TableCell>{entry.target}</TableCell>
                 <TableCell>
-                  <AuditOutcomeBadge outcome={entry.outcome} />
+                  <OutcomeBadge outcome={entry.outcome} />
                 </TableCell>
                 <TableCell className="max-w-64 truncate font-mono text-xs" title={entry.backupPath}>
                   {entry.backupPath === '' ? '—' : entry.backupPath}
@@ -168,35 +168,9 @@ function OutcomeCounts({ entries }: { entries: readonly AuditEntry[] }): ReactNo
     <ul className="flex flex-wrap items-center gap-2">
       {[...counts].map(([outcome, count]) => (
         <li key={outcome}>
-          <AuditOutcomeBadge outcome={outcome} count={count} />
+          <OutcomeBadge outcome={outcome} count={count} />
         </li>
       ))}
     </ul>
-  );
-}
-
-/**
- * One audit outcome.
- *
- * @remarks
- * Refused is deliberately not painted as a failure. A refusal is the governance layer working, and
- * colouring it red would teach whoever reads this page to see the guard doing its job as something
- * going wrong.
- */
-function AuditOutcomeBadge({ outcome, count }: { outcome: string; count?: number }): ReactNode {
-  const tone =
-    outcome === 'Applied'
-      ? 'border-[var(--status-good)] text-[var(--status-good)]'
-      : outcome === 'Failed'
-        ? 'border-[var(--status-critical)] text-[var(--status-critical)]'
-        : outcome === 'Refused'
-          ? 'border-[var(--status-warning)] text-[var(--status-warning)]'
-          : '';
-
-  return (
-    <Badge variant="outline" className={`tabular ${tone}`}>
-      {outcome}
-      {count === undefined ? '' : ` ${count}`}
-    </Badge>
   );
 }
