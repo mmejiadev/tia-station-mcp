@@ -85,10 +85,19 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-          cache-dependency-path: dashboard/package-lock.json
+          cache-dependency-path: |
+            dashboard/package-lock.json
+            platform/package-lock.json
 
       - name: Install
         working-directory: dashboard
+        run: npm ci
+
+      # The control room's types come from platform/src/, and those files import drizzle-orm, pg and
+      # better-auth. The imports are type-only and vanish from the bundle, but tsc still resolves them
+      # from platform/node_modules -- which exists on a developer's machine and not on a fresh runner.
+      - name: Install the platform, for its types
+        working-directory: platform
         run: npm ci
 
       - name: Typecheck

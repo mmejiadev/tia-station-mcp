@@ -127,25 +127,42 @@ export function readCopilotStatus(): Promise<CopilotStatus> {
  * @param history Everything said so far in this conversation.
  * @returns The answer, and what the turn cost.
  * @remarks
- * The only request this dashboard makes that is not a GET, and the only one that carries a body. It
- * changes nothing: the endpoint behind it reads the store, asks a model with no tools, and returns
- * what came back. The conversation lives in this tab and nowhere else - the server keeps none of it,
- * which is why the history is sent every time.
+ * The only request to the harness that is not a GET. It changes nothing: the endpoint behind it
+ * reads the store, asks a model with no tools, and returns what came back. The conversation lives in
+ * this tab and nowhere else - the server keeps none of it, which is why the history is sent every
+ * time.
  */
-export async function askCopilot(question: string, history: readonly ChatTurn[]): Promise<ChatResponse> {
-  const response = await fetch('/api/chat', {
-    method: 'POST',
+export function askCopilot(question: string, history: readonly ChatTurn[]): Promise<ChatResponse> {
+  return send<ChatResponse>('POST', '/api/chat', { question, history });
+}
+
+/**
+ * Sends a request that carries a body or changes something.
+ *
+ * @param method The method.
+ * @param path The endpoint.
+ * @param body What to send as JSON, or undefined for none.
+ * @returns The body of the answer, typed by the caller.
+ * @remarks
+ * Always JSON, from this page's own origin: the platform refuses a change that is neither, which is
+ * its protection against another site acting as whoever is signed in. A refusal throws with the
+ * reason the server gave, because that sentence says what to do — "the code has expired, issue a new
+ * one" — and a status code does not.
+ */
+export async function send<T>(method: 'POST' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<T> {
+  const response = await fetch(path, {
+    method,
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({ question, history })
+    ...(body === undefined ? {} : { body: JSON.stringify(body) })
   });
 
-  const body: unknown = await response.json().catch(() => undefined);
+  const answer: unknown = await response.json().catch(() => undefined);
 
   if (!response.ok) {
-    throw new Error(errorFrom(body) ?? `The copilot answered ${response.status}.`);
+    throw new Error(errorFrom(answer) ?? `${path} answered ${response.status}.`);
   }
 
-  return body as ChatResponse;
+  return answer as T;
 }
 
 /** The message the API sent with a refusal, when it sent one. */

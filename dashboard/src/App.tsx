@@ -1,5 +1,5 @@
 import { Moon, Radio, RadioTower, Sun } from 'lucide-react';
-import { useEffect, useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AccountMenu } from './components/AccountMenu.tsx';
@@ -7,7 +7,9 @@ import { ModeBanner } from './components/ModeBanner.tsx';
 import { useLive } from './live.tsx';
 import { useTheme } from './theme.tsx';
 import { CopilotDock } from './components/CopilotDock.tsx';
+import { useHash } from './useHash.ts';
 import { AuditView } from './views/AuditView.tsx';
+import { ControlRoomView } from './views/ControlRoomView.tsx';
 import { GateView } from './views/GateView.tsx';
 import { GuideView } from './views/GuideView.tsx';
 import { LiveRunView } from './views/LiveRunView.tsx';
@@ -27,9 +29,13 @@ import { hashFor, viewFromHash } from './viewRoute.ts';
  * The second is not in here and never will be — it is `CopilotDock`, docked in the corner of every
  * view at once, because a copilot you have to navigate away from the numbers to reach is one you
  * stop asking.
+ *
+ * The control room is the web platform's: organisations, their projects and each project's history.
+ * It sits beside the harness views rather than replacing them, as was decided for phase 4.
  */
 const Views: Readonly<Record<string, () => ReactNode>> = {
   Overview: OverviewView,
+  'Control room': ControlRoomView,
   'Live run': LiveRunView,
   Runs: RunsView,
   Metrics: MetricsView,
@@ -42,7 +48,7 @@ const ViewNames = Object.keys(Views);
 
 /** The whole page: the permanent banner, the tabs, and whichever view the address bar asks for. */
 export function App(): ReactNode {
-  const openView = useHashView();
+  const openView = viewFromHash(useHash(), ViewNames);
 
   return (
     <div className="min-h-screen">
@@ -53,7 +59,7 @@ export function App(): ReactNode {
           <div>
             <h1 className="text-xl font-semibold tracking-tight">TIA station — harness</h1>
             <p className="text-muted-foreground text-sm">
-              Everything here is read from what was recorded. Nothing on this page changes a project.
+              Everything here is read from what was recorded. Nothing on this page changes a TIA Portal project or a controller.
             </p>
           </div>
 
@@ -66,8 +72,11 @@ export function App(): ReactNode {
 
         <Tabs value={openView} onValueChange={(name) => (window.location.hash = hashFor(name))}>
           <TabsList>
+            {/* The click as well as the change: a view with places inside it — a project in the
+                control room — goes back to its start when its own tab is pressed, which Tabs does
+                not report because the value did not change. */}
             {ViewNames.map((name) => (
-              <TabsTrigger key={name} value={name}>
+              <TabsTrigger key={name} value={name} onClick={() => (window.location.hash = hashFor(name))}>
                 {name}
               </TabsTrigger>
             ))}
@@ -85,9 +94,11 @@ export function App(): ReactNode {
         </Tabs>
 
         <footer className="text-muted-foreground mt-12 border-t pt-4 text-xs">
-          Writes go through the guard in the MCP server, and confirming one is done there. This dashboard
-          has no endpoint that changes anything, and is not going to have one — the copilot included: it
-          is given the recorded numbers and no tools, so there is nothing it can do but answer.
+          Writes to a project go through the guard in the MCP server, and confirming one is done there.
+          This dashboard has no endpoint that reaches TIA Portal or a controller, and is not going to have
+          one. What the control room changes is the platform's own record — organisations, folders, which
+          station belongs to whom. The copilot is given the recorded numbers and no tools, so there is
+          nothing it can do but answer.
         </footer>
       </div>
 
@@ -138,26 +149,4 @@ function ThemeButton(): ReactNode {
       {theme === 'dark' ? 'Light' : 'Dark'}
     </Button>
   );
-}
-
-/**
- * The view the address bar is asking for, kept in step with it.
- *
- * @remarks
- * Listening to `hashchange` rather than only reading once is what makes the browser's own back
- * button work. Without it the address bar and the page disagree after one press, which is the kind
- * of small wrongness that makes a tool feel untrustworthy about everything else it says.
- */
-function useHashView(): string {
-  const [openView, setOpenView] = useState(() => viewFromHash(window.location.hash, ViewNames));
-
-  useEffect(() => {
-    const follow = (): void => setOpenView(viewFromHash(window.location.hash, ViewNames));
-
-    window.addEventListener('hashchange', follow);
-
-    return () => window.removeEventListener('hashchange', follow);
-  }, []);
-
-  return openView;
 }

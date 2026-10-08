@@ -1,13 +1,107 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-10-04**
+> Last updated: **2026-10-06**
 
 ## ▶ RESUME HERE
 
+### The web platform, phase 4, step 3: the control room screens — 2026-10-06
+
+On `work/platform-screens`, uncommitted. Step 2 (the workspace endpoints) was merged as PR #40.
+
+A **Control room** view in the dashboard, beside the harness views, over the step 2 endpoints. All
+in `dashboard/src/controlRoom/` and `views/ControlRoomView.tsx`:
+
+- **Routing.** A view now owns everything below its fragment (`viewFromHash`), so
+  `#/control-room/projects/12/changes` is a link somebody can send. `controlRoomRoute.ts` reads and
+  writes those places; an unknown section opens the summary, an id beyond the integer range the
+  workspace. `useHash` replaced App's private hook.
+- **Signed out** is told to sign in; the platform not running is said as such; **no organisation
+  yet** is offered creating one (Better Auth's `organization.create` through `organizationClient`,
+  slug from the name plus six random characters).
+- **Sidebar**: organisation chooser, search over loaded projects (name or station), the folder tree
+  with each project's LED and word (`StatusLooks`, a record over `ProjectStatus` so a fifth status
+  does not compile). Folders are created, renamed, moved (a select that never offers the folder or
+  anything inside it) and deleted (asked again in place, saying projects go to the top level).
+  `buildTree` leaves nothing out: a folder with a missing parent or caught in a loop is drawn at the
+  top, once; a project in an unknown folder is unfiled.
+- **Project page**: header, tabs with counts, and *Summary* (status tiles, author and confirmed
+  person, changes by outcome, where it is filed and moving it), *Changes* (outcome filter, paged
+  with `before`, the shared `OutcomeBadge` now also used by the audit view) and *Compilations* (each
+  opens to its messages). The rack, description and AI button of the design are **not** drawn: no
+  data is behind them yet.
+- **Workspace home**: projects by status, linking a station with its pairing code (admin only), and
+  creating another organisation.
+- An open project's organisation wins over the one picked last (`chooseOrganization`), so a sent
+  link shows that project's folders; picking an organisation leaves the project.
+- Buttons are hidden by role (`roleActions.ts`, mirrored from `permissions.ts` because the bundle
+  must not import server code); the server still decides every request.
+- `send` in `api.ts` for changes: always JSON from the page's origin, the server's reason thrown.
+- The header and footer no longer claim the page changes nothing: it changes the platform's own
+  record, never TIA Portal or a controller.
+
+**Verified**: dashboard type-check and production build, exit code 0. The build's 500 kB chunk
+warning was already there on `main` (654 kB there, 694 kB here). Dashboard tests 36/36, 24 new.
+Mutations, each caught: the `/` in `viewFromHash`, the loop guard in `buildTree`, the excluded subtree
+in `folderChoices`, a case-insensitive role. A fifth survived because the code was redundant (a
+missing parent was already handled by the stranded-folder pass); removed.
+
+**In a browser, signed in with Google, against the development database**: a wrong pairing code
+refused with the server's sentence and the form kept; the real code, typed in lower case without the
+dash, **linked `MANUELA` to organisation `0967`** (it stays linked). Then, over a demo project inserted
+by hand and deleted afterwards: the LED and word in the sidebar, creating a folder, filing the project
+in it, the summary, the changes with the outcome filter, the compilations opening to their messages,
+and deleting the folder (asked in place; the project returned to the top level). Console clean.
+
+Two things the browser found, both fixed: **a refresh unmounted the form that caused it**, so the
+"linked" sentence never showed (`useKeptWhileReloading` keeps the last workspace on screen while it
+is read again — never a failed read); and the four folder buttons cut names to "0965 Sistemes …"
+(now shown only on hover or keyboard focus — this last change not yet seen in the browser).
+
+**Why there were no real projects**: the installed server is 0.0.18 and writes only `audit.jsonl`
+(its 264 changes are imported, all unfiled); `projects.jsonl` and `compilations.jsonl` came with web
+phase 2. A real project appears once a newer server has opened one and `npm run import` has run.
+
+**`npm run db:studio`** in `platform/` opens Drizzle Studio on the development database.
+`drizzle.config.ts` now reads `../.env` itself (drizzle-kit does not take `--env-file`) and passes
+`DATABASE_URL` as its credentials when there is one. Bound to `127.0.0.1`: drizzle-kit's default is
+`0.0.0.0`, which would serve the database to the network. The page is `https://local.drizzle.studio`,
+Drizzle's own site, talking to the local process; the data does not leave the machine. Seen listening
+on 127.0.0.1:4983.
+
+**Code review** (`/code-review high`) found ten things; nine fixed, one measured and left:
+
+1. Filing kept a deleted folder selected → the form is keyed by where the project is now.
+2. Compilations silently cut at 50 → asks the platform's limit (100) and says "Showing the 100
+   newest of 120 compilations" (`describeShown`). The platform has no paging for compilations yet.
+3. Filing offered the sidebar organisation's folders and role → the project's own role, and no
+   folders unless the project is in the sidebar's organisation.
+4. Leaving a project opened from a link jumped to the first organisation → opening a project makes
+   its organisation the choice (only when the open project changes, or picking another organisation
+   would be undone in between).
+5. Folder buttons unreachable on touch → hidden until hover only where the pointer can hover.
+6. Creating an organisation said nothing → says so and opens it (`choose` in the context).
+7. The active "Control room" tab did not return to the workspace → each tab sets the hash on click.
+8. Three copies of the LED and word → `StatusLed` with a `className`.
+9. `groupBy` copied arrays; the tree was rebuilt every render → pushes, and the whole tree is
+   memoised in `Room`.
+10. `.env` relative to the working directory → **left**: drizzle-kit resolves `schema` and `out` the
+    same way (run from the repository root it finds no schema, measured), so the config only works
+    from `platform/` whatever this path is. Said in the config.
+
+Seen in the browser after the fixes: 6, 4 (Back stayed in `0967`), 1, 5 (on a desktop) and 7; then the
+demo project and a demo organisation were deleted from the development database. Dashboard tests
+38/38; the new `describeShown` rule removed fails its test. Type-checks of both packages clean.
+
+**Next**: commit. After that, phase 4's done-criterion: the teacher signs in from another
+machine and reads a project — which needs the server reachable from there (open question in
+`docs/WEB-PLATFORM.md`).
+
+---
+
 ### The web platform, phase 4, step 2: the workspace behind the screens — 2026-10-04
 
-On `work/platform-workspace`, uncommitted. Step 1 (audit chain v3) was merged as PR #39.
+Merged as PR #40.
 
 - **Who sees what.** A station belongs to one organisation (`station.organization_id`), and its
   projects are seen by that organisation's members, as their role allows; a station nobody linked

@@ -25,6 +25,9 @@ export function hashFor(view: string): string {
  * A fragment that names no view falls back to the first one rather than rendering nothing. This is
  * the one place in the project where falling back is right: the fragment is a URL somebody typed or
  * a stale bookmark, nothing is gated on it, and an empty page would say less than the first view.
+ *
+ * A view owns everything below its own fragment, so `#/control-room/projects/12` opens the control
+ * room, which reads the rest itself. Only below a `/`: `#/runs-old` is not the Runs view.
  */
 export function viewFromHash(hash: string, views: readonly string[]): string {
   const first = views[0];
@@ -33,5 +36,5 @@ export function viewFromHash(hash: string, views: readonly string[]): string {
     throw new Error('The dashboard was built with no views at all, so there is nothing to open.');
   }
 
-  return views.find((view) => hashFor(view) === hash) ?? first;
+  return views.find((view) => hash === hashFor(view) || hash.startsWith(`${hashFor(view)}/`)) ?? first;
 }
