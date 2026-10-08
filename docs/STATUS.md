@@ -1,13 +1,18 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-10-06**
+> Last updated: **2026-10-08**
 
 ## ▶ RESUME HERE
 
 ### The web platform, phase 4, step 3: the control room screens — 2026-10-06
 
-On `work/platform-screens`, uncommitted. Step 2 (the workspace endpoints) was merged as PR #40.
+Merged as PR #41 (2026-10-08). Step 2 (the workspace endpoints) was merged as PR #40.
+
+CI's dashboard job failed on the first push: the control room imports types from `platform/src/`,
+and those import drizzle-orm, pg and better-auth, which `tsc` resolves from `platform/node_modules`
+— present on a developer's machine, absent on a fresh runner. The job now runs `npm ci` in
+`platform/` too. Reproduced locally by moving that folder aside: the same 51 errors.
 
 A **Control room** view in the dashboard, beside the harness views, over the step 2 endpoints. All
 in `dashboard/src/controlRoom/` and `views/ControlRoomView.tsx`:
@@ -93,7 +98,9 @@ Seen in the browser after the fixes: 6, 4 (Back stayed in `0967`), 1, 5 (on a de
 demo project and a demo organisation were deleted from the development database. Dashboard tests
 38/38; the new `describeShown` rule removed fails its test. Type-checks of both packages clean.
 
-**Next**: commit. After that, phase 4's done-criterion: the teacher signs in from another
+Still not seen in a browser: the folder buttons shown only on hover or keyboard focus.
+
+**Next**: phase 4's done-criterion: the teacher signs in from another
 machine and reads a project — which needs the server reachable from there (open question in
 `docs/WEB-PLATFORM.md`).
 
