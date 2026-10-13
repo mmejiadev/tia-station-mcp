@@ -44,6 +44,9 @@ in and what the checker was measured against.
 | `R_BF` over non-consecutive step addresses | Clears another sequence's steps, misses its own; it compiles | `covers …, which also holds …` / `does not reach …` |
 | Same level condition on two consecutive transitions | The middle step is crossed in one scan and its outputs never appear | `transient-evolution` |
 | Selection branches that can both be true | The network written first wins, silently | `non-exclusive-selection` |
+| Two edge contacts on one memory bit, in any block | They see a single edge between them: the first updates the bit, the second finds no change. A class exercise did this on 2026-10-08 | `edge memory bit … is already used` |
+| A coil on an edge memory bit | The bit no longer holds the operand's last state, so edges appear and vanish | `is an edge memory bit and is also written` |
+| The same edge on consecutive transitions | One edge crosses both in one scan when the entering network comes first | `edge-cascade` |
 
 ## Scan order and transient evolution
 
@@ -54,7 +57,9 @@ the PLC form of GRAFCET's transient evolution.
 
 It is right when the chart means it and wrong when it does not. When it must not happen:
 
-- use an **edge** (`P_TRIG`/`R_TRIG`) on the condition that repeats, or
+- use an **edge** on the condition that repeats — but not the *same* edge on both transitions: each
+  edge contact keeps its own memory bit, so the second one still sees the edge the first one used,
+  and the sequence crosses both in one scan (`edge-cascade`), or
 - make the second condition impossible on arrival (for example require the sensor to go false and
   true again), or
 - evaluate every transition into temporary bits first and apply all `S`/`R` afterwards — one

@@ -5,6 +5,179 @@
 
 ## ▶ RESUME HERE
 
+### Everything still open, in priority order, with progress — 2026-10-13
+
+The list the user asked to keep in one place. The broader study of what a company-grade tool needs
+is `docs/ENTERPRISE-READINESS.md`, and the plan that finishes all of it, in waves A to J with a
+"done when" for each item, is "Completion plan" in `docs/ROADMAP.md`. Percentages are estimates of the work, and anything built but
+never run against TIA Portal counts for less than half.
+
+**Now, in this order:**
+
+1. ~~Edge bug in the LAD generator~~ — done and measured in TIA Portal, branch `work/lad-edges`.
+   Pending: `/code-review high`, then the user's commit.
+2. MCP tools `CreateProject`, `AddDevice` and `DeleteBlock`, through `GuardedTool.Run`, with refusal
+   tests in `Test16GuardedWrites`.
+3. HMI, classic WinCC: MCP tools to export and import screens, HMI tag tables and text lists; a
+   generator that writes HMI tags from PLC tags and screens from a description; a runtime screenshot
+   compared with the teacher's picture. Then the documentation (WinCC Comfort/Advanced manuals,
+   Openness HMI chapter) and the tutorials the user named.
+4. What the hopper exercise taught the generator: a global DB of `IEC_TIMER` members, network titles
+   and comments through `.s7res`, calls from Main, one block per GEMMA state, the S7-1500
+   `time_type` template.
+5. `grafcet` skill: GEMMA model, check and drawing; labels that overlap on several outgoing
+   transitions; forcing orders; the `transient-evolution` false positives; reading DB-member TON calls.
+6. Classic S7-PLCSIM V20, so that S7-1200 class projects can be simulated (undocumented gRPC).
+
+**Then:**
+
+7. Phase 5b blocking criterion: install from the artefact on a machine that never built the project;
+   the server reporting its own version; register 0.0.19 in Claude Code.
+8. Web platform phase 4: the teacher signing in from another machine; phase 5 extras.
+9. Phase 9: measure OPC UA against PLCSIM Advanced and a real S7-1500; subscriptions.
+10. Phase 10: FBD/STL/GRAPH, technology objects, alarms and text lists, libraries and master copies,
+    project compare, WinCC Unified, GSD devices (left over from phase 7).
+11. Knowledge layer stages 0, 2, 2b, 4 and 5 — none authorised yet.
+12. Debt: second half of audit finding F5, F8–F12 (all low), the inherited `NoWarn` ledger in
+    `TiaMcpServer.csproj`, methods over 30 lines.
+13. TIA Portal V21 support, since the institut runs V21.
+14. Phase 11, Workshop Mode, last and supervised.
+
+**Progress:**
+
+| Area | Progress |
+|---|---|
+| Phases 0–5 (download, governance, cell pattern, harness, dashboard, pitch) | 100 % |
+| Phase 5b, deployment | 85 % |
+| Phase 6, addresses, subnets, tag tables | 100 % |
+| Phase 7, building the station | 90 % (GSD missing) |
+| Phase 8, cross-references, watch tables | 90 % |
+| Phase 9, OPC UA | 45 % (never measured against a Siemens CPU) |
+| Phase 10, the rest of the surface | 15 % |
+| Phase 11, Workshop Mode | 0 %, on purpose |
+| Knowledge layer | 30 % (stages 1 and 3 of seven) |
+| Web platform | 65 % |
+| `grafcet` skill | 65 % |
+| Gaps from the hopper exercise (2026-10-08) | 25 % |
+| HMI, classic WinCC | 25 % (measured; no tool, no generator yet) |
+| Classic S7-PLCSIM for S7-1200 | 5 % |
+| Debt and audit findings | 65 % |
+| **The project as a whole** | **about 60 %** |
+
+### Edges in the LAD generator, and HMI screens measured — 2026-10-13
+
+Branch `work/lad-edges`, not committed.
+
+- **Edges are generated.** `grafcetToLad` writes `↑A` / `↓A` as
+  `P_Contact( operand := "A", bit := "A_FP1" )` / `N_Contact(...)`, one memory bit per edge
+  (`A_FP1`, `A_FP2`, `A_FN1`), and the CLI lists those bits as Bool tags to create. Literals every
+  branch of an OR shares now stand in series in front of it, so `X10.↑MARXA.(X21+X22+X23)` holds
+  one P contact, not three. An edge that could only be copied into several branches,
+  `(↑A + B).(C + D)`, is refused. **Measured in TIA Portal:** the generated block for
+  `↑EDGE_IN.(EDGE_A + EDGE_B + EDGE_C)` and `↓EDGE_IN`, imported as a document into a copy of
+  the hopper project (`C:/Users/mamem/tools/probe_tolva`) with its eight tags created first,
+  compiled with 0 errors and 0 warnings. The copy was closed without saving.
+- **`/code-review high` found ten points; eight are fixed**, each with a test that fails when the
+  fix is removed: edge bits never reuse a name the chart already uses; every edge bit is set to its
+  operand on the first scan, so an input already true at start-up is not an edge (measured: the
+  generated `GRAFCET_INIT` compiles with 0 errors); a branch absorbed by another, `A + A.B`, is
+  written as `A` instead of an empty branch; `/↑A` is refused with a reason about edges; the reader
+  takes the edge contact's arguments by name, in either order; shared edge bits and coils on an edge
+  bit are found across every block (`edgeBitCheck.ts`), not one document at a time; the CLI no
+  longer allocates the bits twice (`generateLad`); and the three files are CRLF again.
+- **Decided by the user: warn and refuse.** One edge clearing two consecutive transitions in one
+  scan. With `0 -> 1 : ↑A` and `1 -> 2 : ↑A`, the second network sees X1 already set and its own
+  bit still old, so the sequence jumps 0 -> 2. The set/reset method taught in class evaluates and
+  fires each transition in the same network, which is where the cascade comes from; the remedy that
+  covers it and level cascades too is to evaluate every transition first and fire them afterwards,
+  which departs from the class layout. A pulse bit per edge, the reviewer's other proposal, does not
+  stop the cascade on its own. The user chose to keep the class method: the checker reports it as
+  `edge-cascade` and the generator refuses such a chart, both through `findEdgeCascadePairs`.
+- **The LAD reader reads P and N contacts** as edges, and reports an error when two edge contacts
+  share a memory bit — the class bug of 2026-10-08, which compiles without a word.
+- Tests: 292/292 in `harness`; removing the series factoring or the shared-bit check makes the
+  matching test fail.
+- **HMI, measured on the class projects** (`0967 hmi_prova1`, and the teacher's
+  `0967 - explicació clase` extracted to `C:/Users/mamem/tools/hmi-study/`): the panel is
+  `6AV2 124-0JC01-0AX0` on classic WinCC (`HmiTarget`), not Unified. Classic HMI in Openness V20 has
+  **no object model for screen items**; screens, templates, HMI tag tables, text and graphic lists,
+  pop-ups, global elements, the screen overview and cycles all export to XML. Items link to tags,
+  screens and functions **by name** (`TargetID="@OpenLink"`), and an HMI tag points at its PLC tag by
+  name too (`Connection HMI_Connection_1`, `ControllerTag sm1`). `HmiTarget.Connections` is empty
+  even so: the integrated connection is not in that collection.
+- **A hand-written screen imports and compiles.** A screen with only a few attributes — one button
+  running `SetBitWhileKeyPressed` on `Marxa`, one circle turning red/green on `KM1` through a
+  `RangeAppearanceAnimation` — imported with `ScreenFolder.Screens.Import(..., Override)` into a
+  copy of the teacher's project, and the HMI compiled with 0 errors and 0 warnings. The copy was
+  closed without saving. Omitted attributes take their defaults.
+- **HMI tags for PLC memory bits can be generated.** A new HMI tag table holding only, per tag, a
+  name, `AcquisitionCycle`, `Connection HMI_Connection_1` and `ControllerTag` (`Gen_Marxa` →
+  `Marxa`, `Gen_KM1` → `KM1`), and a screen using those tags, imported into the teacher's copy
+  and compiled with 0 errors and 0 warnings. TIA Portal takes the data type from the PLC tag.
+- The probe is `scratchpad/hmiprobe` of the 2026-10-13 session, not in the repository: modes
+  `export-hmi`, `import-hmi` and `import-plc`, each opening a copy in a TIA Portal with no user
+  interface and closing it without saving.
+- Every new build of a probe executable re-triggers TIA Portal's Openness permission prompt; it
+  times out with `EngineeringSecurityException` when nobody answers it.
+
+### Gaps found on a real class exercise — 2026-10-08
+
+Server 0.0.19 is built and unpacked in `C:\Users\mamem\tools\tia-station-mcp-0.0.19\`, not yet
+registered in Claude Code (0.0.18 still is). The test case is the 0968 GEMMA exercise (rotating
+conveyor with hopper, three destination belts, modes A1 F1 A2 D1 A5 A6 F4). Working through it found:
+
+- **The MCP cannot start a project from nothing.** `PortalProject.CreateProject` and
+  `PortalDevices.AddDevice` exist in the portal layer but no MCP tool exposes them; only
+  `Test15MinimalFixture` calls them. To do: `CreateProject` and `AddDevice` tools through
+  `GuardedTool.Run`, with their refusal tests in `Test16GuardedWrites`.
+- **The `grafcet` skill must draw the GEMMA guide.** An exercise like this is GEMMA first and
+  GRAFCET second, and the skill has no notion of GEMMA states. To do: a GEMMA model (the A/F/D
+  states, which are used, the evolutions between them with their conditions, each state's signalling
+  and the master-GRAFCET step that represents it), checked (every used state reachable, D1 reachable
+  from every state, a way back to A1) and drawn in the standard layout.
+- **The `grafcet` drawing overlaps labels** when a step has several outgoing transitions: on the
+  master chart the `SE` condition was printed on top of `AU·↑MARXA·…`, and wide charts were cut on
+  the right. Side branches ending in a jump (a "renvoi") draw cleanly and should be the layout.
+- **The program was built and compiles: 0 errors, 0 warnings** (72 tags, 8 LAD blocks, saved). The
+  generator's output needed four hand additions, each now measured in SIMATIC SD on a copy of the
+  project and worth teaching the generator:
+  - edges: `P_Contact( operand := "MARXA", bit := "MARXA_FP1" )`, and `N_Contact` alike; the
+    positional form is refused ("Pin 'bit' connection is missing");
+  - timers: one global DB with `T32 : IEC_TIMER;` members, called as `"Temporitzadors".T32.TON(…)`;
+    a single-instance DB cannot be written as a document (`DATA_BLOCK "T_DB" : IEC_TIMER`, `: TON`
+    and `: TON_TIME` all fail with "Dependent object … not found in the Project");
+  - calls from Main: `"G_GEMMA"()` on its own rung, in an `ORGANIZATION_BLOCK "Main"` document;
+  - **a real generator bug**: a condition with an edge AND an OR, `X10·↑MARXA·(X21+X22+X23)`, is
+    expanded into three parallel branches that each repeat the edge contact on one memory bit, and
+    three P contacts on one bit see a single edge between them. The edge must stay in series.
+  - The checker reading LAD back skips `P_Contact`, `N_Contact` and DB-member TON calls as
+    "unsupported", so it analyses those transitions without their edge or timer.
+- **Network titles and comments in SIMATIC SD** (measured by importing SimaticML with a title and
+  exporting it as a document): the block or network attributes carry an id —
+  `S7_BlockComment := "MLC_1"`, `S7_NetworkTitle := "MLC_3"`, `S7_NetworkComment := "MLC_2"` — and
+  the text sits under that id in the `.s7res` beside it (YAML: `MultiLingualTexts:` /
+  `- id: MLC_3` / `en-US: …`). Imported this way, every network of the class project got a Catalan
+  title. Block names with spaces and accents (`"SORTIDES ACTIVACIÓ"`) import from an ASCII file name.
+- **Class layout is one block per GEMMA state** (`0_GEMMA`, `1_F1`, `2_A2`, … , `INICIALITZACIÓ`,
+  `SORTIDES ACTIVACIÓ`), not one block per connected sequence as the generator writes. The generator
+  should learn the grouping: each state's block holds its own sequence and the master transitions
+  leaving it.
+- **The MCP cannot delete a block.** After the regrouping the six superseded blocks stayed in the
+  project, uncalled, until removed by hand in TIA Portal.
+- **Tested end to end in PLCSIM Advanced on an S7-1500 stand-in** (a retrieved copy of TestProject1
+  in `C:\Users\mamem\tools\tolva1500`, same 72 tags and blocks): 13 test cases driven through
+  `WriteSimulationTag`/`ReadSimulationTags` with real timer waits. One design fault found and fixed
+  in the class project (a stop during rotation left conveyor 0 between positions). An S7-1500 needs
+  the TON's time type written out — `{ S7_Templates := "time_type := Time" }` on the line before the
+  call, measured by importing SimaticML and exporting the document; without it, "Please select a data
+  type". An S7-1200 compiles without it.
+- **PLCSIM Advanced cannot run an S7-1200.** Measured: `CreateSimulationInstance` with `CPU1214C`
+  lists only S7-1500, ET 200SP and ET 200pro types. Class projects are S7-1200, so the MCP cannot
+  test them in simulation until it drives the classic S7-PLCSIM V20 (gRPC, undocumented).
+- **The `grafcet` checker cannot express forcing orders** (`F/G_PROD:{30}` on the emergency step),
+  so a hierarchical GEMMA design cannot be checked whole; and its `transient-evolution` rule warns on
+  any negation that already held when the step activated (11 false positives on this exercise).
+
 ### The web platform, phase 4, step 3: the control room screens — 2026-10-06
 
 Merged as PR #41 (2026-10-08). Step 2 (the workspace endpoints) was merged as PR #40.

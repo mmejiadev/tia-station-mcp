@@ -50,7 +50,7 @@ All commands run from `harness/`.
 1. The chart must pass without `?`, with an initial step in every sequence.
 2. `npm run grafcet -- --text chart.txt --lad out/` writes `GRAFCET_INIT`, one block per sequence,
    and `GRAFCET_OUTPUTS` as `.s7dcl`.
-3. Create the tags first (`CreateTag`: every `Xn`, every input and output, each timer's done bit),
+3. Create the tags first (`CreateTag`: every `Xn`, every input and output, each timer's done bit, every edge memory bit the CLI lists),
    then `ImportBlocksFromDocuments`, then `CompileSoftware`. Call the blocks from Main in that order.
    A timer also needs its IEC_TIMER instance DB (`T72_DB` for `T72`); import does not create it,
    and creating it automatically has not been measured yet, so say so and have it created in TIA.
@@ -80,10 +80,12 @@ The process that worked, and that the user asked to keep:
 | `uncertain-reading` | A `?` still waiting for confirmation. |
 | `non-exclusive-selection` | Two branches of a selection can clear together. |
 | `transient-evolution` | A step can be crossed without stopping: its outputs may never appear. |
+| `edge-cascade` | Consecutive transitions wait for the same edge; in set/reset LAD one edge crosses both. The generator refuses it. |
 | `unknown-step-reference` | A condition reads a step nobody drew. |
 
-LAD findings (plain coil on a step, missing reset, unquoted operand, double coil, `R_BF` range) are
-described in `reference/set-reset-lad.md`.
+LAD findings (plain coil on a step, missing reset, unquoted operand, double coil, `R_BF` range, an
+edge memory bit shared by two contacts or written by a coil) are described in
+`reference/set-reset-lad.md`.
 
 ## Limits
 
@@ -92,7 +94,11 @@ described in `reference/set-reset-lad.md`.
   explains a method; it does not describe devices.
 - Macro-steps, enclosing steps and forcing orders are recognised in reading but not modelled, drawn
   or generated. Say so rather than flatten them.
-- Edges are drawn and checked but not generated: the SD syntax for them has not been measured.
+- Edges are generated in transitions only, as `P_Contact`/`N_Contact` with a memory bit each
+  (`A_FP1`, `A_FN1`; the CLI lists them as Bool tags to create), set to their operand on the first
+  scan. Measured in TIA Portal V20 on 2026-10-13. An edge in an action condition, a negated edge, an
+  edge that could only be copied into several branches, and the same edge on consecutive
+  transitions are refused, each with its reason.
 - S7-GRAPH is S7-1500 only; on an S7-1200 this set/reset method, or SCL, is the way.
 - The rules of the language are summarised, with sources and dates, in `reference/iec-60848.md`.
   The standard itself (IEC 60848:2013, stable until 2028) is copyrighted and is not in this

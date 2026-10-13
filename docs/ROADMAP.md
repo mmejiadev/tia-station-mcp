@@ -544,8 +544,18 @@ In descending order of what they give back for the work:
   XML and imported. Expensive, and GRAPH is the worst of the three.
 - Technological objects (axes, cams), alarms and text lists, libraries and master copies, project
   comparison, certificates and syslog.
-- **HMI Unified**, roughly 400 types. Named last on purpose: it is the largest remaining surface and
-  the one that gives a four-station cell the least. Doing it should be a decision, not momentum.
+- **HMI, classic WinCC (Basic/Comfort/Advanced)** — *decided 2026-10-13, and moved ahead of the rest
+  of this phase*: the class panels are classic WinCC, and the user asked for generated screens.
+  Measured that day: classic HMI has no object model for screen items in Openness, but screens, HMI
+  tag tables and text lists export to XML and import back, linked by name, and a hand-written
+  screen and tag table compiled with 0 errors. The work is MCP tools for that round trip, a
+  generator, and a screenshot comparison against a reference. See `STATUS.md`, 2026-10-13.
+- **HMI Unified**, roughly 400 types. It is the largest remaining surface and the one that gives a
+  four-station cell the least. Doing it should be a decision, not momentum.
+
+The whole list of what is still open, in priority order and with progress, is kept in `STATUS.md`
+under "Everything still open"; what a company-grade tool needs beyond this roadmap is in
+`ENTERPRISE-READINESS.md`.
 
 ### Phase 11 — Workshop Mode, supervised and last
 
@@ -584,6 +594,137 @@ must not be the newest code in the repository.
 3. The harness uses pre-generated specifications instead of calling the model.
 
 **Phase 1 is not cut.** It is the one that makes the following year possible.
+
+## Completion plan — every open item, to the end
+
+Written 2026-10-13, when the user asked for a plan that finishes **all** of the open technical debt
+and work, not a selection of it. It orders everything in `STATUS.md` ("Everything still open") and
+`ENTERPRISE-READINESS.md` into waves. **Nothing in it is optional and nothing is cut**; the cut
+list above applies to the phases before it, not to this plan.
+
+The rules of the rest of this document hold here too:
+
+- **Order, not dates.** A wave ends when every item in it meets its "done when", and not before.
+- **Done means measured.** An item that touches TIA Portal, PLCSIM or a CPU is done when it ran
+  against the real thing, not when its tests pass against a double.
+- **Each item ships the way everything ships**: on its own branch, tests that failed before the
+  fix, `/code-review high` (a second round when it touches governance or security), `STATUS.md`
+  updated, and a commit the user makes herself.
+- **A wave may start before the previous one ends** when it depends on nothing in it. The
+  dependencies are written next to each item; where none is written, there is none.
+- Knowledge-layer stages and Workshop Mode keep their own gates: each starts on the user's explicit
+  word, and Workshop Mode only with a supervisor present.
+
+### Wave A — close what is in flight
+
+| # | Item | Done when |
+|---|---|---|
+| A1 | Edges in the LAD generator (`work/lad-edges`) | Reviewed, committed, merged. Already measured in TIA Portal |
+| A2 | Server 0.0.19 registered in Claude Code | `GetState` answers from 0.0.19 |
+| A3 | The server reports its own version | `GetState` returns the assembly version; the harness records it next to the path |
+
+### Wave B — a class exercise from nothing to a compiled project
+
+What the hopper exercise of 2026-10-08 could not do without a person in TIA Portal.
+
+| # | Item | Done when | Depends on |
+|---|---|---|---|
+| B1 | MCP tools `CreateProject` and `AddDevice` | A new S7-1200 project is created, saved and reopened through the MCP; refusal tests in `Test16GuardedWrites` | A2 |
+| B2 | MCP tool `DeleteBlock`, with a backup first | A superseded block is removed and its backup restores it | A2 |
+| B3 | Global `IEC_TIMER` DB generated with the program | The hopper program compiles with no DB written by hand | |
+| B4 | Calls from Main generated | The generated program runs in PLCSIM without editing Main | |
+| B5 | Network and block titles and comments through `.s7res` | A generated block shows its titles in TIA Portal | |
+| B6 | One block per GEMMA state, as the class writes it | The hopper exercise comes out in the teacher's block layout | C-GEMMA below |
+| B7 | S7-1500 `time_type` template on TON calls | The same chart compiles on S7-1200 and S7-1500 | |
+| B8 | The whole hopper exercise regenerated end to end through the MCP | 0 errors, the 13 PLCSIM test cases pass, nothing added by hand | B1–B7 |
+
+### Wave C — the `grafcet` skill and GEMMA
+
+| # | Item | Done when |
+|---|---|---|
+| C1 | GEMMA model: states used, evolutions with conditions, signalling, the master step of each | The 0968 GEMMA is written in it without loss |
+| C2 | GEMMA checks: every used state reachable, D1 reachable from every state, a way back to A1 | Each check has a test that fails without it |
+| C3 | GEMMA drawn in the standard layout | The 0968 guide drawn matches the hand-drawn one |
+| C4 | Labels no longer overlap on several outgoing transitions; wide charts not cut | The 0968 master chart draws cleanly |
+| C5 | Forcing orders (`F/G_PROD:{30}`) in the notation, the checker and the generator | The hierarchical 0968 design is checked whole |
+| C6 | `transient-evolution` false positives | The 11 warnings on 0968 are gone and the true case still warns |
+| C7 | The reader understands DB-member TON calls | No "unsupported" warning on the hopper program |
+
+### Wave D — HMI, classic WinCC
+
+The panels used in class (`6AV2 124-0JC01-0AX0`) are classic WinCC; the round trip was measured on
+2026-10-13.
+
+| # | Item | Done when | Depends on |
+|---|---|---|---|
+| D1 | Read tools: export screens, templates, HMI tag tables, text and graphic lists | The teacher's project exported through the MCP, read-only | A2 |
+| D2 | Write tools: import screens, HMI tag tables and text lists, guarded, with a backup | A screen imported through the MCP compiles; refusal tests in `Test16GuardedWrites` | D1 |
+| D3 | HMI tags generated from PLC tags | Every memory bit of a program gets its HMI tag, and the HMI compiles | D2 |
+| D4 | Screen generator: buttons, pilot lights, I/O fields, bars, screen navigation | The teacher's `principal` screen regenerated from a description, attribute for attribute | D3 |
+| D5 | Documentation read and cited: WinCC Comfort/Advanced, the Openness HMI chapter, the tutorials named by the user | Each fact the generator relies on carries its source | |
+| D6 | Runtime screenshot compared with a reference picture | A generated screen and the teacher's differ by less than a threshold fixed before measuring | D4 |
+| D7 | ISA-101 style as an option (grey background, colour only for abnormal states) | One flag switches the generated screen to it | D4 |
+| D8 | Simulating the panel against PLCSIM, so a button press reaches the PLC | Pressing MARXA on the simulated panel sets `Marxa` in PLCSIM | D4, E1 for S7-1200 |
+
+### Wave E — simulation for the class hardware
+
+| # | Item | Done when |
+|---|---|---|
+| E1 | Classic S7-PLCSIM V20 driven by the MCP (undocumented gRPC; measure, never guess) | An S7-1200 class project is downloaded and a tag read back |
+| E2 | The hopper test cases run on the S7-1200 original, not the S7-1500 stand-in | The 13 cases pass on S7-1200 |
+
+### Wave F — somebody else's machine
+
+| # | Item | Done when |
+|---|---|---|
+| F1 | Phase 5b blocking criterion | Installed on a machine that never built the project, following only `INSTALL.md`, up to reading a PLCSIM tag |
+| F2 | Web platform phase 4 | The teacher signs in from another machine and reads a project |
+| F3 | Web platform phase 5: descriptions, images, snapshots, metrics, the diff | Each one shown for a real project |
+| F4 | TIA Portal V21 | The test suite passes against V21, as the institut runs it |
+| F5 | A user guide | A classmate completes an exercise with it and without help |
+
+### Wave G — technical debt and audit findings
+
+| # | Item | Done when |
+|---|---|---|
+| G1 | Audit F5, second half: pure rules out of `SclBlockGenerator` and `SourceSnapshotExporter` | Those rules tested in `TiaMcpServer.Portable`, without TIA Portal |
+| G2 | Audit F8–F12 (inherited ledger, one Node process per write, the retrieved-data marker, a TypeScript linter, the commented property in `Responses`) | Each closed with its test or its CI check |
+| G3 | The `NoWarn` ledger in `TiaMcpServer.csproj` emptied | The list is gone and the build is still warning-free |
+| G4 | Methods over 30 lines | None left, except where `CLAUDE.md`'s note on rigour is argued in the code |
+| G5 | Dependency scan and SBOM in CI | CI fails on a known vulnerable package; each release carries an SBOM |
+| G6 | Project content always treated as data by the model | A test feeds an instruction hidden in a block comment and the model does not follow it |
+
+### Wave H — the rest of TIA Portal
+
+| # | Item | Done when |
+|---|---|---|
+| H1 | GSD/GSDML devices (left from phase 7) | A third-party device from a GSDML file is plugged and compiled |
+| H2 | OPC UA measured against PLCSIM Advanced and a real S7-1500; subscriptions | A value read and watched from both |
+| H3 | FBD and STL imported as documents; S7-GRAPH on S7-1500 | One block in each compiles |
+| H4 | Alarms (program alarms, ProDiag) and text lists | An alarm raised in PLCSIM appears on the panel |
+| H5 | Technology objects (axis, PID) | One of each configured and compiled |
+| H6 | Libraries, types and master copies | A type is created, versioned and instantiated |
+| H7 | Project compare and archive (`.zap`) | Two versions compared; an archive retrieved back |
+| H8 | WinCC Unified | A Unified screen created through its object model and compiled |
+| H9 | SINAMICS Startdrive | A drive added and parameterised |
+
+### Wave I — what a company will audit
+
+| # | Item | Done when |
+|---|---|---|
+| I1 | Four eyes: a plan confirmed by a second person | A write waits until another account confirms it in the web platform |
+| I2 | Knowledge layer stages 0, 2, 2b, 4 and 5, each on the user's word | Each meets the "done when" in `KNOWLEDGE-LAYER.md` |
+| I3 | A local model for customers who cannot send code out | The harness gate runs against it and its rate is recorded |
+| I4 | Style guide check of generated code (Siemens programming style guide) | Findings reported on the hopper program |
+| I5 | IEC 62443 self-assessment | A written gap list against the standard's requirements |
+| I6 | Product law review (Cyber Resilience Act, Openness terms, AI Act, MIT notice) | Written answers, from someone qualified to give them |
+| I7 | Support process: how bugs are reported, fixed and released | Written, and used once |
+
+### Wave J — Workshop Mode, last and supervised
+
+Phase 11, unchanged: the five measured conditions, an in-person design review, and a teacher or
+workshop supervisor present with the emergency stop in reach. It comes after everything above
+because new code that commands machinery must not be the newest code in the repository.
 
 ## Decisions taken
 

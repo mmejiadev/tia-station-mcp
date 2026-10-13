@@ -62,6 +62,14 @@ describe('GRAFCET design checks', () => {
     assert.ok(!found.includes('transient-evolution'));
   });
 
+  it('edge-cascade: consecutive transitions waiting for the same edge', () => {
+    assert.ok(rules('sequence S\nstep 0 initial\nstep 1\nstep 2\n0 -> 1 : ↑A\n1 -> 2 : ↑A\n2 -> 0 : /A\n').includes('edge-cascade'));
+  });
+
+  it('edge-cascade: not raised for different edges on consecutive transitions', () => {
+    assert.ok(!rules('sequence S\nstep 0 initial\nstep 1\n0 -> 1 : ↑A\n1 -> 0 : ↓A\n').includes('edge-cascade'));
+  });
+
   it('unknown-step-reference: a condition that reads a step nobody drew', () => {
     assert.ok(rules('sequence S\nstep 0 initial\n0 -> 1 : X99\n1 -> 0 : /A\n').includes('unknown-step-reference'));
   });

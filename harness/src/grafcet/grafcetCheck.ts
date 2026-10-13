@@ -32,6 +32,7 @@ export type ChartRule =
   | 'uncertain-reading'
   | 'non-exclusive-selection'
   | 'transient-evolution'
+  | 'edge-cascade'
   | 'unknown-step-reference';
 
 /** Runs every check. The order of the result follows the order of the chart. */
@@ -45,6 +46,7 @@ export function checkGrafcet(grafcet: Grafcet): readonly ChartFinding[] {
       ...findUncertain(sequence),
       ...findNonExclusiveSelections(sequence),
       ...findTransientEvolutions(sequence),
+      ...findEdgeCascades(sequence),
       ...findUnknownStepReferences(sequence, grafcet),
     ]),
   ];
@@ -171,6 +173,49 @@ function findTransientEvolutions(sequence: Sequence): readonly ChartFinding[] {
   }
 
   return findings;
+}
+
+/** Two consecutive transitions waiting for the same edge, as `0 -> 1 : ↑A` then `1 -> 2 : ↑A`. */
+export interface EdgeCascade {
+  readonly entering: Transition;
+  readonly leaving: Transition;
+  readonly edge: string;
+}
+
+/**
+ * Consecutive transitions waiting for the same edge. The chart is sound — an event happens once,
+ * so the second transition waits for the next one — but the set/reset method taught in class
+ * evaluates and fires each transition in its own network, in order. When the entering network runs
+ * first, the leaving one finds its step already set and its own memory bit still old, so a single
+ * edge crosses both and the step in between is never seen. That follows from how the method runs, so
+ * it is reported here and refused by the generator.
+ */
+export function findEdgeCascadePairs(sequence: Sequence): readonly EdgeCascade[] {
+  return sequence.transitions.flatMap((entering) => sequence.transitions
+    .filter((leaving) => leaving.from.some((from) => entering.to.includes(from)))
+    .flatMap((leaving) => edgesOf(entering.condition)
+      .filter((edge) => edgesOf(leaving.condition).includes(edge))
+      .map((edge) => ({ entering, leaving, edge }))));
+}
+
+function findEdgeCascades(sequence: Sequence): readonly ChartFinding[] {
+  return findEdgeCascadePairs(sequence).map(({ entering, leaving, edge }) => finding('edge-cascade', 'warning', sequence,
+    `${describe(entering)} and ${describe(leaving)} both wait for ${edge}; in set/reset LAD one ${edge} can clear both in the same scan, so step ${leaving.from.join(',')} is skipped. Wait for a different signal in one of them, or add a condition that cannot hold on arrival`));
+}
+
+function edgesOf(condition: Condition): readonly string[] {
+  switch (condition.kind) {
+    case 'rising':
+    case 'falling':
+      return [formatCondition(condition)];
+    case 'not':
+      return edgesOf(condition.term);
+    case 'and':
+    case 'or':
+      return condition.terms.flatMap(edgesOf);
+    default:
+      return [];
+  }
 }
 
 function findUnknownStepReferences(sequence: Sequence, grafcet: Grafcet): readonly ChartFinding[] {

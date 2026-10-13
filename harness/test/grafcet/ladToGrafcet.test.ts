@@ -4,7 +4,7 @@ import { formatCondition } from '../../src/grafcet/conditionText.ts';
 import type { Grafcet } from '../../src/grafcet/grafcetModel.ts';
 import { ladToGrafcet } from '../../src/grafcet/ladToGrafcet.ts';
 import { readS7dcl } from '../../src/grafcet/s7dclReader.ts';
-import { FaultyFeeder, Feeder, Init, Outfeed, Outputs, Transfer } from './ladFixtures.ts';
+import { FaultyFeeder, fc, Feeder, Init, Outfeed, Outputs, Transfer } from './ladFixtures.ts';
 
 function chart(...documents: string[]): ReturnType<typeof ladToGrafcet> {
   return ladToGrafcet(documents.map(readS7dcl), 'test');
@@ -76,5 +76,26 @@ describe('recovering a GRAFCET from set/reset LAD', () => {
 
     assert.equal(findings.length, 1);
     assert.match(findings[0]!.message, /MOTOR has a second plain coil/);
+  });
+
+  it('reports one edge memory bit used by contacts in two blocks, which see a single edge between them', () => {
+    // What the class exercise of 2026-10-08 compiled without a word: P contacts sharing MARXA_FP1.
+    const edge = (block: string, step: string, target: string): string => fc(block, [`        RUNG wire#powerrail\n            Contact( "${step}" )\n            P_Contact( operand := "MARXA", bit := "MARXA_FP1" )\n            wire#w1\n            S_Coil( "${target}" )\n        END_RUNG\n        RUNG wire#w1\n            R_Coil( "${step}" )\n        END_RUNG\n`]);
+
+    const { findings } = chart(edge('S', 'X21', 'X22'), edge('MASTER', 'X10', 'X11'));
+
+    assert.deepEqual(findings.map((finding) => [finding.severity, finding.block]), [['error', 'MASTER']]);
+    assert.match(findings[0]!.message, /MARXA_FP1 is already used by an edge contact in S network 1/);
+  });
+
+  it('reports a coil on an edge memory bit, which corrupts the edge it keeps', () => {
+    const document = fc('S', [
+      '        RUNG wire#powerrail\n            Contact( "X0" )\n            P_Contact( operand := "A", bit := "A_FP1" )\n            wire#w1\n            S_Coil( "X1" )\n        END_RUNG\n        RUNG wire#w1\n            R_Coil( "X0" )\n        END_RUNG\n',
+      '        RUNG wire#powerrail\n            Contact( "X1" )\n            Coil( "A_FP1" )\n        END_RUNG\n',
+    ]);
+
+    const { findings } = chart(document);
+
+    assert.ok(findings.some((finding) => finding.severity === 'error' && /A_FP1 is an edge memory bit and is also written/.test(finding.message)));
   });
 });
