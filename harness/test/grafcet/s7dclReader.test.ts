@@ -71,6 +71,25 @@ describe('SIMATIC SD LAD reader', () => {
     assert.deepEqual(block.operations.map(describeOperation), ['call FEEDER if 1']);
   });
 
+  it('reads P and N contacts as rising and falling edges', () => {
+    const rung = (edge: string, bit: string, coil: string): string => `        RUNG wire#powerrail\n            ${edge}( operand := "A", bit := "${bit}" )\n            Coil( "${coil}" )\n        END_RUNG\n`;
+    const document = fc('EDGES', [rung('P_Contact', 'A_FP1', 'UP'), rung('N_Contact', 'A_FN1', 'DOWN')]);
+
+    const block = readS7dcl(document);
+
+    assert.deepEqual(block.operations.map(describeOperation), ['assign UP if ↑A', 'assign DOWN if ↓A']);
+    assert.deepEqual(block.findings, []);
+  });
+
+  it('reads an edge contact by argument name, whatever their order and with a comma in a name', () => {
+    const document = fc('EDGES', ['        RUNG wire#powerrail\n            P_Contact( bit := "A_FP1", operand := "Conv,1" )\n            Coil( "UP" )\n        END_RUNG\n']);
+
+    const block = readS7dcl(document);
+
+    assert.deepEqual(block.operations.map(describeOperation), ['assign UP if ↑Conv,1']);
+    assert.deepEqual(block.edgeContacts.map((edge) => [edge.operand, edge.bit]), [['Conv,1', 'A_FP1']]);
+  });
+
   it('ignores the byte order mark and Windows line endings TIA writes', () => {
     const document = String.fromCharCode(0xfeff) + Outputs.replace(/\n/g, '\r\n');
 

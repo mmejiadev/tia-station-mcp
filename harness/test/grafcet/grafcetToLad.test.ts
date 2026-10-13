@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { formatCondition } from '../../src/grafcet/conditionText.ts';
-import { grafcetToLad } from '../../src/grafcet/grafcetToLad.ts';
+import { generateLad, grafcetToLad } from '../../src/grafcet/grafcetToLad.ts';
 import { parseGrafcet } from '../../src/grafcet/grafcetText.ts';
 import type { Grafcet } from '../../src/grafcet/grafcetModel.ts';
 import { ladToGrafcet } from '../../src/grafcet/ladToGrafcet.ts';
@@ -100,9 +100,70 @@ describe('GRAFCET to set/reset LAD', () => {
     assert.throws(() => grafcetToLad(quoted), /double quote/);
   });
 
-  it('refuses edges rather than guess their syntax', () => {
-    const edge = read('sequence S\nstep 0 initial\n0 -> 1 : ↑A\n1 -> 0 : /A\n');
+  it('writes an edge ANDed with an OR once, in series, never once per branch', () => {
+    // The class exercise of 2026-10-08: X10.↑MARXA.(X21 + X22 + X23) came out as three branches each
+    // holding a P contact on one memory bit, and three such contacts see a single edge between them.
+    const chart = read('sequence S\nstep 10 initial\nstep 11\n10 -> 11 : ↑MARXA.(X21 + X22 + X23)\n11 -> 10 : /MARXA\n');
 
-    assert.throws(() => grafcetToLad(edge), /edges/);
+    const sequence = grafcetToLad(chart).find((document) => document.name === 'S')!;
+
+    assert.equal((sequence.text.match(/P_Contact\( operand := "MARXA", bit := "MARXA_FP1" \)/g) ?? []).length, 1);
+  });
+
+  it('reads generated edges back as the same chart', () => {
+    const chart = read('sequence S\nstep 10 initial\nstep 11\n10 -> 11 : ↑MARXA.(X21 + X22 + X23)\n11 -> 10 : ↓MARXA\n');
+
+    const blocks = grafcetToLad(chart).map((document) => readS7dcl(document.text));
+    const back = ladToGrafcet(blocks, 'S');
+
+    assert.deepEqual(summary(back.grafcet), summary(chart));
+    assert.deepEqual(back.findings, []);
+  });
+
+  it('gives every edge a memory bit of its own and lists them as tags to create', () => {
+    const chart = read('sequence S\nstep 0 initial\nstep 1\nstep 2\nstep 3\n0 -> 1 : ↑A\n1 -> 2 : B\n2 -> 3 : ↑A\n3 -> 0 : ↓A\n');
+
+    assert.deepEqual(generateLad(chart).edgeMemoryBits, ['A_FP1', 'A_FP2', 'A_FN1']);
+  });
+
+  it('never gives an edge a memory bit the chart already uses as a signal', () => {
+    // An edge contact rewrites its bit every scan, so reusing a real tag would corrupt it.
+    const chart = read('sequence S\nstep 0 initial\nstep 1\n0 -> 1 : ↑A\n1 -> 0 : A_FP1\n');
+
+    assert.deepEqual(generateLad(chart).edgeMemoryBits, ['A_FP2']);
+  });
+
+  it('sets every edge memory bit to its operand on the first scan, so start-up is not an edge', () => {
+    const init = grafcetToLad(read('sequence S\nstep 0 initial\nstep 1\n0 -> 1 : ↑A\n1 -> 0 : /A\n')).find((document) => document.name === 'GRAFCET_INIT')!;
+    const lines = init.text.split(String.fromCharCode(13, 10)).map((line) => line.trim());
+
+    assert.ok(lines.join('|').includes('Contact( "FirstScan" )|Contact( "A" )|S_Coil( "A_FP1" )'));
+    assert.ok(lines.join('|').includes('Contact( "FirstScan" )|I_Contact( "A" )|R_Coil( "A_FP1" )'));
+  });
+
+  it('writes a branch absorbed by another as the shorter condition, never as an empty branch', () => {
+    const chart = read('sequence S\nstep 0 initial\nstep 1\n0 -> 1 : A + A.B\n1 -> 0 : /A\n');
+
+    const sequence = grafcetToLad(chart).find((document) => document.name === 'S')!;
+
+    assert.ok(!sequence.text.includes('wire#w2'));
+  });
+
+  it('refuses a negated edge with a reason about edges', () => {
+    const chart = read('sequence S\nstep 0 initial\nstep 1\n0 -> 1 : /↑A\n1 -> 0 : A\n');
+
+    assert.throws(() => grafcetToLad(chart), /negated edge/);
+  });
+
+  it('refuses two consecutive transitions waiting for the same edge, which one edge would cross together', () => {
+    const chart = read('sequence S\nstep 0 initial\nstep 1\nstep 2\n0 -> 1 : ↑A\n1 -> 2 : ↑A\n2 -> 0 : /A\n');
+
+    assert.throws(() => grafcetToLad(chart), /both wait for ↑A/);
+  });
+
+  it('refuses an edge that could only be written as copies in several branches', () => {
+    const chart = read('sequence S\nstep 0 initial\nstep 1\n0 -> 1 : (↑A + B).(C + D)\n1 -> 0 : /A\n');
+
+    assert.throws(() => grafcetToLad(chart), /copied into several parallel branches/);
   });
 });

@@ -38,11 +38,19 @@ export interface LadFinding extends LadLocation {
   readonly message: string;
 }
 
+/** An edge contact as read: where it is, the variable it watches and the memory bit it keeps. */
+export interface EdgeContact extends LadLocation {
+  readonly operand: string;
+  readonly bit: string;
+}
+
 /** A block as read: what it does and what looked wrong. */
 export interface LadBlock {
   readonly name: string;
   readonly operations: readonly LadOperation[];
   readonly findings: readonly LadFinding[];
+  /** Kept apart because a memory bit is global: sharing one is only visible across every block. */
+  readonly edgeContacts: readonly EdgeContact[];
 }
 
 interface Flow {
@@ -59,6 +67,8 @@ const HeaderPattern = /^(?:FUNCTION|FUNCTION_BLOCK|ORGANIZATION_BLOCK)\s+"([^"]+
 const RungPattern = /^RUNG\s+wire#(\w+)$/;
 const EndRungPattern = /^END_RUNG(?:\s+wire#(\w+))?$/;
 const ContactPattern = /^(Contact|I_Contact)\(\s*(.*?)\s*\)$/;
+const EdgeContactPattern = /^(P_Contact|N_Contact)\((.*)\)$/;
+const NamedArgumentPattern = /(\w+)\s*:=\s*("[^"]*"|[^,]+?)\s*(?:,|$)/g;
 const CoilPattern = /^(S_Coil|R_Coil|Coil)\(\s*(.*?)\s*\)$/;
 const BitfieldPattern = /^(S_BitfieldCoil|R_BitfieldCoil)\(\s*operand\s*=>\s*(.*?)\s*,\s*n\s*:=\s*(\d+)\s*\)$/;
 const TimerPattern = /^"([^"]+)"\.(TON|TOF|TP)\((.*)\)$/;
@@ -71,13 +81,14 @@ export function readS7dcl(text: string): LadBlock {
   const name = lines.map((line) => HeaderPattern.exec(line)?.[1]).find((found) => found !== undefined) ?? 'unnamed block';
   const operations: LadOperation[] = [];
   const findings: LadFinding[] = [];
+  const edgeContacts: EdgeContact[] = [];
 
   splitNetworks(lines).forEach((networkLines, index) => {
-    const network = new NetworkReader({ block: name, network: index + 1 }, findings);
+    const network = new NetworkReader({ block: name, network: index + 1 }, findings, edgeContacts);
     operations.push(...network.read(networkLines));
   });
 
-  return { name, operations, findings };
+  return { name, operations, findings, edgeContacts };
 }
 
 function splitNetworks(lines: readonly string[]): readonly (readonly string[])[] {
@@ -108,10 +119,12 @@ class NetworkReader {
   private readonly _findings: LadFinding[];
   private readonly _contributions = new Map<string, Flow[]>();
   private readonly _pending: Pending[] = [];
+  private readonly _edgeContacts: EdgeContact[];
 
-  public constructor(location: LadLocation, findings: LadFinding[]) {
+  public constructor(location: LadLocation, findings: LadFinding[], edgeContacts: EdgeContact[]) {
     this._location = location;
     this._findings = findings;
+    this._edgeContacts = edgeContacts;
   }
 
   public read(lines: readonly string[]): readonly LadOperation[] {
@@ -142,6 +155,12 @@ class NetworkReader {
     if (contact !== null) {
       const operand = variable(this.operandName(contact[2]!));
       return { base: flow.base, contacts: [...flow.contacts, contact[1] === 'I_Contact' ? negate(operand) : operand] };
+    }
+
+    const edge = EdgeContactPattern.exec(element);
+
+    if (edge !== null) {
+      return this.readEdge(edge[1] === 'P_Contact', edge[2]!, element, flow);
     }
 
     const junction = JunctionPattern.exec(element);
@@ -228,6 +247,22 @@ class NetworkReader {
     }
 
     return text;
+  }
+
+  /** Reads `P_Contact( operand := "A", bit := "A_FP1" )` by argument name, in either order. */
+  private readEdge(rising: boolean, argumentsText: string, element: string, flow: Flow): Flow {
+    const named = new Map([...argumentsText.matchAll(NamedArgumentPattern)].map((match) => [match[1]!, match[2]!.trim()]));
+    const operand = named.get('operand');
+    const bit = named.get('bit');
+
+    if (operand === undefined || bit === undefined) {
+      this.report('warning', `unsupported LAD element, left out of the analysis: ${element}`);
+      return flow;
+    }
+
+    const name = this.operandName(operand);
+    this._edgeContacts.push({ ...this._location, operand: name, bit: this.operandName(bit) });
+    return { base: flow.base, contacts: [...flow.contacts, { kind: rising ? 'rising' : 'falling', term: variable(name) }] };
   }
 
   private contribute(wire: string, flow: Flow): void {

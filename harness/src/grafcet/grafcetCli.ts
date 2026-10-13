@@ -22,7 +22,7 @@ import { checkGrafcet } from './grafcetCheck.ts';
 import { renderGrafcetPage, type PageFinding } from './grafcetPage.ts';
 import { renderGrafcetSvg } from './grafcetSvg.ts';
 import { formatGrafcet, parseGrafcet } from './grafcetText.ts';
-import { grafcetToLad } from './grafcetToLad.ts';
+import { generateLad } from './grafcetToLad.ts';
 import type { Grafcet } from './grafcetModel.ts';
 import { ladToGrafcet } from './ladToGrafcet.ts';
 import { readS7dcl } from './s7dclReader.ts';
@@ -106,7 +106,12 @@ function writeOutputs(flags: ReadonlyMap<string, string>, grafcet: Grafcet, find
 
   if (lad !== undefined) {
     mkdirSync(lad, { recursive: true });
-    grafcetToLad(grafcet).forEach((document) => writeFileSync(join(lad, `${document.name}.s7dcl`), document.text));
+    const program = generateLad(grafcet);
+    program.documents.forEach((document) => writeFileSync(join(lad, `${document.name}.s7dcl`), document.text));
+
+    if (program.edgeMemoryBits.length > 0) {
+      console.log(`Edge memory bits to create as Bool tags before importing: ${program.edgeMemoryBits.join(', ')}`);
+    }
   }
 }
 

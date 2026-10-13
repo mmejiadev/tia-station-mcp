@@ -14,6 +14,7 @@
  */
 
 import { and, conjuncts, negate, or, sameCondition, variable, variablesOf, type Action, type Condition, type Grafcet, type Sequence, type Step, type Transition } from './grafcetModel.ts';
+import { checkEdgeBits } from './edgeBitCheck.ts';
 import type { LadBlock, LadFinding, LadLocation, LadOperation } from './s7dclReader.ts';
 
 /** How step variables and the first-scan bit are named in the program being read. */
@@ -40,11 +41,12 @@ export function ladToGrafcet(blocks: readonly LadBlock[], title: string, options
   const stepOf = (name: string): number | null => readStep(name, options.stepPattern);
   const isFirstScan = (condition: Condition): boolean => variablesOf(condition).some((name) => options.firstScanNames.includes(name));
 
-  findings.push(...findPlainCoilsOnSteps(operations, stepOf), ...findDoubleCoils(operations));
+  findings.push(...findPlainCoilsOnSteps(operations, stepOf), ...findDoubleCoils(operations), ...checkEdgeBits(blocks, isFirstScan));
   const timers = readTimers(operations, stepOf, findings);
   const transitions = readTransitions(operations, stepOf, isFirstScan, findings).map((located) => ({ ...located, transition: renameTimers(located.transition, timers) }));
   const initial = new Set(operations.filter(isSetOnStep(stepOf)).filter((operation) => isFirstScan(operation.condition)).map((operation) => stepOf(operation.operand)!));
-  const actions = readActions(operations, stepOf, timers, findings);
+  // What the first scan writes is initialisation, the steps and the edge memory bits, not an action.
+  const actions = readActions(operations.filter((operation) => !isFirstScan(operation.condition)), stepOf, timers, findings);
   const sequences = groupSequences(transitions, initial, actions);
   return { grafcet: { title, sequences }, findings };
 }
