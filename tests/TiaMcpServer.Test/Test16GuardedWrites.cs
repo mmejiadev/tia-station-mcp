@@ -415,6 +415,37 @@ namespace TiaMcpServer.Test
             AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
         }
 
+        /// <remarks>
+        /// Creating a project closes nothing when it is refused here, but on the allowed path it is
+        /// the one write that acts outside the open project, so the policy has to be asked first.
+        /// </remarks>
+        [TestMethod]
+        public void CreateProject_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.CreateProject(Path.Combine(AssemblyHooks.WorkingRoot, "refused-project"), "Refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void AddDevice_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.AddDevice("OrderNumber:6ES7 511-1AL03-0AB0/V4.0", "PLC_Refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        /// <remarks>
+        /// The second tool that removes something a person would have to rebuild, after UnplugModule.
+        /// </remarks>
+        [TestMethod]
+        public void DeleteBlock_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.DeleteBlock(Settings.Project1PlcSoftwarePath0, "Main");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
         /// <summary>Polls a job until it stops, or fails the test.</summary>
         /// <remarks>
         /// The one place in the repository that waits on wall-clock time, and only because the real

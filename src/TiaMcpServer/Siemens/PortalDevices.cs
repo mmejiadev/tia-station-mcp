@@ -179,6 +179,11 @@ namespace TiaMcpServer.Siemens
                     throw new PortalException(PortalErrorCode.InvalidState, "Open or create a project first");
                 }
 
+                if (IsDeviceNameTaken(deviceName))
+                {
+                    throw new PortalException(PortalErrorCode.InvalidState, $"A device or device item named '{deviceName}' already exists; nothing was added");
+                }
+
                 // Three arguments, not two: the device gets a name and so does the item inside it.
                 // Create() without an item makes an empty station with no CPU in it.
                 var device = CurrentProject!.Devices.CreateWithItem(typeIdentifier, deviceName, deviceName);
