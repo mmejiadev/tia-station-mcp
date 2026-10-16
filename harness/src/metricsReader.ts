@@ -8,6 +8,8 @@ export type RecordedRun = {
   readonly runId: number;
   readonly specSet: string;
   readonly serverExecutable: string;
+  /** Undefined for runs recorded before the server reported its version. */
+  readonly serverVersion: string | undefined;
   readonly iterationLimit: number;
   readonly generator: string;
   readonly startedAt: number;
@@ -163,7 +165,7 @@ export class MetricsReader {
     const rows = this.database
       .prepare(
         `SELECT r.id AS runId, r.spec_set AS specSet, r.server_executable AS serverExecutable,
-                r.iteration_limit AS iterationLimit, r.generator AS generator,
+                r.server_version AS serverVersion, r.iteration_limit AS iterationLimit, r.generator AS generator,
                 r.started_at AS startedAt, r.ended_at AS endedAt, r.outcome AS outcome,
                 COUNT(i.id) AS iterations,
                 COUNT(DISTINCT i.specification) AS specifications,
@@ -361,6 +363,7 @@ type RunRow = {
   runId: number;
   specSet: string;
   serverExecutable: string;
+  serverVersion: string | null;
   iterationLimit: number;
   generator: string;
   startedAt: number;
@@ -413,6 +416,7 @@ function toRecordedRun(row: RunRow): RecordedRun {
     runId: row.runId,
     specSet: row.specSet,
     serverExecutable: row.serverExecutable,
+    serverVersion: row.serverVersion ?? undefined,
     iterationLimit: row.iterationLimit,
     generator: row.generator,
     startedAt: row.startedAt,

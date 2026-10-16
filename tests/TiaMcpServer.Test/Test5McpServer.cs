@@ -195,6 +195,34 @@ namespace TiaMcpServer.Test
             Assert.IsFalse(string.IsNullOrWhiteSpace(response.Project), "GetState does not name the open project");
         }
 
+        /// <remarks>
+        /// Compared with the project file itself, not with the assembly the server reads: the claim is
+        /// that the number set in <c>TiaMcpServer.csproj</c> is the one a measurement records.
+        /// </remarks>
+        [TestMethod]
+        public void GetState_Always_ReportsTheVersionTheProjectFileSets()
+        {
+            var projectFile = Path.Combine(RepositoryRoot(), "src", "TiaMcpServer", "TiaMcpServer.csproj");
+            var expected = System.Text.RegularExpressions.Regex.Match(File.ReadAllText(projectFile), "<AssemblyVersion>([^<]+)</AssemblyVersion>").Groups[1].Value;
+
+            var response = McpServer.GetState();
+
+            Assert.AreEqual(expected, response.Meta?["serverVersion"]?.GetValue<string>());
+        }
+
+        private static string RepositoryRoot()
+        {
+            for (var directory = new DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory); directory != null; directory = directory.Parent)
+            {
+                if (File.Exists(Path.Combine(directory.FullName, "TiaMcpServer.sln")))
+                {
+                    return directory.FullName;
+                }
+            }
+
+            throw new InvalidOperationException("TiaMcpServer.sln not found above the test assembly");
+        }
+
         [TestMethod]
         public void GetProjects_ProjectOpen_ReturnsIt()
         {

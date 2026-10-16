@@ -306,7 +306,17 @@ namespace TiaMcpServer.ModelContextProtocol
 
         #region state
 
-        [McpServerTool(Name = "GetState"), Description("Get the state of the TIA-Portal MCP server")]
+        private const string UnknownVersion = "unknown";
+
+        /// <summary>The server's version, as the project file sets it: <c>0.0.20</c>. Read once.</summary>
+        /// <remarks>
+        /// Reported so that a measurement can name the build behind it. The harness used to record
+        /// only the executable's path, and two runs separated by a rebuild in the same folder were
+        /// indistinguishable. It travels in <c>GetState</c>'s <c>meta</c> only, so there is one copy.
+        /// </remarks>
+        private static readonly string ServerVersion = typeof(McpServer).Assembly.GetName().Version?.ToString(3) ?? UnknownVersion;
+
+        [McpServerTool(Name = "GetState"), Description("Get the state of the TIA-Portal MCP server: whether it is connected, the open project or session, and the server's own version")]
         public static ResponseState GetState()
         {
             // One Openness call at a time. See OpennessGate: two of them really do interleave.
@@ -320,14 +330,15 @@ namespace TiaMcpServer.ModelContextProtocol
                 {
                     return new ResponseState
                     {
-                        Message = "TIA-Portal MCP server state retrieved",
+                        Message = $"TIA-Portal MCP server {ServerVersion} state retrieved",
                         IsConnected = state.IsConnected,
                         Project = state.Project,
                         Session = state.Session,
                         Meta = new JsonObject
                         {
                             ["timestamp"] = DateTime.Now,
-                            ["success"] = true
+                            ["success"] = true,
+                            ["serverVersion"] = ServerVersion
                         }
                     };
                 }

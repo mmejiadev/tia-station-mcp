@@ -66,7 +66,8 @@ async function main(): Promise<number> {
     serverLogging: 'stderr'
   });
 
-  const session: Session = { connection, telemetry, executable, specifications, options };
+  const serverVersion = await readServerVersion(connection);
+  const session: Session = { connection, telemetry, executable, serverVersion, specifications, options };
 
   try {
     await prepare(session);
@@ -102,6 +103,8 @@ type Session = {
   readonly telemetry: Telemetry;
   /** Recorded with every run, so a number is attributable to a build of the server. */
   readonly executable: string;
+  /** The version the server reports; undefined for a server too old to report one. */
+  readonly serverVersion: string | undefined;
   readonly specifications: readonly Specification[];
   readonly options: Options;
 };
@@ -209,6 +212,7 @@ async function runOneRepetition(
   const runId = telemetry.startRun({
     specSet: options.specDirectory,
     serverExecutable: session.executable,
+    ...(session.serverVersion === undefined ? {} : { serverVersion: session.serverVersion }),
     iterationLimit: options.iterationLimit,
     generator: generator.name
   });
@@ -368,6 +372,28 @@ async function resetSession(session: Session, controller: Specification['control
   await closeAnyOpenProject(connection);
   await openTheProject(connection, session.options);
   await createTheController(connection, controller);
+}
+
+/**
+ * The version the server reports through GetState.
+ *
+ * @remarks
+ * Undefined, not an error, for a server that reports none: 0.0.19 and earlier do not, and a run
+ * through one is still a run worth recording. A GetState that fails is said so on stderr, since the
+ * run would otherwise be recorded as if it had gone through an old server.
+ */
+async function readServerVersion(connection: McpServerConnection): Promise<string | undefined> {
+  const state = await connection.callTool('GetState');
+
+  if (state.isError) {
+    console.error(`GetState failed, so this run records no server version: ${state.text}`);
+
+    return undefined;
+  }
+
+  const version = (state.payload as { meta?: { serverVersion?: unknown } } | undefined)?.meta?.serverVersion;
+
+  return typeof version === 'string' ? version : undefined;
 }
 
 /** Throws unless a tool actually did what was asked, refusals included. */

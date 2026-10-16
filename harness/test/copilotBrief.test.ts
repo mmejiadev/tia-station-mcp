@@ -153,6 +153,7 @@ function run(runId: number, overrides: Partial<RecordedRun> = {}): RecordedRun {
     runId,
     specSet: 'specs',
     serverExecutable: 'TiaMcpServer.exe',
+    serverVersion: '0.0.20',
     iterationLimit: 3,
     generator: 'claude-haiku-4-5',
     startedAt: 1_787_863_742_997,
