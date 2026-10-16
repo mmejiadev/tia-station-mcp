@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Document>
+  <Engineering version="V20" />
+  <Hmi.TextGraphicList.TextList ID="0">
+    <AttributeList>
+      <ListRange>Decimal</ListRange>
+      <Name>TextList_ScreenNames</Name>
+    </AttributeList>
+    <ObjectList>
+      <MultilingualText ID="1" CompositionName="Comment">
+        <ObjectList>
+          <MultilingualTextItem ID="2" CompositionName="Items">
+            <AttributeList>
+              <Culture>en-US</Culture>
+              <Text />
+            </AttributeList>
+          </MultilingualTextItem>
+        </ObjectList>
+      </MultilingualText>
+      <Hmi.TextGraphicList.TextListEntry ID="3" CompositionName="Entries">
+        <AttributeList>
+          <DefaultEntry>false</DefaultEntry>
+          <EntryType>SingleValue</EntryType>
+          <From>1</From>
+          <To>1</To>
+        </AttributeList>
+        <ObjectList>
+          <MultilingualText ID="4" CompositionName="Text">
+            <ObjectList>
+              <MultilingualTextItem ID="5" CompositionName="Items">
+                <AttributeList>
+                  <Culture>en-US</Culture>
+                  <Text><body><p>Root screen</p></body></Text>
+                </AttributeList>
+              </MultilingualTextItem>
+            </ObjectList>
+          </MultilingualText>
+        </ObjectList>
+      </Hmi.TextGraphicList.TextListEntry>
+    </ObjectList>
+  </Hmi.TextGraphicList.TextList>
+</Document>

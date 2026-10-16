@@ -51,4 +51,10 @@
   <ItemGroup>
     <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
   </ItemGroup>
+
+  <!-- The screens and descriptions the HMI generator is checked against, measured on the class
+       projects; see HmiScreenGenerationTests. -->
+  <ItemGroup>
+    <None Update="assets\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

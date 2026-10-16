@@ -1,0 +1,309 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Document>
+  <Engineering version="V20" />
+  <Hmi.Screen.ScreenOverview ID="0">
+    <AttributeList>
+      <ActiveLayer>0</ActiveLayer>
+      <BackColor>182, 182, 182</BackColor>
+      <GridColor>0, 0, 0</GridColor>
+      <Height>60</Height>
+      <Width>800</Width>
+    </AttributeList>
+    <ObjectList>
+      <Hmi.Screen.ScreenLayer ID="1" CompositionName="Layers">
+        <AttributeList>
+          <Index>0</Index>
+          <Name />
+          <VisibleES>true</VisibleES>
+        </AttributeList>
+        <ObjectList>
+          <Hmi.Screen.SymbolicIOField ID="2" CompositionName="ScreenItems">
+            <AttributeList>
+              <AboveUpperLimitColor>237, 88, 97</AboveUpperLimitColor>
+              <BackColor>255, 255, 255</BackColor>
+              <BackFillStyle>Solid</BackFillStyle>
+              <BelowLowerLimitColor>241, 161, 44</BelowLowerLimitColor>
+              <BitNumber>0</BitNumber>
+              <BorderBackColor>226, 225, 225</BorderBackColor>
+              <BorderColor>156, 154, 165</BorderColor>
+              <BorderWidth>1</BorderWidth>
+              <BottomMargin>2</BottomMargin>
+              <CornerRadius>3</CornerRadius>
+              <CountVisibleItems>3</CountVisibleItems>
+              <EdgeStyle>Solid</EdgeStyle>
+              <Enabled>true</Enabled>
+              <EvenRowBackColor>230, 230, 232</EvenRowBackColor>
+              <FitToLargest>false</FitToLargest>
+              <Flashing>None</Flashing>
+              <FlashingOnLimitViolation>false</FlashingOnLimitViolation>
+              <ForeColor>49, 52, 74</ForeColor>
+              <Height>38</Height>
+              <HorizontalAlignment>Left</HorizontalAlignment>
+              <Left>109</Left>
+              <LeftMargin>3</LeftMargin>
+              <Mode>InOutput</Mode>
+              <ObjectName>Symbolic_IO_Field_Screen</ObjectName>
+              <OnValue>1</OnValue>
+              <RightMargin>2</RightMargin>
+              <SelectBackColor>162, 204, 213</SelectBackColor>
+              <SelectForeColor>255, 255, 255</SelectForeColor>
+              <ShowDropDownButton>true</ShowDropDownButton>
+              <ShowDropDownList>true</ShowDropDownList>
+              <TabIndex>1</TabIndex>
+              <TextOrientation>Horizontal</TextOrientation>
+              <Top>11</Top>
+              <TopMargin>2</TopMargin>
+              <UseDesignColorSchema>false</UseDesignColorSchema>
+              <VerticalAlignment>Middle</VerticalAlignment>
+              <Width>584</Width>
+            </AttributeList>
+            <LinkList>
+              <TextList TargetID="@OpenLink">
+                <Name>TextList_ScreenNames</Name>
+              </TextList>
+            </LinkList>
+            <ObjectList>
+              <Hmi.Event.Event ID="4" CompositionName="Events">
+                <AttributeList>
+                  <Name>Change</Name>
+                </AttributeList>
+                <ObjectList>
+                  <Hmi.Event.FunctionListEventHandler ID="5" CompositionName="EventHandler">
+                    <ObjectList>
+                      <Hmi.Event.FunctionListEntry ID="6" CompositionName="FunctionListEntries">
+                        <AttributeList>
+                          <Name>ActivateScreenByNumber</Name>
+                          <Type>SystemFunction</Type>
+                        </AttributeList>
+                        <ObjectList>
+                          <Hmi.Event.FunctionListEntryParameter ID="7" CompositionName="Parameters">
+                            <AttributeList>
+                              <Name>Screen number</Name>
+                            </AttributeList>
+                            <LinkList>
+                              <Value TargetID="@OpenLink">
+                                <Name>Tag_ScreenNumber</Name>
+                              </Value>
+                            </LinkList>
+                          </Hmi.Event.FunctionListEntryParameter>
+                          <Hmi.Event.FunctionListEntryParameter ID="9" CompositionName="Parameters">
+                            <AttributeList>
+                              <Name>Object number</Name>
+                              <Value Type="System.Int32">0</Value>
+                            </AttributeList>
+                          </Hmi.Event.FunctionListEntryParameter>
+                        </ObjectList>
+                      </Hmi.Event.FunctionListEntry>
+                    </ObjectList>
+                  </Hmi.Event.FunctionListEventHandler>
+                </ObjectList>
+              </Hmi.Event.Event>
+              <Hmi.Globalization.MultiLingualFont ID="A" CompositionName="Font">
+                <ObjectList>
+                  <Hmi.Globalization.FontItem ID="B" CompositionName="Items">
+                    <AttributeList>
+                      <Culture>en-US</Culture>
+                      <FontFamily>Tahoma</FontFamily>
+                      <FontSize>24</FontSize>
+                      <FontStyle>Regular</FontStyle>
+                    </AttributeList>
+                  </Hmi.Globalization.FontItem>
+                </ObjectList>
+              </Hmi.Globalization.MultiLingualFont>
+              <MultilingualText ID="C" CompositionName="HelpText">
+                <ObjectList>
+                  <MultilingualTextItem ID="D" CompositionName="Items">
+                    <AttributeList>
+                      <Culture>en-US</Culture>
+                      <Text />
+                    </AttributeList>
+                  </MultilingualTextItem>
+                </ObjectList>
+              </MultilingualText>
+              <Hmi.Screen.Property ID="E" CompositionName="Properties">
+                <AttributeList>
+                  <Name>ProcessValue</Name>
+                </AttributeList>
+                <ObjectList>
+                  <Hmi.Dynamic.TagConnectionDynamic ID="F" CompositionName="Dynamic">
+                    <AttributeList>
+                      <Indirect>false</Indirect>
+                    </AttributeList>
+                    <LinkList>
+                      <Tag TargetID="@OpenLink">
+                        <Name>Tag_ScreenNumber</Name>
+                      </Tag>
+                    </LinkList>
+                  </Hmi.Dynamic.TagConnectionDynamic>
+                </ObjectList>
+              </Hmi.Screen.Property>
+              <MultilingualText ID="10" CompositionName="TextOff">
+                <ObjectList>
+                  <MultilingualTextItem ID="11" CompositionName="Items">
+                    <AttributeList>
+                      <Culture>en-US</Culture>
+                      <Text><body><p>0</p></body></Text>
+                    </AttributeList>
+                  </MultilingualTextItem>
+                </ObjectList>
+              </MultilingualText>
+              <MultilingualText ID="12" CompositionName="TextOn">
+                <ObjectList>
+                  <MultilingualTextItem ID="13" CompositionName="Items">
+                    <AttributeList>
+                      <Culture>en-US</Culture>
+                      <Text><body><p>1</p></body></Text>
+                    </AttributeList>
+                  </MultilingualTextItem>
+                </ObjectList>
+              </MultilingualText>
+            </ObjectList>
+          </Hmi.Screen.SymbolicIOField>
+          <Hmi.Screen.DateTimeField ID="14" CompositionName="ScreenItems">
+            <AttributeList>
+              <BackColor>255, 255, 255</BackColor>
+              <BackFillStyle>Transparent</BackFillStyle>
+              <BorderBackColor>226, 225, 225</BorderBackColor>
+              <BorderColor>156, 154, 165</BorderColor>
+              <BorderWidth>0</BorderWidth>
+              <BottomMargin>2</BottomMargin>
+              <CornerRadius>3</CornerRadius>
+              <DisplaySystemTime>true</DisplaySystemTime>
+              <EdgeStyle>Double</EdgeStyle>
+              <Enabled>true</Enabled>
+              <FitToLargest>false</FitToLargest>
+              <Flashing>None</Flashing>
+              <ForeColor>0, 0, 0</ForeColor>
+              <Height>30</Height>
+              <HorizontalAlignment>Right</HorizontalAlignment>
+              <Left>695</Left>
+              <LeftMargin>3</LeftMargin>
+              <LongDateTimeFormat>false</LongDateTimeFormat>
+              <Mode>Output</Mode>
+              <ObjectName>HmiScreenItemData</ObjectName>
+              <RightMargin>2</RightMargin>
+              <ShowDate>false</ShowDate>
+              <ShowTime>true</ShowTime>
+              <TabIndex>-1</TabIndex>
+              <TextOrientation>Horizontal</TextOrientation>
+              <Top>30</Top>
+              <TopMargin>2</TopMargin>
+              <UseDesignColorSchema>false</UseDesignColorSchema>
+              <UseTwoHandOperation>false</UseTwoHandOperation>
+              <VerticalAlignment>Middle</VerticalAlignment>
+              <Width>105</Width>
+            </AttributeList>
+            <ObjectList>
+              <Hmi.Globalization.MultiLingualFont ID="15" CompositionName="Font">
+                <ObjectList>
+                  <Hmi.Globalization.FontItem ID="16" CompositionName="Items">
+                    <AttributeList>
+                      <Culture>en-US</Culture>
+                      <FontFamily>Tahoma</FontFamily>
+                      <FontSize>16</FontSize>
+                      <FontStyle>Regular</FontStyle>
+                    </AttributeList>
+                  </Hmi.Globalization.FontItem>
+                </ObjectList>
+              </Hmi.Globalization.MultiLingualFont>
+              <MultilingualText ID="17" CompositionName="HelpText">
+                <ObjectList>
+                  <MultilingualTextItem ID="18" CompositionName="Items">
+                    <AttributeList>
+                      <Culture>en-US</Culture>
+                      <Text />
+                    </AttributeList>
+                  </MultilingualTextItem>
+                </ObjectList>
+              </MultilingualText>
+            </ObjectList>
+          </Hmi.Screen.DateTimeField>
+          <Hmi.Screen.DateTimeField ID="19" CompositionName="ScreenItems">
+            <AttributeList>
+              <BackColor>255, 255, 255</BackColor>
+              <BackFillStyle>Transparent</BackFillStyle>
+              <BorderBackColor>226, 225, 225</BorderBackColor>
+              <BorderColor>156, 154, 165</BorderColor>
+              <BorderWidth>0</BorderWidth>
+              <BottomMargin>2</BottomMargin>
+              <CornerRadius>3</CornerRadius>
+              <DisplaySystemTime>true</DisplaySystemTime>
+              <EdgeStyle>Double</EdgeStyle>
+              <Enabled>true</Enabled>
+              <FitToLargest>false</FitToLargest>
+              <Flashing>None</Flashing>
+              <ForeColor>0, 0, 0</ForeColor>
+              <Height>30</Height>
+              <HorizontalAlignment>Right</HorizontalAlignment>
+              <Left>695</Left>
+              <LeftMargin>3</LeftMargin>
+              <LongDateTimeFormat>false</LongDateTimeFormat>
+              <Mode>Output</Mode>
+              <ObjectName>HmiScreenItemData_1</ObjectName>
+              <RightMargin>2</RightMargin>
+              <ShowDate>true</ShowDate>
+              <ShowTime>false</ShowTime>
+              <TabIndex>-1</TabIndex>
+              <TextOrientation>Horizontal</TextOrientation>
+              <Top>0</Top>
+              <TopMargin>2</TopMargin>
+              <UseDesignColorSchema>false</UseDesignColorSchema>
+              <UseTwoHandOperation>false</UseTwoHandOperation>
+              <VerticalAlignment>Middle</VerticalAlignment>
+              <Width>105</Width>
+            </AttributeList>
+            <ObjectList>
+              <Hmi.Globalization.MultiLingualFont ID="1A" CompositionName="Font">
+                <ObjectList>
+                  <Hmi.Globalization.FontItem ID="1B" CompositionName="Items">
+                    <AttributeList>
+                      <Culture>en-US</Culture>
+                      <FontFamily>Tahoma</FontFamily>
+                      <FontSize>16</FontSize>
+                      <FontStyle>Regular</FontStyle>
+                    </AttributeList>
+                  </Hmi.Globalization.FontItem>
+                </ObjectList>
+              </Hmi.Globalization.MultiLingualFont>
+              <MultilingualText ID="1C" CompositionName="HelpText">
+                <ObjectList>
+                  <MultilingualTextItem ID="1D" CompositionName="Items">
+                    <AttributeList>
+                      <Culture>en-US</Culture>
+                      <Text />
+                    </AttributeList>
+                  </MultilingualTextItem>
+                </ObjectList>
+              </MultilingualText>
+            </ObjectList>
+          </Hmi.Screen.DateTimeField>
+          <Hmi.Screen.GraphicView ID="1E" CompositionName="ScreenItems">
+            <AttributeList>
+              <AutoSizing>StretchPicture</AutoSizing>
+              <BackColor>222, 219, 222</BackColor>
+              <BackFillStyle>Transparent</BackFillStyle>
+              <BorderColor>0, 0, 0</BorderColor>
+              <BorderWidth>0</BorderWidth>
+              <EdgeStyle>Solid</EdgeStyle>
+              <FitToLargest>false</FitToLargest>
+              <Flashing>None</Flashing>
+              <Height>60</Height>
+              <Left>0</Left>
+              <ObjectName>Logo</ObjectName>
+              <TabIndex>-1</TabIndex>
+              <Top>0</Top>
+              <TransparentColor>255, 0, 255</TransparentColor>
+              <UseTransparentColor>false</UseTransparentColor>
+              <Width>107</Width>
+            </AttributeList>
+            <LinkList>
+              <Picture TargetID="@OpenLink">
+                <Name>Logo of HMI_1</Name>
+              </Picture>
+            </LinkList>
+          </Hmi.Screen.GraphicView>
+        </ObjectList>
+      </Hmi.Screen.ScreenLayer>
+    </ObjectList>
+  </Hmi.Screen.ScreenOverview>
+</Document>
