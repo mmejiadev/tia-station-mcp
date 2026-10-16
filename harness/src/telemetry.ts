@@ -90,6 +90,11 @@ export type RunContext = {
   readonly specSet: string;
   /** The server the run went through, so a number is attributable to a build. */
   readonly serverExecutable: string;
+  /**
+   * The version that server reports, or undefined when it reports none (servers before 0.0.20).
+   * The path alone could not tell two builds in the same folder apart.
+   */
+  readonly serverVersion?: string;
   /** How many iterations one specification is allowed before the loop gives up. */
   readonly iterationLimit: number;
   /** What produced the SCL: a model name, or 'stub' when nothing was generated. */
@@ -202,10 +207,17 @@ export class Telemetry {
   startRun(context: RunContext, startedAt: number = Date.now()): RunId {
     const inserted = this.database
       .prepare(
-        `INSERT INTO runs (spec_set, server_executable, iteration_limit, generator, started_at)
-         VALUES (?, ?, ?, ?, ?)`
+        `INSERT INTO runs (spec_set, server_executable, server_version, iteration_limit, generator, started_at)
+         VALUES (?, ?, ?, ?, ?, ?)`
       )
-      .run(context.specSet, context.serverExecutable, context.iterationLimit, context.generator, startedAt);
+      .run(
+        context.specSet,
+        context.serverExecutable,
+        context.serverVersion ?? null,
+        context.iterationLimit,
+        context.generator,
+        startedAt
+      );
 
     return Number(inserted.lastInsertRowid) as RunId;
   }
@@ -450,6 +462,7 @@ export class Telemetry {
         id                INTEGER PRIMARY KEY,
         spec_set          TEXT    NOT NULL,
         server_executable TEXT    NOT NULL,
+        server_version    TEXT,
         iteration_limit   INTEGER NOT NULL,
         generator         TEXT    NOT NULL,
         started_at        INTEGER NOT NULL,

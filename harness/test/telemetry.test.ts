@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { describe, it } from 'node:test';
+import { MetricsReader } from '../src/metricsReader.ts';
 import { Telemetry } from '../src/telemetry.ts';
 
 /**
@@ -216,7 +217,114 @@ describe('Telemetry', () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it('records the version the server reports next to its path', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'tia-harness-'));
+    const path = join(directory, 'metrics.db');
+
+    try {
+      const telemetry = Telemetry.open(path);
+      telemetry.startRun({ ...context(), serverVersion: '0.0.20' });
+      telemetry.close();
+
+      const reader = MetricsReader.open(path);
+
+      try {
+        assert.equal(reader.runs()[0]?.serverVersion, '0.0.20');
+      } finally {
+        reader.close();
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('migrates a version 2 store, whose runs never had a version, without inventing one', () => {
+    // Version 3 only added a column. A run recorded before the server reported its version keeps
+    // its numbers and reads as having no version, which is the truth about it.
+    const directory = mkdtempSync(join(tmpdir(), 'tia-harness-'));
+    const path = join(directory, 'metrics.db');
+
+    try {
+      const first = Telemetry.open(path);
+      first.startRun(context());
+      first.close();
+
+      const database = new DatabaseSync(path);
+      database.exec('ALTER TABLE runs DROP COLUMN server_version');
+      database.close();
+      setSchemaVersion(path, 2);
+
+      Telemetry.open(path).close();
+      const reader = MetricsReader.open(path);
+
+      try {
+        assert.equal(reader.runs().length, 1);
+        assert.equal(reader.runs()[0]?.serverVersion, undefined);
+      } finally {
+        reader.close();
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('lets the dashboard be the first to open a version 2 store', () => {
+    // The dashboard opens the store through the same version step as the harness. Before the
+    // column was added there, it stamped the store as version 3 and every list of runs failed on the
+    // missing column.
+    const path = versionTwoStore();
+
+    try {
+      const reader = MetricsReader.open(path);
+
+      try {
+        assert.equal(reader.runs()[0]?.serverVersion, undefined);
+      } finally {
+        reader.close();
+      }
+    } finally {
+      rmSync(dirname(path), { recursive: true, force: true });
+    }
+  });
+
+  it('leaves a store it refuses exactly as it found it', () => {
+    const path = versionTwoStore();
+
+    try {
+      setSchemaVersion(path, 99);
+
+      assert.throws(() => Telemetry.open(path), /schema version 99/);
+      assert.equal(hasServerVersionColumn(path), false);
+    } finally {
+      rmSync(dirname(path), { recursive: true, force: true });
+    }
+  });
 });
+
+/** A store as a version 2 harness left it: one run, and no server_version column. */
+function versionTwoStore(): string {
+  const path = join(mkdtempSync(join(tmpdir(), 'tia-harness-')), 'metrics.db');
+  const first = Telemetry.open(path);
+
+  first.startRun(context());
+  first.close();
+
+  const database = new DatabaseSync(path);
+  database.exec('ALTER TABLE runs DROP COLUMN server_version');
+  database.close();
+  setSchemaVersion(path, 2);
+
+  return path;
+}
+
+function hasServerVersionColumn(path: string): boolean {
+  const database = new DatabaseSync(path);
+  const columns = database.prepare('PRAGMA table_info(runs)').all() as { name: string }[];
+  database.close();
+
+  return columns.some((column) => column.name === 'server_version');
+}
 
 function finishOne(
   telemetry: Telemetry,

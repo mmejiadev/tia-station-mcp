@@ -165,6 +165,7 @@ const recordedRun: RecordedRun = {
   runId: 7,
   specSet: 'specs',
   serverExecutable: 'TiaMcpServer.exe',
+  serverVersion: '0.0.20',
   iterationLimit: 3,
   generator: 'stub',
   startedAt: 1000,

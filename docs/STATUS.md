@@ -1,7 +1,7 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-10-14**
+> Last updated: **2026-10-16**
 
 ## ▶ RESUME HERE
 
@@ -73,6 +73,27 @@ never run against TIA Portal counts for less than half.
 | Classic S7-PLCSIM for S7-1200 | 5 % |
 | Debt and audit findings | 65 % |
 | **The project as a whole** | **about 60 %** |
+
+### Server 0.0.20, and the version it reports — 2026-10-16
+
+Branch `work/release-0.0.20`. PR #44 (project, device and block tools, the classic WinCC HMI tools)
+is merged. Server 0.0.19 is the one registered in Claude Code, so ROADMAP A2 is done; the tools of
+PR #44 reach Claude Code with 0.0.20.
+
+- **The server reports its own version (ROADMAP A3).** `GetState` says it in its message and in
+  `meta.serverVersion`, one copy, read once from the assembly; the version is set once, in
+  `TiaMcpServer.csproj`.
+- **The harness records it next to the executable's path**, in `runs.server_version`. The store
+  moves to schema 3. The column is added in the version step both the harness and the dashboard go
+  through, and only once the store is found migratable: a store about to be refused is not touched,
+  and the dashboard can be the first to open an old one (both tested; the dashboard test fails with
+  the fix removed). Runs of a schema 2 store keep their numbers and read as having no version. A
+  server that reports none — 0.0.19 and before — is still run and recorded; a `GetState` that fails is
+  said so on stderr. The dashboard API's list of runs carries the version; no view shows it yet.
+- `/code-review high` found eight points; all fixed.
+- Tests: harness 305/305; `Test5McpServer` 25/25 against TIA Portal, including
+  `GetState_Always_ReportsTheVersionTheProjectFileSets`, which compares the version with the project
+  file.
 
 ### Tests run, a TIA Portal crash found, and the review — 2026-10-14
 
