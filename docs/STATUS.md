@@ -1,11 +1,11 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-10-08**
+> Last updated: **2026-10-14**
 
 ## ▶ RESUME HERE
 
-### Everything still open, in priority order, with progress — 2026-10-13
+### Everything still open, in priority order, with progress — 2026-10-14
 
 The list the user asked to keep in one place. The broader study of what a company-grade tool needs
 is `docs/ENTERPRISE-READINESS.md`, and the plan that finishes all of it, in waves A to J with a
@@ -14,20 +14,30 @@ never run against TIA Portal counts for less than half.
 
 **Now, in this order:**
 
-1. ~~Edge bug in the LAD generator~~ — done and measured in TIA Portal, branch `work/lad-edges`.
-   Pending: `/code-review high`, then the user's commit.
-2. MCP tools `CreateProject`, `AddDevice` and `DeleteBlock`, through `GuardedTool.Run`, with refusal
-   tests in `Test16GuardedWrites`.
-3. HMI, classic WinCC: MCP tools to export and import screens, HMI tag tables and text lists; a
-   generator that writes HMI tags from PLC tags and screens from a description; a runtime screenshot
-   compared with the teacher's picture. Then the documentation (WinCC Comfort/Advanced manuals,
-   Openness HMI chapter) and the tutorials the user named.
+1. ~~Edge bug in the LAD generator~~ — done, measured in TIA Portal, merged as PR #43.
+2. ~~MCP tools `CreateProject`, `AddDevice` and `DeleteBlock`~~ — on
+   `work/project-device-block-tools` (2026-10-14), tested against TIA Portal and reviewed. Pending:
+   the user's commit.
+3. HMI, classic WinCC. **Built and tested against TIA Portal 2026-10-14:** `GetHmiInfo`,
+   `ExportHmi`, `ImportHmiScreen`, `ImportHmiTagTable`, `ImportHmiTextList`, `GenerateHmiTags`,
+   `GenerateHmiScreen`, `CompareHmiScreens`, and `CompileSoftware` on an HMI path (ROADMAP D1–D4).
+   **Still to do:** symbol-library graphics and groups in the generator; the documentation (WinCC
+   Comfort/Advanced manuals, Openness HMI chapter) and the tutorials the user named (D5); a runtime
+   screenshot compared with the teacher's picture (D6); ISA-101 style (D7); the panel simulated
+   against PLCSIM (D8).
 4. What the hopper exercise taught the generator: a global DB of `IEC_TIMER` members, network titles
    and comments through `.s7res`, calls from Main, one block per GEMMA state, the S7-1500
    `time_type` template.
 5. `grafcet` skill: GEMMA model, check and drawing; labels that overlap on several outgoing
-   transitions; forcing orders; the `transient-evolution` false positives; reading DB-member TON calls.
+   transitions; forcing orders; the `transient-evolution` false positives; reading DB-member TON calls;
+   the teacher's style of 2026-10-15 (lamps as memory with S/R). The clean GEMMA and chart drawings of
+   2026-10-15 came from a throw-away script, not from the skill (ROADMAP C3, C4, C8).
 6. Classic S7-PLCSIM V20, so that S7-1200 class projects can be simulated (undocumented gRPC).
+
+6b. **Requested by the user 2026-10-15: work while TIA Portal is open** in her window, without
+   asking her to close the project. `Connect` attaches to the first TIA Portal process, not to the
+   one holding the project, and `OpenProject` fails on a project another instance has open.
+   ROADMAP A4.
 
 **Then:**
 
@@ -58,15 +68,204 @@ never run against TIA Portal counts for less than half.
 | Knowledge layer | 30 % (stages 1 and 3 of seven) |
 | Web platform | 65 % |
 | `grafcet` skill | 65 % |
-| Gaps from the hopper exercise (2026-10-08) | 25 % |
-| HMI, classic WinCC | 25 % (measured; no tool, no generator yet) |
+| Gaps from the hopper exercise (2026-10-08) | 45 % (create, add device and delete tested in TIA Portal) |
+| HMI, classic WinCC | 65 % (read, import, tags, text lists, screens with animations and events; imported and compiled in TIA Portal on internal tags; PLC-linked tags measured only on the teacher's project) |
 | Classic S7-PLCSIM for S7-1200 | 5 % |
 | Debt and audit findings | 65 % |
 | **The project as a whole** | **about 60 %** |
 
+### Tests run, a TIA Portal crash found, and the review — 2026-10-14
+
+Same branch, not committed. **All suites green:** `TiaMcpServer.Test` 357 passed, 0 failed, 4
+skipped (the known `[Ignore]`s) on the full run before the review fixes, and `Test16`, `Test17`,
+`Test4`, `Test39` and `Test40` again after them; `Spec` 103/103; `Governance` 245/245; `OpcUa`
+33/33. The build has 0 warnings.
+
+**Measured on the first run, against a class panel added to `TestProject1`:**
+- The class panel's type identifier `OrderNumber:6AV2 124-0JC01-0AX0/17.0.0.0` is accepted.
+- **Its HMI target is not at the device's name.** It sits on a device item TIA Portal names and
+  numbers itself — `HMI_1/HMI_RT_2`, because the project already had `HMI_0/HMI_RT_1`. Fixed with
+  `GetSoftwarePaths` (every software path of a device or project, as the lookup resolves it), used by
+  `AddDevice`'s answer, and the "no HMI found" refusal now lists the HMI paths that exist.
+- A panel created from nothing has **no screen** and **no connection to a PLC**; neither does
+  `TestProject1`'s own panel.
+- **Importing an HMI tag table whose tags name a connection the panel lacks threw
+  `NonRecoverableException`, and TIA Portal disposed of the open project:** every later call failed
+  with "Access to a disposed object". The test host died with it. Fixed in two ways:
+  - **Every HMI import is now checked before TIA Portal sees it** (`RequireKnownLinks`, with
+    `HmiDocumentLinks` reading every `@OpenLink`): HMI tags, screens, templates, text and graphic
+    lists, cycles, connections and pictures must exist on the panel. **A kind of link not known is
+    refused** (fail closed); data types and PLC tags are the two let through. Connections and
+    pictures cannot be listed through the API — integrated connections are not in
+    `HmiTarget.Connections` and are not exported, says the Openness help — so the evidence is the
+    panel's own export, just written by the backup. Consequence, kept on purpose: on a panel where
+    no tag uses the connection yet, `GenerateHmiTags` refuses; the refusal says to link one PLC tag
+    in TIA Portal first.
+  - When TIA Portal ends the session anyway, the HMI writes and `CompileSoftware` forget the
+    project and say so (`ForgetEndedSession`) instead of using a disposed object.
+- **A classic screen's number cannot be read through the API** ("'get_Number' is not supported"),
+  so it is read from the backup's export (`HmiScreenNumbers`).
+- **The generated screens compile.** Buttons, a flashing pilot light with visibility, an I/O field
+  with a multi-range appearance and a visibility animation, a symbolic field with its text list and
+  an animation, and a date/time field, on internal HMI tags imported first: the HMI compiles with no
+  warning and one error, "A start screen has not been configured", from the runtime settings of a
+  panel created from nothing. `Test40Hmi` asserts exactly that.
+
+**`/code-review high` found ten points; all ten are fixed**, each with a test where one can be written:
+two animations of one kind on an item (and a pilot light's own) are refused; links of kinds not
+checked are refused (the picture of the class overview's logo was one); the first-tag-table refusal
+explains itself; `AddDevice` refuses a name any device or device item has, in any group; software
+paths leave out station names holding `/`; a screen regenerated without a number keeps its number,
+and a number another screen has is refused before the import; `CompileSoftware` forgets an ended
+session and does not record HMI compiles in the PLC compilation history; `CreateProject` records
+itself in the project history; the asset glob uses `Update` as the other test project does. Left as
+they are: three read tools reuse `ResponseNetworkTopology`; `CreateProject` refusing an open project
+inside the guard is audited as a failed plan; `ReadHmiTags` keys tables by name only, not folder;
+a `GenerateHmiTags` that writes nothing still records its backup directory.
+
+**A second `/code-review high` round, since the fixes touch the safety checks, found ten more; all
+ten are fixed and the affected TIA classes pass again (126/126, `Spec` 106/106):** `CompareHmiScreens`
+now tells sibling objects apart by position, so an inverted pilot light is a difference (the test
+fails with the fix removed); PLC tags are checked too, against every PLC tag table, so a hand-written
+table naming one that does not exist is refused; `GenerateHmiTags` checks that the import brought
+the table in; `AddDevice` also sees ungrouped devices; a program with no memory tag is told so
+instead of "every memory tag already has an HMI tag"; each item kind takes only the events measured
+on it (buttons press and click, symbolic fields change) and any other item given events is refused
+rather than losing them; `CreateProject` refuses a name holding a path; `ImportHmiScreen` applies the
+same screen-number rule as `GenerateHmiScreen`; the panel's export is read once per write; and the
+exporter lets an ended session and process failures through instead of recording them as one item
+failing.
+
+### HMI animations, events, symbolic fields — 2026-10-14
+
+Same branch, not committed, 0 warnings. Ninety-eight tools. The user asked for "super functional
+and perfect" AI-generated HMI screens, starting with generic animations.
+
+- **Animations on every item kind**, through an `animations` list: `appearance` (any number of value
+  ranges, each with background, text colour and flashing) and `visibility` (one bit, shown or hidden).
+  The pilot light is now a shorthand for a circle with those two. Both shapes are the class exports';
+  **whether TIA Portal accepts each on each item kind is not measured** — `Test40Hmi` imports a
+  symbolic field with an appearance animation.
+- **Events.** A button takes `events`, any number of functions on `press` or `click`, run in order,
+  besides the short `press` form; a symbolic field takes `change`. Functions: `setBitWhilePressed`,
+  `setTag`, `activateScreen`, `activatePreviousScreen`, `activateScreenByNumber` — all five, and the
+  three events, read from class exports.
+- **New item kinds:** `symbolicField` (a text from a text list chosen by a tag's value) and
+  `dateTime` (the panel clock: time, date or both). Font style (`Bold`, `Regular`) joins size.
+- **`GenerateHmiTextList`**, guarded, panel backed up first: one text per value. A screen whose
+  symbolic field names a text list the panel lacks is refused before anything is written.
+- **Measured offline:** `hmi_prova1`'s screen overview, described in JSON, matches its export item for
+  item but for the logo image; its screen-names text list comes out **identical**. Both are test
+  assets beside the teacher's `principal`.
+- **Learnt from the Openness help** shipped with TIA Portal (`Help/en-US/TIAPortalOpennessenUS.zip`):
+  a screen import is cancelled when its size does not match the device's, and a screen without a
+  number gets a free one — so the description's `number` is now optional. The help does not list animation kinds; what it says about classic screens
+  is that "all animations configurable for screens are imported".
+- **Still unmeasured, to be measured with the probe on a copy of a class project:** operability
+  (enabling an item by a tag), movement, multi-bit appearance, the `Release` event, other system
+  functions, graphic I/O fields, images and symbol-library graphics, groups, and whether
+  regenerating a screen with the same number is accepted.
+- Tests: one refusal in `Test16GuardedWrites`, two in `Test40Hmi`, and 18 more without TIA Portal
+  (`HmiAnimationTests`, `HmiEventTests`, `HmiTextListDocumentTests`, one in
+  `HmiScreenGenerationTests`).
+
+### The HMI screen generator — 2026-10-14
+
+Same branch, not committed, 0 warnings. Ninety-seven tools.
+
+- **`GenerateHmiScreen(hmiPath, folderPath, description)`**, guarded, panel exported to the backup
+  first. The description is JSON: a screen `name`, `number`, `backColor`, and `items` of five kinds —
+  `button` (`press`: `setBitWhilePressed`, `setTag`, `activateScreen`), `ioField`, `text`,
+  `pilotLight` (colours at 0 and 1, `flashing`, `visibleTag`) and `bar`. Every item needs `left` and
+  `top`; size, name, colours, font size and alignment are optional. An unnamed item is named as TIA
+  Portal names a new one (`Button_1`, `Circle_1`). An incomplete description is refused before the
+  guard, naming the item.
+- **Every tag a screen links to must already be an HMI tag on the panel**, or nothing is written and
+  the refusal names them; `GenerateHmiTags` is the fix. A navigation button to a screen not on the
+  panel yet is reported, not refused: two screens that lead to each other are generated one first.
+- **Style.** Each kind is written with the full attribute set TIA Portal gives a new item, read from
+  the class projects (`HmiItemStyle`), so a generated screen exports like a drawn one. The nine class
+  buttons are identical, so that style is TIA's own.
+- **`CompareHmiScreens(referencePath, candidatePath)`** compares two exported screens item by item,
+  by object name: every attribute, text, event, animation and tag link that differs. Reads files
+  only. **Measured offline:** the teacher's `principal`, described in
+  `tests/TiaMcpServer.Spec.Test/assets/hmi/principal-description.json`, differs from her export
+  only in the screen size (left to the panel on purpose) and in the group holding a symbol-library
+  graphic, which the generator does not write (its content is an opaque `OcxState` blob).
+  `HmiScreenGenerationTests` asserts exactly that list. **The reference asset is an export of the
+  teacher's class project** (its `DocumentInfo` block removed); the user should confirm it may be
+  committed.
+- **Not measured:** that TIA Portal imports a generated screen with every attribute written out, and
+  that the HMI then compiles. `Test40Hmi` generates one and checks it lands on the panel; compiling
+  needs a PLC connection the test panel does not have.
+- Tests: one refusal in `Test16GuardedWrites`, two more in `Test40Hmi`, and 19 without TIA Portal
+  (`HmiScreenGenerationTests`, `HmiScreenDescriptionReaderTests`, `HmiColorTests`,
+  `HmiScreenComparisonTests`).
+
+### HMI tools for classic WinCC — 2026-10-14
+
+Same branch, `work/project-device-block-tools`, not committed. Builds with 0 warnings; **no test has
+been run yet**, by the user's choice: the whole suite runs once at the end. Ninety-five tools.
+
+- **Read:** `GetHmiInfo` lists a panel's screens, templates, HMI tag tables (with tag counts) and
+  text lists by full path. `ExportHmi` writes all of it, graphic lists too, as XML into a new or
+  empty directory, folders mirrored; items that fail are listed and the rest still written. The
+  export is the only way to see what is on a screen: classic WinCC has no object model for screen
+  items. `HmiExporter` refuses a file name two items would share instead of overwriting it.
+- **Write, all through `GuardedTool.Run`:** `ImportHmiScreen` (into a screen folder, or the root),
+  `ImportHmiTagTable` and `ImportHmiTextList`. Each replaces an item of the same name, so each
+  exports the **whole panel** to the backup registry first and writes nothing when that export is
+  incomplete.
+- **`GenerateHmiTags`:** every memory tag (`%M`) of a PLC program gets an HMI tag of the same name,
+  1 s acquisition cycle, through `HMI_Connection_1` unless told otherwise — how the teacher's tables
+  are built (`Marxa` → `Marxa`). A tag already in another HMI table is left out, so a second run
+  changes nothing. **Importing replaces a table whole**, so a target table holding any tag the
+  generator would not write again (the teacher's `Tag_ScreenNumber`, say) is refused with the tags
+  named. The XML builder and the selection are pure code in `TiaMcpServer.Portable/Hmi/`, tested in
+  `TiaMcpServer.Spec.Test` against the table measured to compile on 2026-10-13. The generated file is
+  kept in the backup's `generated` folder.
+- **`CompileSoftware` compiles an HMI target too**, since it is the only check of imported or
+  generated items. The switch over the software kind fails closed on anything else.
+- **Not measured, and the first thing to check:** `Test40Hmi` adds the class panel with the type
+  identifier `OrderNumber:6AV2 124-0JC01-0AX0/17.0.0.0` (firmware assumed) and addresses its HMI
+  target by the device's bare name. Also unmeasured: how TIA Portal reports a link to a tag that does
+  not exist, at import or at compile — the descriptions say only that compiling is the check.
+- Tests: four refusals in `Test16GuardedWrites`; `Test40Hmi` (9, needs TIA Portal); nine in
+  `HmiTagTableDocumentTests` and `HmiTagSelectionTests` (no TIA Portal needed).
+
+### Create a project, add a device, delete a block — 2026-10-14
+
+Branch `work/project-device-block-tools`, not committed. Closes two gaps the hopper exercise found:
+the MCP could not start a project from nothing, and could not remove a block.
+
+- **Three new MCP tools, all through `GuardedTool.Run`.** 86 tools become 89.
+  - `CreateProject(targetDirectory, projectName)` — target `project`. **Refused while a project is
+    open**: `Portal.CreateProject` closes the open one without saving, which the test bench relies on
+    and an MCP caller with unsaved work must never get. The check is in the tool, after the guard,
+    so the policy is still asked first. The portal layer now also refuses a project folder that
+    already exists, with its path, instead of passing on whatever Openness says.
+  - `AddDevice(typeIdentifier, deviceName)` — target the device name. A name another device already
+    has is refused before Openness is called. Nothing existing changes, so no backup is taken.
+  - `DeleteBlock(softwarePath, blockPath)` — target `software/blockPath`, so a policy can allow
+    deleting in one group and not another. **A name pattern is refused**: `FindBlock` returns the
+    first block a pattern matches, which is fine for reading and wrong for deleting. The program's
+    blocks and types go to the backup registry first through `ProgramBackup`, and an incomplete
+    backup deletes nothing. Lives in its own file, `PortalBlockDeletion.cs`, because
+    `PortalBlocks.cs` is already over 300 lines.
+- **Tests, written and not yet run:** three refusals in `Test16GuardedWrites`; `Test39CreateAndDelete`
+  covers the delete and its backup, the pattern refusal, a missing block, a duplicate device name,
+  an existing project folder, `CreateProject` refused while a project is open, and `CreateProject`
+  through the tool with nothing open. They need TIA Portal.
+- `README.md` and `src/TiaMcpServer/README.md` list the new tools; `ROADMAP.md` B1 and B2 say where
+  they are.
+- **Used on the real hopper project (2026-10-14)**, through the branch's Debug build driven over stdio
+  with the 0.0.19 policy: `DeleteBlock` removed the six superseded blocks (`GRAFCET_INIT`,
+  `GRAFCET_OUTPUTS`, `G_A6`, `G_GEMMA`, `G_PROD`, `G_SEL`), each backed up first; `Main` got Catalan
+  network titles through `.s7res`; the program compiles with 0 errors and 0 warnings and was saved.
+
 ### Edges in the LAD generator, and HMI screens measured — 2026-10-13
 
-Branch `work/lad-edges`, not committed.
+Branch `work/lad-edges`, merged as PR #43.
 
 - **Edges are generated.** `grafcetToLad` writes `↑A` / `↓A` as
   `P_Contact( operand := "A", bit := "A_FP1" )` / `N_Contact(...)`, one memory bit per edge
@@ -162,6 +361,10 @@ conveyor with hopper, three destination belts, modes A1 F1 A2 D1 A5 A6 F4). Work
   `SORTIDES ACTIVACIÓ`), not one block per connected sequence as the generator writes. The generator
   should learn the grouping: each state's block holds its own sequence and the master transitions
   leaving it.
+- **2026-10-15: passed on the S7-1200 itself.** After the program was moved to the teacher's style
+  (lamps as memory) and given motor interlocks, the user ran 14 test cases by hand in classic
+  S7-PLCSIM V20 with two SIM tables (inputs; GEMMA steps, lamps, motors): all passed. The scan
+  simulator and the guide walk had agreed first. Not yet automated: ROADMAP E1/E2 still stand.
 - **The MCP cannot delete a block.** After the regrouping the six superseded blocks stayed in the
   project, uncalled, until removed by hand in TIA Portal.
 - **Tested end to end in PLCSIM Advanced on an S7-1500 stand-in** (a retrieved copy of TestProject1
