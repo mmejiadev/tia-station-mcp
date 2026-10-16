@@ -1,0 +1,11 @@
+{ "name": "principal", "number": 2, "backColor": "255, 255, 255",
+  "items": [
+    { "type": "ioField", "name": "I/O field_1", "left": 327, "top": 20, "width": 111, "height": 73, "tag": "CONT1", "format": "9999",
+      "backColor": "0, 0, 0", "foreColor": "255, 0, 255", "fontSize": 17, "align": "center" },
+    { "type": "button", "name": "Button_1", "left": 116, "top": 49, "text": "Marxa", "press": "setBitWhilePressed", "tag": "Marxa" },
+    { "type": "button", "name": "Button_2", "left": 113, "top": 104, "text": "Paro", "press": "setBitWhilePressed", "tag": "Paro" },
+    { "type": "button", "name": "Button_3", "left": 541, "top": 37, "text": "Reset", "press": "setTag", "tag": "CONT1", "value": 0 },
+    { "type": "text", "name": "Text field_1", "left": 348, "top": 239, "width": 26, "text": "M1" },
+    { "type": "pilotLight", "name": "Circle_2", "left": 335, "top": 142, "tag": "KM1", "offColor": "255, 0, 0", "onColor": "0, 255, 0" },
+    { "type": "pilotLight", "name": "Circle_1", "left": 335, "top": 142, "tag": "alarma", "offColor": "128, 128, 128", "onColor": "255, 0, 0", "flashing": true, "visibleTag": "alarma", "backColor": "red" }
+  ] }

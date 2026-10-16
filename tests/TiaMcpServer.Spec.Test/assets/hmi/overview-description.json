@@ -1,0 +1,6 @@
+{ "name": "Overview", "number": 99, "items": [
+  { "type": "symbolicField", "name": "Symbolic_IO_Field_Screen", "left": 109, "top": 11, "width": 584, "height": 38,
+    "tag": "Tag_ScreenNumber", "textList": "TextList_ScreenNames", "fontSize": 24, "fontStyle": "Regular",
+    "events": [ { "event": "change", "function": "activateScreenByNumber", "tag": "Tag_ScreenNumber" } ] },
+  { "type": "dateTime", "name": "HmiScreenItemData", "left": 695, "top": 30, "show": "time" },
+  { "type": "dateTime", "name": "HmiScreenItemData_1", "left": 695, "top": 0, "show": "date" } ] }

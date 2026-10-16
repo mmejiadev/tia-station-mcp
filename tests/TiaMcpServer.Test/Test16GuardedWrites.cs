@@ -415,6 +415,93 @@ namespace TiaMcpServer.Test
             AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
         }
 
+        /// <remarks>
+        /// Creating a project closes nothing when it is refused here, but on the allowed path it is
+        /// the one write that acts outside the open project, so the policy has to be asked first.
+        /// </remarks>
+        [TestMethod]
+        public void CreateProject_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.CreateProject(Path.Combine(AssemblyHooks.WorkingRoot, "refused-project"), "Refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void AddDevice_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.AddDevice("OrderNumber:6ES7 511-1AL03-0AB0/V4.0", "PLC_Refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        /// <remarks>
+        /// The second tool that removes something a person would have to rebuild, after UnplugModule.
+        /// </remarks>
+        [TestMethod]
+        public void DeleteBlock_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.DeleteBlock(Settings.Project1PlcSoftwarePath0, "Main");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        // The HMI writes. A panel is a target like a PLC program, and one the policy says nothing
+        // about must refuse every change to it: screens, tag tables, text lists and generated tags.
+
+        [TestMethod]
+        public void ImportHmiScreen_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.ImportHmiScreen("HMI_1", string.Empty, Path.Combine(SomeDirectory, "Screen.xml"));
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void ImportHmiTagTable_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.ImportHmiTagTable("HMI_1", Path.Combine(SomeDirectory, "Tags.xml"));
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void ImportHmiTextList_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.ImportHmiTextList("HMI_1", Path.Combine(SomeDirectory, "TextList.xml"));
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void GenerateHmiScreen_WithNoPolicy_IsRefused()
+        {
+            const string Screen = @"{ ""name"": ""Refused"", ""number"": 90, ""items"": [
+                { ""type"": ""button"", ""left"": 0, ""top"": 0, ""text"": ""Go"", ""press"": ""setBitWhilePressed"", ""tag"": ""Go"" } ] }";
+
+            var response = McpServer.GenerateHmiScreen("HMI_1", string.Empty, Screen);
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void GenerateHmiTextList_WithNoPolicy_IsRefused()
+        {
+            const string List = @"{ ""name"": ""Refused"", ""entries"": [ { ""value"": 0, ""text"": ""STOPPED"" } ] }";
+
+            var response = McpServer.GenerateHmiTextList("HMI_1", List);
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void GenerateHmiTags_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.GenerateHmiTags(Settings.Project1PlcSoftwarePath0, "HMI_1", "Generated");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
         /// <summary>Polls a job until it stops, or fails the test.</summary>
         /// <remarks>
         /// The one place in the repository that waits on wall-clock time, and only because the real

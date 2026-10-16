@@ -210,7 +210,7 @@ namespace TiaMcpServer.ModelContextProtocol
             };
         }
 
-        [McpServerTool(Name = "CompileSoftware"), Description("Compile the plc software. Pass runAsJob true to get a job id back immediately instead of waiting, then poll GetJobStatus.")]
+        [McpServerTool(Name = "CompileSoftware"), Description("Compile the plc software, or a classic WinCC HMI target (the only way to check imported or generated screens and HMI tags). Pass runAsJob true to get a job id back immediately instead of waiting, then poll GetJobStatus.")]
         public static ResponseCompileSoftware CompileSoftware(
             [Description("softwarePath: defines the path in the project structure to the plc software")] string softwarePath,
             [Description("password: the password to access adminsitration, default: no password")] string password = "",
@@ -249,7 +249,11 @@ namespace TiaMcpServer.ModelContextProtocol
                             $"Software '{softwarePath}' compiled: {report.WarningCount} warning(s)",
                             $"Software '{softwarePath}' has {report.ErrorCount} error(s) and {report.WarningCount} warning(s); see Messages");
 
-                        response.Message = RecordCompilation(softwarePath, report, response.Message ?? string.Empty);
+                        // The compilation history is the PLC program's; an HMI compile is reported, not recorded.
+                        if (!Portal.IsHmiTarget(softwarePath))
+                        {
+                            response.Message = RecordCompilation(softwarePath, report, response.Message ?? string.Empty);
+                        }
 
                         return response;
                     },

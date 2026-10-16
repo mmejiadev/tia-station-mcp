@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 using Siemens.Engineering.Compiler;
+using Siemens.Engineering.Hmi;
 using Siemens.Engineering.HW;
 using Siemens.Engineering.HW.Features;
 using Siemens.Engineering.Safety;
@@ -45,9 +46,10 @@ namespace TiaMcpServer.Siemens
         }
 
         /// <summary>
-        /// Compiles a PLC software and returns what the compiler said, flattened into data.
+        /// Compiles a PLC software or a classic WinCC HMI target and returns what the compiler said,
+        /// flattened into data.
         /// </summary>
-        /// <param name="softwarePath">Full path to the PLC software, for example <c>Group1/PLC_1</c>.</param>
+        /// <param name="softwarePath">Full path to the PLC software or HMI target, for example <c>Group1/PLC_1</c>.</param>
         /// <param name="password">Password for the safety administration, when the software needs one.</param>
         /// <returns>
         /// The report. A failed compile is a normal outcome and comes back as a report with
@@ -72,18 +74,25 @@ namespace TiaMcpServer.Siemens
 
                 LoginToSafetyProgram(softwareContainer, password);
 
-                if (!(softwareContainer?.Software is PlcSoftware plcSoftware))
+                // A classic WinCC HMI target compiles through the same service as a PLC program, so
+                // one tool covers both: generated screens and HMI tags are only checked by this.
+                var compilable = softwareContainer?.Software switch
                 {
-                    throw new PortalException(PortalErrorCode.NotFound, $"PLC software not found: {softwarePath}");
+                    PlcSoftware plcSoftware => plcSoftware.GetService<ICompilable>(),
+                    HmiTarget hmiTarget => hmiTarget.GetService<ICompilable>(),
+                    _ => null
                 }
+                    ?? throw new PortalException(PortalErrorCode.NotFound, $"No PLC or HMI software found: {softwarePath}");
 
-                var result = plcSoftware.GetService<ICompilable>().Compile();
+                var result = compilable.Compile();
 
                 return CompilerResultReader.Read(result);
             }
             catch (Exception ex)
             {
-                var pex = ex as PortalException ?? new PortalException(PortalErrorCode.CompileFailed, $"Compile failed: {ex.Message}", null, ex);
+                var pex = ForgetEndedSession(ex, "CompileSoftware")
+                    ?? ex as PortalException
+                    ?? new PortalException(PortalErrorCode.CompileFailed, $"Compile failed: {ex.Message}", null, ex);
 
                 pex.Data["softwarePath"] = softwarePath;
 

@@ -214,9 +214,22 @@ namespace TiaMcpServer.Siemens
                 throw new PortalException(PortalErrorCode.InvalidParams, "projectName is required");
             }
 
+            if (projectName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || projectName.Trim('.').Length == 0)
+            {
+                throw new PortalException(PortalErrorCode.InvalidParams, $"projectName '{projectName}' must be a plain folder name: no path separators, no '..'");
+            }
+
             if (IsPortalNull())
             {
                 throw new PortalException(PortalErrorCode.InvalidState, "Connect to TIA Portal first");
+            }
+
+            // TIA Portal creates the project in a subfolder named after it. Checked here so an
+            // existing folder is refused with its path, not with whatever Openness says about it.
+            var projectDirectory = Path.Combine(targetDirectory, projectName);
+            if (Directory.Exists(projectDirectory))
+            {
+                throw new PortalException(PortalErrorCode.InvalidState, $"Target already exists, refusing to overwrite: {projectDirectory}");
             }
         }
 

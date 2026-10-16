@@ -619,9 +619,10 @@ The rules of the rest of this document hold here too:
 
 | # | Item | Done when |
 |---|---|---|
-| A1 | Edges in the LAD generator (`work/lad-edges`) | Reviewed, committed, merged. Already measured in TIA Portal |
+| A1 | ~~Edges in the LAD generator (`work/lad-edges`)~~ — merged as PR #43 | Reviewed, committed, merged. Already measured in TIA Portal |
 | A2 | Server 0.0.19 registered in Claude Code | `GetState` answers from 0.0.19 |
 | A3 | The server reports its own version | `GetState` returns the assembly version; the harness records it next to the path |
+| A4 | Work while the user has TIA Portal open. `Connect` attaches to `TiaPortal.GetProcesses().First()` (`Portal.cs`), whatever it holds: on 2026-10-15 it picked a leftover instance with no window while the user's window held the project, and `OpenProject` then failed because the project was locked. Prefer the process whose `ProjectPath` is the requested project, then one with a user interface; `OpenProject` on a project another instance has open attaches to that instance instead of failing; say which instance was chosen. Also: a server killed mid-session leaves the TIA Portal it started running with no window | With the project open in the user's TIA Portal window, a read, a guarded write and a compile through the MCP succeed and show up in that window, without the user closing anything; no instance is left behind after a session ends |
 
 ### Wave B — a class exercise from nothing to a compiled project
 
@@ -629,8 +630,8 @@ What the hopper exercise of 2026-10-08 could not do without a person in TIA Port
 
 | # | Item | Done when | Depends on |
 |---|---|---|---|
-| B1 | MCP tools `CreateProject` and `AddDevice` | A new S7-1200 project is created, saved and reopened through the MCP; refusal tests in `Test16GuardedWrites` | A2 |
-| B2 | MCP tool `DeleteBlock`, with a backup first | A superseded block is removed and its backup restores it | A2 |
+| B1 | MCP tools `CreateProject` and `AddDevice` — built on `work/project-device-block-tools` 2026-10-14, not yet run against TIA Portal | A new S7-1200 project is created, saved and reopened through the MCP; refusal tests in `Test16GuardedWrites` | A2 |
+| B2 | MCP tool `DeleteBlock`, with a backup first — built on `work/project-device-block-tools` 2026-10-14, not yet run against TIA Portal | A superseded block is removed and its backup restores it | A2 |
 | B3 | Global `IEC_TIMER` DB generated with the program | The hopper program compiles with no DB written by hand | |
 | B4 | Calls from Main generated | The generated program runs in PLCSIM without editing Main | |
 | B5 | Network and block titles and comments through `.s7res` | A generated block shows its titles in TIA Portal | |
@@ -644,8 +645,9 @@ What the hopper exercise of 2026-10-08 could not do without a person in TIA Port
 |---|---|---|
 | C1 | GEMMA model: states used, evolutions with conditions, signalling, the master step of each | The 0968 GEMMA is written in it without loss |
 | C2 | GEMMA checks: every used state reachable, D1 reachable from every state, a way back to A1 | Each check has a test that fails without it |
-| C3 | GEMMA drawn in the standard layout | The 0968 guide drawn matches the hand-drawn one |
-| C4 | Labels no longer overlap on several outgoing transitions; wide charts not cut | The 0968 master chart draws cleanly |
+| C3 | GEMMA drawn in the standard layout — on 2026-10-15 drawn once by a throw-away script outside the repository (the A, F and D zones, every state with the used ones solid, each evolution with its condition, no crossing lines); the layout is proven, the code is not in the skill | The 0968 guide drawn by the skill from its GEMMA model, as clean as the 2026-10-15 drawing |
+| C4 | Labels no longer overlap on several outgoing transitions; wide charts not cut — the same script showed the fix: jumps drawn as renvois (an arrow with the target step), `/SE → 13` as a short branch on the left of each step | The 0968 master chart draws cleanly from the skill |
+| C8 | The teacher's style, as drawn in his notebook on 2026-10-15: the selection remembered by the lamps with `S`/`R` (steps that last only while the button is held), stored actions drawn as a row of `S`/`R` boxes, production branching on the lamp | The skill reads, draws and generates the 0968 selection in that style; the hand-edited program of 2026-10-15 comes out of the generator unchanged |
 | C5 | Forcing orders (`F/G_PROD:{30}`) in the notation, the checker and the generator | The hierarchical 0968 design is checked whole |
 | C6 | `transient-evolution` false positives | The 11 warnings on 0968 are gone and the true case still warns |
 | C7 | The reader understands DB-member TON calls | No "unsupported" warning on the hopper program |
@@ -657,12 +659,12 @@ The panels used in class (`6AV2 124-0JC01-0AX0`) are classic WinCC; the round tr
 
 | # | Item | Done when | Depends on |
 |---|---|---|---|
-| D1 | Read tools: export screens, templates, HMI tag tables, text and graphic lists | The teacher's project exported through the MCP, read-only | A2 |
-| D2 | Write tools: import screens, HMI tag tables and text lists, guarded, with a backup | A screen imported through the MCP compiles; refusal tests in `Test16GuardedWrites` | D1 |
-| D3 | HMI tags generated from PLC tags | Every memory bit of a program gets its HMI tag, and the HMI compiles | D2 |
-| D4 | Screen generator: buttons, pilot lights, I/O fields, bars, screen navigation | The teacher's `principal` screen regenerated from a description, attribute for attribute | D3 |
+| D1 | Read tools: export screens, templates, HMI tag tables, text and graphic lists — `GetHmiInfo`, `ExportHmi` built 2026-10-14, not yet run | The teacher's project exported through the MCP, read-only | A2 |
+| D2 | Write tools: import screens, HMI tag tables and text lists, guarded, with a backup — `ImportHmiScreen`, `ImportHmiTagTable`, `ImportHmiTextList` built 2026-10-14, not yet run | A screen imported through the MCP compiles; refusal tests in `Test16GuardedWrites` | D1 |
+| D3 | HMI tags generated from PLC tags — `GenerateHmiTags` built 2026-10-14, not yet run | Every memory bit of a program gets its HMI tag, and the HMI compiles | D2 |
+| D4 | Screen generator: buttons, pilot lights, I/O fields, bars, screen navigation — `GenerateHmiScreen` built 2026-10-14, with animations on every item, button and field events, symbolic and date/time fields, text lists; offline, two class screens match their exports but for images and groups; not yet imported into TIA Portal | The teacher's `principal` screen regenerated from a description, attribute for attribute | D3 |
 | D5 | Documentation read and cited: WinCC Comfort/Advanced, the Openness HMI chapter, the tutorials named by the user | Each fact the generator relies on carries its source | |
-| D6 | Runtime screenshot compared with a reference picture | A generated screen and the teacher's differ by less than a threshold fixed before measuring | D4 |
+| D6 | Runtime screenshot compared with a reference picture — the XML half exists (`CompareHmiScreens`); the runtime picture does not | A generated screen and the teacher's differ by less than a threshold fixed before measuring | D4 |
 | D7 | ISA-101 style as an option (grey background, colour only for abnormal states) | One flag switches the generated screen to it | D4 |
 | D8 | Simulating the panel against PLCSIM, so a button press reaches the PLC | Pressing MARXA on the simulated panel sets `Marxa` in PLCSIM | D4, E1 for S7-1200 |
 

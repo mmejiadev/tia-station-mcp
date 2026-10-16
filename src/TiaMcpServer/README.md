@@ -38,10 +38,11 @@ The TiaMcpServer project provides the following functionality:
 
 *   **Connecting and disconnecting from the TIA Portal:** The `Connect` and `Disconnect` tools allow the LLM to connect to and disconnect from the TIA Portal.
 *   **Getting the state of the TIA Portal:** The `GetState` tool allows the LLM to get the current state of the TIA Portal, such as whether it is connected to a project and the name of the project.
-*   **Working with projects and sessions:** The `GetOpenProjects`, `OpenProject`, `SaveProject`, `SaveAsProject`, and `CloseProject` tools allow the LLM to work with TIA Portal projects and sessions.
+*   **Working with projects and sessions:** The `GetOpenProjects`, `OpenProject`, `CreateProject`, `AddDevice`, `SaveProject`, `SaveAsProject`, and `CloseProject` tools allow the LLM to work with TIA Portal projects and sessions.
 *   **Working with devices:** The `GetStructure`, `GetDeviceInfo`, `GetDeviceItemInfo`, and `GetDevices` tools allow the LLM to get information about the devices in a project.
 *   **Working with PLC software:** The `GetSoftwareInfo` and `CompileSoftware` tools allow the LLM to get information about and compile PLC software.
-*   **Working with blocks:** The `GetBlockInfo`, `GetBlocks`, `GetBlocksWithHierarchy`, `ExportBlock`, `ImportBlock`, and `ExportBlocks` tools allow the LLM to work with blocks.
+*   **Working with classic WinCC panels:** `GetHmiInfo` and `ExportHmi` read a panel; `ImportHmiScreen`, `ImportHmiTagTable`, `ImportHmiTextList`, `GenerateHmiTags`, `GenerateHmiTextList` and `GenerateHmiScreen` write to it; `CompileSoftware` compiles it; `CompareHmiScreens` compares two exported screens attribute for attribute.
+*   **Working with blocks:** The `GetBlockInfo`, `GetBlocks`, `GetBlocksWithHierarchy`, `ExportBlock`, `ImportBlock`, `DeleteBlock`, and `ExportBlocks` tools allow the LLM to work with blocks.
     - `ExportBlock` expects `blockPath` to be a fully qualified path like `Group/Subgroup/Name`. Passing just a name is ambiguous; the MCP layer will return `InvalidParams` and may suggest likely full paths based on project contents.
 *   **Working with types:** The `GetTypeInfo`, `GetTypes`, `ExportType`, `ImportType`, and `ExportTypes` tools allow the LLM to work with types.
 *   **Exporting blocks as documents (V20+):** The `ExportAsDocuments` and `ExportBlocksAsDocuments` tools export blocks as SIMATIC SD documents (.s7dcl/.s7res). Requires TIA Portal V20 or newer.
