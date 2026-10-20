@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using TiaMcpServer.Hmi;
+using UnifiedHmiSoftware = Siemens.Engineering.HmiUnified.HmiSoftware;
 
 namespace TiaMcpServer.Siemens
 {
@@ -65,12 +66,12 @@ namespace TiaMcpServer.Siemens
             }
         }
 
-        /// <summary>Whether a path names a classic WinCC HMI target rather than a PLC program.</summary>
+        /// <summary>Whether a path names an HMI, classic WinCC or WinCC Unified, rather than a PLC program.</summary>
         /// <param name="softwarePath">The path, as the tools take it.</param>
-        /// <returns>True for an HMI target; false for anything else, or when no project is open.</returns>
-        public bool IsHmiTarget(string softwarePath)
+        /// <returns>True for an HMI; false for anything else, or when no project is open.</returns>
+        public bool IsHmi(string softwarePath)
         {
-            return !IsProjectNull() && GetSoftwareContainer(softwarePath)?.Software is HmiTarget;
+            return !IsProjectNull() && GetSoftwareContainer(softwarePath)?.Software is HmiTarget or UnifiedHmiSoftware;
         }
 
         private HmiTarget RequireHmiTarget(string hmiPath)

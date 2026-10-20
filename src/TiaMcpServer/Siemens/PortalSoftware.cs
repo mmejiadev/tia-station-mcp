@@ -8,6 +8,7 @@ using Siemens.Engineering.SW;
 using System;
 using System.Net;
 using System.Security;
+using UnifiedHmiSoftware = Siemens.Engineering.HmiUnified.HmiSoftware;
 
 namespace TiaMcpServer.Siemens
 {
@@ -46,10 +47,11 @@ namespace TiaMcpServer.Siemens
         }
 
         /// <summary>
-        /// Compiles a PLC software or a classic WinCC HMI target and returns what the compiler said,
-        /// flattened into data.
+        /// Compiles a PLC software, a classic WinCC HMI target or a WinCC Unified HMI, and returns
+        /// what the compiler said, flattened into data. A Unified HMI compiles with the whole station
+        /// that holds it.
         /// </summary>
-        /// <param name="softwarePath">Full path to the PLC software or HMI target, for example <c>Group1/PLC_1</c>.</param>
+        /// <param name="softwarePath">Full path to the PLC software or HMI, for example <c>Group1/PLC_1</c> or <c>PC-System_1/HMI_RT_1</c>.</param>
         /// <param name="password">Password for the safety administration, when the software needs one.</param>
         /// <returns>
         /// The report. A failed compile is a normal outcome and comes back as a report with
@@ -74,14 +76,7 @@ namespace TiaMcpServer.Siemens
 
                 LoginToSafetyProgram(softwareContainer, password);
 
-                // A classic WinCC HMI target compiles through the same service as a PLC program, so
-                // one tool covers both: generated screens and HMI tags are only checked by this.
-                var compilable = softwareContainer?.Software switch
-                {
-                    PlcSoftware plcSoftware => plcSoftware.GetService<ICompilable>(),
-                    HmiTarget hmiTarget => hmiTarget.GetService<ICompilable>(),
-                    _ => null
-                }
+                var compilable = FindCompilable(softwareContainer)
                     ?? throw new PortalException(PortalErrorCode.NotFound, $"No PLC or HMI software found: {softwarePath}");
 
                 var result = compilable.Compile();
@@ -99,6 +94,22 @@ namespace TiaMcpServer.Siemens
                 _logger?.LogError(pex, "CompileSoftware failed for {SoftwarePath}", softwarePath);
                 throw pex;
             }
+        }
+
+        /// <remarks>
+        /// A classic WinCC HMI target compiles through the same service as a PLC program, so one
+        /// tool covers both: generated screens and HMI tags are only checked by this. WinCC Unified
+        /// does not; see <see cref="FindUnifiedStationCompilable"/>.
+        /// </remarks>
+        private static ICompilable? FindCompilable(SoftwareContainer? softwareContainer)
+        {
+            return softwareContainer switch
+            {
+                { Software: PlcSoftware plcSoftware } => plcSoftware.GetService<ICompilable>(),
+                { Software: HmiTarget hmiTarget } => hmiTarget.GetService<ICompilable>(),
+                { Software: UnifiedHmiSoftware unified } => FindUnifiedStationCompilable(softwareContainer.Parent, unified.Name),
+                _ => null
+            };
         }
 
         private static void LoginToSafetyProgram(SoftwareContainer? softwareContainer, string password)

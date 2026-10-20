@@ -1,7 +1,7 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-10-16**
+> Last updated: **2026-10-17**
 
 ## ▶ RESUME HERE
 
@@ -42,11 +42,12 @@ never run against TIA Portal counts for less than half.
 **Then:**
 
 7. Phase 5b blocking criterion: install from the artefact on a machine that never built the project;
-   the server reporting its own version; register 0.0.19 in Claude Code.
+   (the server reporting its own version and 0.0.20 registered in Claude Code are done, 2026-10-17).
 8. Web platform phase 4: the teacher signing in from another machine; phase 5 extras.
 9. Phase 9: measure OPC UA against PLCSIM Advanced and a real S7-1500; subscriptions.
 10. Phase 10: FBD/STL/GRAPH, technology objects, alarms and text lists, libraries and master copies,
-    project compare, WinCC Unified, GSD devices (left over from phase 7).
+    project compare, GSD devices (left over from phase 7). WinCC Unified is its own wave, U, and
+    every other branch of TIA Portal is wave K (2026-10-17).
 11. Knowledge layer stages 0, 2, 2b, 4 and 5 — none authorised yet.
 12. Debt: second half of audit finding F5, F8–F12 (all low), the inherited `NoWarn` ledger in
     `TiaMcpServer.csproj`, methods over 30 lines.
@@ -73,6 +74,74 @@ never run against TIA Portal counts for less than half.
 | Classic S7-PLCSIM for S7-1200 | 5 % |
 | Debt and audit findings | 65 % |
 | **The project as a whole** | **about 60 %** |
+
+### 0.0.20 installed, WinCC Unified measured, the roadmap widened — 2026-10-17
+
+Branch `work/roadmap-unified`, not committed: the docs below and ROADMAP U1 in code.
+
+- **U1 done: `CompileSoftware` compiles a WinCC Unified HMI and returns every message.** Measured
+  first: Unified software (`HmiUnified.HmiSoftware`) offers no services, the device item holding it
+  has no `ICompilable`, only the device does — so a Unified HMI compiles with its whole station,
+  hardware included (`PortalUnifiedCompile.cs`). **The policy is asked about what is really
+  compiled:** `Portal.ResolveCompileTarget` names the station, and the guard's target is the station
+  (`PC-System_1`), not the HMI path — asking about the HMI alone let a policy that named only the HMI
+  make the station's hardware downloadable. A station that also holds a PLC program is refused
+  **before** any plan exists, so it reaches the caller as bad input and not as a failed operation
+  (`UnifiedStationCompileRule` in `TiaMcpServer.Portable`, three tests in
+  `TiaMcpServer.Governance.Test`, two fail with the rule removed); the walk for PLC programs covers
+  both `DeviceItems` and `Items`. The response names the station and says the hardware was compiled.
+  `IsHmiTarget` became `IsHmi`, so a Unified compile is not written into the PLC compilation history
+  (the classification is tested; the skipped recording is not). New asset `UnifiedProject.zap20`
+  (1.6 MB, a copy of the class project `0967-unified_00`, archived without restorable data) and
+  `Test41UnifiedCompile` (5 tests, asserting on project names, not on compiler wording, which follows
+  TIA Portal's language): the screen's error comes back with its text, the station's hardware is
+  compiled, the target is the station, and the tool's refusal names the station. Both compile tests
+  fail with the Unified branch removed; both target tests fail with the target reverted to the HMI
+  path. Tests: `Test41` + `Test40Hmi` + `Test16GuardedWrites` + `Test5McpServer` +
+  `Test39CreateAndDelete` 109/109 against TIA Portal; governance 248/248; harness 305/305; build 0
+  warnings. `/code-review high`, two rounds (governance is touched): 18 findings, 16 fixed; left are
+  one retrieve per test (kept, the suite's rule is that tests share no state) and the unasserted
+  recording skip above.
+- **Measured on the way (for U2 and U3):** the class project's error was a script dynamization of
+  the *screen's own* `OffsetLeft` with an automatic trigger and no tag (`var value; return value;`);
+  `Devices.CreateWithItem` and `PlugNew` refuse every name for a Unified PC RT
+  (`OrderNumber:6AV2 155-xxxxx-xxxx/20.0.0.2`) and a null name crashed TIA Portal; TIA Portal
+  refuses to create a project under a path longer than 143 characters; the S7-1500 software
+  controller of `TestProject1` cannot be plugged into a generic PC station.
+
+- **Server 0.0.20 installed and registered in Claude Code.** Packed by `scripts/New-Release.ps1` from
+  a clean detached worktree of `main` at `a2ff2bf` (the script refuses a dirty tree, and this branch
+  has uncommitted docs), SHA-256 `6CB2FBB40AAF6B35AA1AC3FB718043C9DEDB1CC789C1065D8F359EAD00815E59`,
+  unpacked in `C:\Users\mamem\tools\tia-station-mcp-0.0.20\` with the 0.0.19 `policy.json` copied,
+  assembly version 0.0.20.0. Verified by starting it: the harness `mcpClient` and `toolContract`
+  suites 7/7 with `TIA_MCP_SERVER` pointing at it. The audit trail starts empty there; 0.0.19's stays
+  in its own folder. The policy does not yet allow any HMI target.
+- **WinCC Unified, measured.** A Unified PC RT, even a new empty one, compiled as "Compiling aborted"
+  or "errors: 3" with no error text in the Info tab. Compiling through Openness and walking the
+  messages gave the texts: the encrypted-transfer password and its confirmation in Runtime settings,
+  and no start screen. Fixed those, it compiled 0/0. Written down as wave U in `ROADMAP.md`.
+- **The roadmap widened** at the user's request to every branch of TIA Portal: wave U (Unified,
+  U1–U11) and wave K (K1–K16: communication, diagnostics, protection, more classic WinCC, UDTs and
+  multi-instances, PLC tests, style guide, Version Control Interface, Add-Ins, study sheets, with
+  Multiuser and Safety last; the MCP never writes safety logic).
+- **Decided: local first** (`ROADMAP.md`, "Decisions taken", and F0): the daily screens run at
+  `127.0.0.1` with no Docker and no sign-in; a desktop window, if wanted, wraps the same front end in
+  Tauri; the shared web platform stays, optional.
+
+**Also started 2026-10-17: the class corpus.** The user's external disk holds the year's class
+material (61 TIA Portal projects of modules 0965, 0967 and 0968, the statements, her reports, the
+MPS station manuals and data sheets). Extracted outside the repository to
+`C:\Users\mamem\tools\class-corpus\raw` — class material and other students' work do not belong in a
+public repository. A survey script (`C:\Users\mamem\tools\class-corpus\survey-project.ps1`) read all 63
+projects headless, each on a copy: compiled, exported, counted. The result, `CLASS-STYLE.md` beside
+it, describes how the class programs (one FC per GEMMA state, S/R steps, outputs in one block, a
+watchdog timer per step, Catalan names) with numbers from the projects, the communication recipes
+with their incidents, and a real defect in the final E3 project (five maintenance resets that compare
+a counter with itself). This is ROADMAP K15 and K16; nothing of it is in the repository yet, and
+feeding it to the knowledge layer is a stage for the user to authorise.
+
+**Next:** decide with the user what of the corpus enters the knowledge layer and the generators;
+then A4 (work with TIA Portal open).
 
 ### Server 0.0.20, and the version it reports — 2026-10-16
 
