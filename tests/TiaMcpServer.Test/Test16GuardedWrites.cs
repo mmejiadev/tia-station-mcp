@@ -493,6 +493,17 @@ namespace TiaMcpServer.Test
         }
 
         [TestMethod]
+        public void DrawUnifiedScreen_WithNoPolicy_IsRefused()
+        {
+            const string Screen = @"{ ""name"": ""Refused"", ""items"": [
+                { ""type"": ""rectangle"", ""name"": ""Box"", ""properties"": { ""Left"": 0, ""Top"": 0 } } ] }";
+
+            var response = McpServer.DrawUnifiedScreen("HMI_MTP700/HMI_RT_1", Screen);
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
         public void GenerateHmiTextList_WithNoPolicy_IsRefused()
         {
             const string List = @"{ ""name"": ""Refused"", ""entries"": [ { ""value"": 0, ""text"": ""STOPPED"" } ] }";

@@ -49,6 +49,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- A framework assembly: UnifiedPropertyConverterTests checks the colours it builds. -->
+    <Reference Include="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
   </ItemGroup>
 </Project>

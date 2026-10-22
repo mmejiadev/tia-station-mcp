@@ -42,6 +42,14 @@
 
   <ItemGroup>
     <!--
+      A framework assembly, not Openness: a WinCC Unified colour property is a System.Drawing.Color,
+      and UnifiedPropertyConverter builds it here so the conversion is tested without TIA Portal.
+    -->
+    <Reference Include="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
       SimulationTagValueParser turns the text of a tag write into a value and needs neither TIA
       Portal nor PLCSIM, so it lives here and can be tested anywhere. It stays internal, and the
       two assemblies that legitimately reach it are named rather than the type made public:
