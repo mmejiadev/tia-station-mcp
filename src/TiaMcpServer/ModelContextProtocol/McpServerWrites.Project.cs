@@ -148,30 +148,55 @@ namespace TiaMcpServer.ModelContextProtocol
                 return GuardedTool.Run(
                     GuardedWrites,
                     request,
-                    () =>
-                    {
-                        var added = Portal.AddDevice(typeIdentifier, deviceName);
-                        var softwarePaths = string.Join(", ", Portal.GetSoftwarePaths(added));
-                        var software = softwarePaths.Length == 0 ? string.Empty : $"; its software is at {softwarePaths}";
-
-                        return new ResponseMessage
-                        {
-                            Message = $"Device '{added}' added from '{typeIdentifier}'{software}",
-                            Meta = new JsonObject
-                            {
-                                ["timestamp"] = DateTime.Now,
-                                ["success"] = true,
-                                ["deviceName"] = added,
-                                ["softwarePaths"] = softwarePaths
-                            }
-                        };
-                    },
+                    () => DescribeAddedStation(Portal.AddDevice(typeIdentifier, deviceName), typeIdentifier),
                     () => new ResponseMessage());
             }
             catch (Exception ex) when (ex is not McpException)
             {
                 throw ToolFailure(ex, $"adding device '{deviceName}' from '{typeIdentifier}'");
             }
+        }
+
+        [McpServerTool(Name = "AddPcStation"), Description("Add a PC station carrying an HMI runtime. Only the two runtimes measured are accepted: WinCC Unified PC RT V20 ('OrderNumber:6AV2 155-xxxxx-xxxx/20.0.0.2') and WinCC RT Advanced V17 ('OrderNumber:6AV2 104-0xxxx-xxxx/17.0.0.0'). A PC station is a rack with the runtime plugged into it, which AddDevice cannot build. TIA Portal names the runtime itself (e.g. 'HMI_RT_1'); the answer gives the software path to pass to the HMI tools. Other PC software is refused. Nothing existing changes, so no backup is taken.")]
+        public static ResponseMessage AddPcStation(
+            [Description("stationName: name for the PC station, e.g. 'PC-System_1'")] string stationName,
+            [Description("runtimeTypeIdentifier: the HMI runtime, e.g. 'OrderNumber:6AV2 155-xxxxx-xxxx/20.0.0.2'")] string runtimeTypeIdentifier)
+        {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
+
+            try
+            {
+                var request = new Governance.ChangeRequest("AddPcStation", ChangeTarget.Program(stationName), runtimeTypeIdentifier);
+
+                return GuardedTool.Run(
+                    GuardedWrites,
+                    request,
+                    () => DescribeAddedStation(Portal.AddPcStation(stationName, runtimeTypeIdentifier), runtimeTypeIdentifier),
+                    () => new ResponseMessage());
+            }
+            catch (Exception ex) when (ex is not McpException)
+            {
+                throw ToolFailure(ex, $"adding PC station '{stationName}' with '{runtimeTypeIdentifier}'");
+            }
+        }
+
+        private static ResponseMessage DescribeAddedStation(string added, string typeIdentifier)
+        {
+            var softwarePaths = string.Join(", ", Portal.GetSoftwarePaths(added));
+            var software = softwarePaths.Length == 0 ? string.Empty : $"; its software is at {softwarePaths}";
+
+            return new ResponseMessage
+            {
+                Message = $"Device '{added}' added from '{typeIdentifier}'{software}",
+                Meta = new JsonObject
+                {
+                    ["timestamp"] = DateTime.Now,
+                    ["success"] = true,
+                    ["deviceName"] = added,
+                    ["softwarePaths"] = softwarePaths
+                }
+            };
         }
 
         private static ResponseSaveProject SaveOpenProject()

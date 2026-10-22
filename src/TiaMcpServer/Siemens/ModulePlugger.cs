@@ -45,7 +45,7 @@ namespace TiaMcpServer.Siemens
                 throw new PortalException(PortalErrorCode.InvalidParams, "module is required");
             }
 
-            var container = PlugLocationReader.RequireContainer(anchor);
+            var container = RequireHandPluggable(anchor);
 
             var occupant = OccupantOf(container, module.PositionNumber);
             if (occupant != null)
@@ -80,7 +80,7 @@ namespace TiaMcpServer.Siemens
         /// </remarks>
         public string Move(DeviceItem module, string modulePath, int positionNumber)
         {
-            var container = PlugLocationReader.RequireContainer(module);
+            var container = RequireHandPluggable(module);
 
             if (module.PositionNumber == positionNumber)
             {
@@ -118,7 +118,7 @@ namespace TiaMcpServer.Siemens
         /// </remarks>
         public string Copy(DeviceItem module, string modulePath, int positionNumber)
         {
-            var container = PlugLocationReader.RequireContainer(module);
+            var container = RequireHandPluggable(module);
 
             RequireSlotIsFree(container, positionNumber, modulePath);
 
@@ -134,6 +134,19 @@ namespace TiaMcpServer.Siemens
             _logger?.LogInformation("{Module} copied into slot {Slot} as {Copy}", modulePath, positionNumber, copy.Name);
 
             return copy.Name;
+        }
+
+        /// <remarks>
+        /// A PC station's rack is refused here, in the path every plug, move and copy shares, and not
+        /// only in AddPcStation: see <see cref="PcHmiRuntime.RequireNotPcStationRack"/>.
+        /// </remarks>
+        private static HardwareObject RequireHandPluggable(DeviceItem deviceItem)
+        {
+            var container = PlugLocationReader.RequireContainer(deviceItem);
+
+            PcHmiRuntime.RequireNotPcStationRack((container as DeviceItem)?.TypeIdentifier);
+
+            return container;
         }
 
         /// <remarks>
@@ -232,7 +245,7 @@ namespace TiaMcpServer.Siemens
 
         private static IEnumerable<int> FreePositions(HardwareObject container)
         {
-            return container.GetPlugLocations().Select(location => location.PositionNumber).OrderBy(position => position);
+            return PlugLocationReader.ReadPlugLocations(container).Select(location => location.PositionNumber).OrderBy(position => position);
         }
     }
 }

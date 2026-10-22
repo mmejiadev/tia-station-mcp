@@ -435,6 +435,14 @@ namespace TiaMcpServer.Test
             AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
         }
 
+        [TestMethod]
+        public void AddPcStation_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.AddPcStation("PC_Refused", "OrderNumber:6AV2 155-xxxxx-xxxx/20.0.0.2");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
         /// <remarks>
         /// The second tool that removes something a person would have to rebuild, after UnplugModule.
         /// </remarks>
