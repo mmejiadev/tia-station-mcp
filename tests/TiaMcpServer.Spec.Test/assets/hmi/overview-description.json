@@ -1,4 +1,5 @@
 { "name": "Overview", "number": 99, "items": [
+  { "type": "graphicView", "name": "Logo", "left": 0, "top": 0, "width": 107, "height": 60, "picture": "Logo of HMI_1", "backColor": "222, 219, 222" },
   { "type": "symbolicField", "name": "Symbolic_IO_Field_Screen", "left": 109, "top": 11, "width": 584, "height": 38,
     "tag": "Tag_ScreenNumber", "textList": "TextList_ScreenNames", "fontSize": 24, "fontStyle": "Regular",
     "events": [ { "event": "change", "function": "activateScreenByNumber", "tag": "Tag_ScreenNumber" } ] },

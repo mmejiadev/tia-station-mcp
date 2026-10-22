@@ -138,6 +138,45 @@ namespace TiaMcpServer.Hmi
             };
         }
 
+        /// <summary>A rectangle.</summary>
+        /// <returns>Its attributes.</returns>
+        /// <remarks>From <c>0967-Exercici_1</c>'s screen <c>principal</c>, 2026-10-21; the corners are square.</remarks>
+        public static Dictionary<string, string> Rectangle()
+        {
+            return new Dictionary<string, string>
+            {
+                ["BackColor"] = "217, 217, 217", ["BackFillStyle"] = "Solid", ["BorderColor"] = "24, 28, 49", ["BorderWidth"] = "1",
+                ["EdgeStyle"] = "Solid", ["Flashing"] = "None", ["RoundCornerHeight"] = "0", ["RoundCornerWidth"] = "0",
+                ["UseDesignColorSchema"] = "false"
+            };
+        }
+
+        /// <summary>A straight line, without arrow heads.</summary>
+        /// <returns>Its attributes, without the end points, which the item sets.</returns>
+        /// <remarks>From <c>0967-Prova_0</c>'s screen <c>pantalla principal</c>, 2026-10-21.</remarks>
+        public static Dictionary<string, string> Line()
+        {
+            return new Dictionary<string, string>
+            {
+                ["BackColor"] = "255, 255, 255", ["Color"] = "24, 28, 49", ["EndStyle"] = "NoEnd", ["FillStyle"] = "Transparent",
+                ["Flashing"] = "None", ["LineEndShapeStyle"] = "Round", ["LineWidth"] = "1", ["StartStyle"] = "NoEnd",
+                ["Style"] = "Solid", ["UseDesignColorSchema"] = "false"
+            };
+        }
+
+        /// <summary>A graphic view showing one of the project's pictures, stretched to its box.</summary>
+        /// <returns>Its attributes.</returns>
+        /// <remarks>From <c>0967-HMI_PROCÉS</c>'s screen <c>Principal</c>, which has 62 of them, 2026-10-21.</remarks>
+        public static Dictionary<string, string> GraphicView()
+        {
+            return new Dictionary<string, string>
+            {
+                ["AutoSizing"] = "StretchPicture", ["BackColor"] = "173, 174, 181", ["BackFillStyle"] = "Transparent",
+                ["BorderColor"] = "0, 0, 0", ["BorderWidth"] = "0", ["EdgeStyle"] = "Solid", ["FitToLargest"] = "false",
+                ["Flashing"] = "None", ["TransparentColor"] = "255, 0, 255", ["UseTransparentColor"] = "false"
+            };
+        }
+
         /// <summary>A vertical bar with a scale.</summary>
         /// <returns>Its attributes.</returns>
         public static Dictionary<string, string> Bar()

@@ -90,6 +90,24 @@ namespace TiaMcpServer.Hmi
         [JsonPropertyName("textList")]
         public string? TextList { get; set; }
 
+        [JsonPropertyName("layer")]
+        public int? Layer { get; set; }
+
+        [JsonPropertyName("endLeft")]
+        public int? EndLeft { get; set; }
+
+        [JsonPropertyName("endTop")]
+        public int? EndTop { get; set; }
+
+        [JsonPropertyName("lineWidth")]
+        public int? LineWidth { get; set; }
+
+        [JsonPropertyName("picture")]
+        public string? Picture { get; set; }
+
+        [JsonPropertyName("items")]
+        public List<HmiScreenItemDocument>? Items { get; set; }
+
         [JsonPropertyName("events")]
         public List<HmiActionDocument>? Events { get; set; }
 

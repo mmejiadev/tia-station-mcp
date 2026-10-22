@@ -435,6 +435,14 @@ namespace TiaMcpServer.Test
             AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
         }
 
+        [TestMethod]
+        public void AddPcStation_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.AddPcStation("PC_Refused", "OrderNumber:6AV2 155-xxxxx-xxxx/20.0.0.2");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
         /// <remarks>
         /// The second tool that removes something a person would have to rebuild, after UnplugModule.
         /// </remarks>
@@ -480,6 +488,17 @@ namespace TiaMcpServer.Test
                 { ""type"": ""button"", ""left"": 0, ""top"": 0, ""text"": ""Go"", ""press"": ""setBitWhilePressed"", ""tag"": ""Go"" } ] }";
 
             var response = McpServer.GenerateHmiScreen("HMI_1", string.Empty, Screen);
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void DrawUnifiedScreen_WithNoPolicy_IsRefused()
+        {
+            const string Screen = @"{ ""name"": ""Refused"", ""items"": [
+                { ""type"": ""rectangle"", ""name"": ""Box"", ""properties"": { ""Left"": 0, ""Top"": 0 } } ] }";
+
+            var response = McpServer.DrawUnifiedScreen("HMI_MTP700/HMI_RT_1", Screen);
 
             AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
         }

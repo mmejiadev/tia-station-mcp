@@ -24,6 +24,9 @@ namespace TiaMcpServer.Hmi
         private const string DefaultOffColor = "255, 0, 0";
         private const string DefaultOnColor = "0, 255, 0";
         private const double DefaultBarMaximum = 100;
+        private const int DefaultLineWidth = 1;
+        private const int MinimumGroupItems = 2;
+        private const string GroupType = "group";
 
         private static readonly string[] Modes = { "InOutput", "Output", "Input" };
         private static readonly string[] Alignments = { "Left", "Center", "Right" };
@@ -34,7 +37,7 @@ namespace TiaMcpServer.Hmi
         private static readonly Regex FormatPattern = new Regex(@"^9+(\.9+)?$", RegexOptions.CultureInvariant);
 
         private readonly Dictionary<string, HmiItemKind> _kinds;
-        private readonly Dictionary<HmiItemKind, int> _defaultNamesUsed = new Dictionary<HmiItemKind, int>();
+        private readonly Dictionary<string, int> _defaultNamesUsed = new Dictionary<string, int>(StringComparer.Ordinal);
 
         /// <summary>Creates a factory for one screen.</summary>
         public HmiScreenItemFactory()
@@ -47,7 +50,11 @@ namespace TiaMcpServer.Hmi
                 ["text"] = new HmiItemKind("Text field", Size(100, 20), HmiItemStyle.TextField()["BackColor"], BuildText),
                 ["pilotLight"] = new HmiItemKind("Circle", Size(38, 38), DefaultOffColor, BuildPilotLight),
                 ["bar"] = new HmiItemKind("Bar", Size(80, 230), HmiItemStyle.Bar()["BackColor"], BuildBar),
-                ["dateTime"] = new HmiItemKind("Date/time field", Size(105, 30), HmiItemStyle.DateTimeField()["BackColor"], BuildDateTime)
+                ["dateTime"] = new HmiItemKind("Date/time field", Size(105, 30), HmiItemStyle.DateTimeField()["BackColor"], BuildDateTime),
+                ["rectangle"] = new HmiItemKind("Rectangle", Size(100, 60), HmiItemStyle.Rectangle()["BackColor"], (item, frame, where) => new HmiRectangle(frame)),
+                ["circle"] = new HmiItemKind("Circle", Size(38, 38), HmiItemStyle.Rectangle()["BackColor"], (item, frame, where) => new HmiCircle(frame)),
+                ["line"] = new HmiItemKind("Line", Size(1, 1), HmiItemStyle.Line()["BackColor"], BuildLine),
+                ["graphicView"] = new HmiItemKind("Graphic view", Size(100, 100), HmiItemStyle.GraphicView()["BackColor"], BuildGraphicView)
             };
         }
 
@@ -58,9 +65,15 @@ namespace TiaMcpServer.Hmi
         /// <exception cref="TiaMcpServer.Siemens.PortalException">The description is incomplete or invalid.</exception>
         public HmiScreenItem Create(HmiScreenItemDocument item, int position)
         {
+            if (GroupType.Equals((item.Type ?? string.Empty).Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                return CreateGroup(item, position);
+            }
+
             var kind = FindKind(item.Type, position);
-            var name = string.IsNullOrWhiteSpace(item.Name) ? NextDefaultName(kind) : item.Name!.Trim();
+            var name = string.IsNullOrWhiteSpace(item.Name) ? NextDefaultName(kind.NamePrefix) : item.Name!.Trim();
             var where = $"Item {position} ('{name}')";
+            HmiFieldsNotTaken.Refuse((item.Type ?? string.Empty).Trim(), item, where);
 
             if (HmiEventFactory.HasEvents(item) && !KindsWithEvents.Contains((item.Type ?? string.Empty).Trim()))
             {
@@ -70,6 +83,47 @@ namespace TiaMcpServer.Hmi
             var animations = HmiAnimationFactory.Read(item.Animations, look.BackColor.Length > 0 ? look.BackColor : kind.StyleBackColor, where);
 
             return kind.Build(item, new HmiItemFrame(name, ReadBox(item, kind, where), look, animations), where);
+        }
+
+        /// <remarks>
+        /// A group has no box, look or animation of its own in the class exports, so a description that
+        /// gives it one would be written nowhere; it is refused instead. Its items sit on its layer.
+        /// </remarks>
+        private HmiGroup CreateGroup(HmiScreenItemDocument item, int position)
+        {
+            var name = string.IsNullOrWhiteSpace(item.Name) ? NextDefaultName("Group") : item.Name!.Trim();
+            var where = $"Item {position} ('{name}')";
+            var members = item.Items ?? new List<HmiScreenItemDocument>();
+            HmiFieldsNotTaken.Refuse(GroupType, item, where);
+
+            if (members.Count < MinimumGroupItems)
+            {
+                throw HmiRefusal.Refuse(where, "a group holds at least two items, listed in its 'items'");
+            }
+
+            if ((item.Animations?.Count ?? 0) > 0 || HmiEventFactory.HasEvents(item) || members.Any(member => member.Layer.HasValue))
+            {
+                throw HmiRefusal.Refuse(where, "a group takes no animations, events or layers of its own items: animate the items, and put 'layer' on the group");
+            }
+
+            var built = members.Select((member, index) => Create(member, index + 1)).ToList();
+
+            // The teacher's Group_1 holds a focusable item and has a tab index of its own (5) instead of
+            // -1; how TIA Portal numbers it against its items is not measured, so it is not guessed.
+            if (built.SelectMany(HmiGroup.Flatten).Any(IsFocusable))
+            {
+                throw HmiRefusal.Refuse(where, "a group of buttons, I/O fields or symbolic fields is not generated yet: their tab order inside a group is not measured");
+            }
+
+            return new HmiGroup(new HmiItemFrame(name, Size(1, 1), HmiLook.Colored(string.Empty), new List<HmiAnimation>()), built);
+        }
+
+        /// <summary>Whether an item takes the keyboard focus, and so a tab index.</summary>
+        /// <param name="item">The item.</param>
+        /// <returns>True for buttons, I/O fields and symbolic fields.</returns>
+        internal static bool IsFocusable(HmiScreenItem item)
+        {
+            return item is HmiButton || item is HmiIoField || item is HmiSymbolicIoField;
         }
 
         private static HmiBox Size(int width, int height)
@@ -84,12 +138,16 @@ namespace TiaMcpServer.Hmi
                 : throw HmiRefusal.Refuse($"Item {position}", $"type '{type}' is not one this generator writes. Use one of: {string.Join(", ", _kinds.Keys)}");
         }
 
-        private string NextDefaultName(HmiItemKind kind)
+        /// <remarks>
+        /// Numbered per prefix, not per kind: a pilot light and a plain circle are both circles to TIA
+        /// Portal, and share one count, as hand-drawn ones would.
+        /// </remarks>
+        private string NextDefaultName(string prefix)
         {
-            _defaultNamesUsed.TryGetValue(kind, out var used);
-            _defaultNamesUsed[kind] = used + 1;
+            _defaultNamesUsed.TryGetValue(prefix, out var used);
+            _defaultNamesUsed[prefix] = used + 1;
 
-            return $"{kind.NamePrefix}_{(used + 1).ToString(CultureInfo.InvariantCulture)}";
+            return $"{prefix}_{(used + 1).ToString(CultureInfo.InvariantCulture)}";
         }
 
         private static HmiBox ReadBox(HmiScreenItemDocument item, HmiItemKind kind, string where)
@@ -186,6 +244,29 @@ namespace TiaMcpServer.Hmi
             var show = OptionalChoice(item.Show ?? DateTimeShows[0], DateTimeShows, where, "show");
 
             return new HmiDateTimeField(frame, show != DateTimeShows[0], show != DateTimeShows[1]);
+        }
+
+        private static HmiLine BuildLine(HmiScreenItemDocument item, HmiItemFrame frame, string where)
+        {
+            var end = new HmiBox(
+                item.EndLeft ?? throw HmiRefusal.Refuse(where, "a line needs 'endLeft' and 'endTop'; 'left' and 'top' are where it starts"),
+                item.EndTop ?? throw HmiRefusal.Refuse(where, "a line needs 'endLeft' and 'endTop'; 'left' and 'top' are where it starts"),
+                1,
+                1);
+            var lineWidth = item.LineWidth ?? DefaultLineWidth;
+
+            // A line of no length has a box of 0 by 0, which was never measured; it draws nothing anyway.
+            if (end.Left < 0 || end.Top < 0 || lineWidth <= 0 || (end.Left == frame.Box.Left && end.Top == frame.Box.Top))
+            {
+                throw HmiRefusal.Refuse(where, "'endLeft' and 'endTop' must not be negative nor the start point, and 'lineWidth' must be positive");
+            }
+
+            return new HmiLine(frame, end, lineWidth);
+        }
+
+        private static HmiGraphicView BuildGraphicView(HmiScreenItemDocument item, HmiItemFrame frame, string where)
+        {
+            return new HmiGraphicView(frame, HmiRefusal.RequireText(item.Picture, where, "picture"));
         }
 
         private static string ReadMode(HmiScreenItemDocument item, string where)

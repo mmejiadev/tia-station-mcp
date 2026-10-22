@@ -29,8 +29,10 @@ namespace TiaMcpServer.Spec.Tests
         /// <remarks>
         /// The generator's done-when: the teacher's screen, attribute for attribute. What is left is
         /// exactly what it does not do on purpose — the size, which the panel decides — and what it
-        /// does not do yet: the group holding a symbol-library graphic, whose content is an opaque
-        /// binary blob. Any other line here is a regression.
+        /// does not do yet: the symbol-library graphic, whose content is an opaque binary blob, and the
+        /// group around it, which holds a focusable item and so takes a tab index whose rule is not
+        /// measured. The pilot lights' own group is generated since 2026-10-21. Any other line here is a
+        /// regression.
         /// </remarks>
         [TestMethod]
         public void Build_TeachersPrincipal_DiffersOnlyInSizeAndTheSymbolLibraryGroup()
@@ -42,7 +44,6 @@ namespace TiaMcpServer.Spec.Tests
                 {
                     "Screen: reference has Height=420",
                     "Screen: reference has Width=800",
-                    "'Group': only in the reference (Hmi.Screen.Group)",
                     "'Group_1': only in the reference (Hmi.Screen.Group)",
                     "'Symbol library_1': only in the reference (Hmi.Screen.SymbolLibrary)"
                 },
@@ -52,11 +53,11 @@ namespace TiaMcpServer.Spec.Tests
 
         /// <remarks>
         /// The screen overview of <c>0967 hmi_prova1</c>: a symbolic I/O field that opens the screen
-        /// the operator picks, on its change event, and two date and time fields. Only the logo, an
-        /// image the generator does not write, is left.
+        /// the operator picks, on its change event, two date and time fields, and the logo, a graphic
+        /// view, generated since 2026-10-21. Nothing but the screen's size is left.
         /// </remarks>
         [TestMethod]
-        public void Build_ClassScreenOverview_DiffersOnlyInTheLogo()
+        public void Build_ClassScreenOverview_MatchesTheExport()
         {
             var built = HmiScreenDocument.Build(HmiScreenDescriptionReader.Parse(Asset("overview-description.json")));
 
@@ -64,7 +65,73 @@ namespace TiaMcpServer.Spec.Tests
                 .Where(line => !line.StartsWith("Screen:", StringComparison.Ordinal))
                 .ToArray();
 
-            CollectionAssert.AreEquivalent(new[] { "'Logo': only in the reference (Hmi.Screen.GraphicView)" }, differences, string.Join("\n", differences));
+            Assert.AreEqual(0, differences.Length, string.Join("\n", differences));
+        }
+
+        /// <remarks>
+        /// A rectangle, a line and a graphic view as TIA Portal exported them from three class projects;
+        /// the line's box is worked out from its end points, as TIA Portal does.
+        /// </remarks>
+        [TestMethod]
+        public void Build_ClassShapes_MatchTheExports()
+        {
+            var built = HmiScreenDocument.Build(HmiScreenDescriptionReader.Parse(Asset("shapes-description.json")));
+
+            var differences = HmiScreenComparison.Compare(Asset("shapes-reference.xml"), built);
+
+            Assert.AreEqual(0, differences.Count, string.Join("\n", differences));
+        }
+
+        [TestMethod]
+        public void Build_ItemsOnTwoLayers_WritesOneLayerEach()
+        {
+            var screen = HmiScreenDescriptionReader.Parse(@"{ ""name"": ""S"", ""number"": 9, ""items"": [
+                { ""type"": ""rectangle"", ""left"": 0, ""top"": 0, ""layer"": 3 },
+                { ""type"": ""circle"", ""left"": 50, ""top"": 0 } ] }");
+
+            var layers = XDocument.Parse(HmiScreenDocument.Build(screen)).Descendants("Hmi.Screen.ScreenLayer")
+                .Select(layer => layer.Element("AttributeList")!.Element("Index")!.Value + ":" + layer.Element("ObjectList")!.Elements().Single().Name.LocalName)
+                .ToArray();
+
+            CollectionAssert.AreEqual(new[] { "0:Hmi.Screen.Circle", "3:Hmi.Screen.Rectangle" }, layers);
+        }
+
+        [TestMethod]
+        public void Build_HorizontalLine_HasHeightZero()
+        {
+            var screen = HmiScreenDescriptionReader.Parse(@"{ ""name"": ""S"", ""number"": 9, ""items"": [
+                { ""type"": ""line"", ""left"": 140, ""top"": 120, ""endLeft"": 300, ""endTop"": 120 } ] }");
+
+            var line = XDocument.Parse(HmiScreenDocument.Build(screen)).Descendants("Hmi.Screen.Line").Single().Element("AttributeList")!;
+
+            Assert.AreEqual("0", line.Element("Height")!.Value);
+            Assert.AreEqual("160", line.Element("Width")!.Value);
+        }
+
+        [TestMethod]
+        public void Build_ColouredLine_WritesColorAndNoForeColor()
+        {
+            var screen = HmiScreenDescriptionReader.Parse(@"{ ""name"": ""S"", ""number"": 9, ""items"": [
+                { ""type"": ""line"", ""left"": 0, ""top"": 0, ""endLeft"": 80, ""endTop"": 40, ""foreColor"": ""red"" } ] }");
+
+            var line = XDocument.Parse(HmiScreenDocument.Build(screen)).Descendants("Hmi.Screen.Line").Single().Element("AttributeList")!;
+
+            Assert.AreEqual("255, 0, 0", line.Element("Color")!.Value);
+            Assert.IsNull(line.Element("ForeColor"));
+        }
+
+        [TestMethod]
+        public void Build_Group_WritesItsItemsInsideIt()
+        {
+            var screen = HmiScreenDescriptionReader.Parse(@"{ ""name"": ""S"", ""number"": 9, ""items"": [
+                { ""type"": ""group"", ""items"": [ { ""type"": ""rectangle"", ""left"": 0, ""top"": 0 }, { ""type"": ""text"", ""left"": 0, ""top"": 70, ""text"": ""Tank"" } ] } ] }");
+
+            var group = XDocument.Parse(HmiScreenDocument.Build(screen)).Descendants("Hmi.Screen.Group").Single();
+
+            Assert.AreEqual("Group_1", group.Element("AttributeList")!.Element("ObjectName")!.Value);
+            CollectionAssert.AreEqual(
+                new[] { "Hmi.Screen.Rectangle", "Hmi.Screen.TextField" },
+                group.Element("ObjectList")!.Elements().Select(item => item.Name.LocalName).ToArray());
         }
 
         [TestMethod]

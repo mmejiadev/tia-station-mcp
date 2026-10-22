@@ -309,6 +309,32 @@ namespace TiaMcpServer.Test
             Assert.AreEqual(0, report.WarningCount, described);
         }
 
+        /// <remarks>
+        /// The shapes of 2026-10-21 — rectangle, plain circle, line, a group and a second layer — need no
+        /// tag, so they compile on a panel created from nothing. The start-screen error is the only one
+        /// allowed, as above.
+        /// </remarks>
+        [TestMethod]
+        public void GenerateHmiScreen_ShapesGroupAndLayer_CompileWithNoErrorButTheMissingStartScreen()
+        {
+            var screen = HmiScreenDescriptionReader.Parse(@"{ ""name"": ""Shapes"", ""items"": [
+                { ""type"": ""rectangle"", ""left"": 20, ""top"": 20, ""width"": 120, ""height"": 200, ""backColor"": ""blue"" },
+                { ""type"": ""line"", ""left"": 140, ""top"": 120, ""endLeft"": 300, ""endTop"": 120, ""lineWidth"": 4 },
+                { ""type"": ""group"", ""name"": ""Tank"", ""layer"": 2, ""items"": [
+                    { ""type"": ""circle"", ""left"": 300, ""top"": 100, ""width"": 40 },
+                    { ""type"": ""text"", ""left"": 300, ""top"": 150, ""text"": ""T1"" } ] } ] }");
+
+            AssemblyHooks.SharedPortal.GenerateHmiScreen(_hmiPath, string.Empty, screen, _backupDirectory);
+            var report = AssemblyHooks.SharedPortal.CompileSoftware(_hmiPath);
+
+            var described = string.Join("\n", report.Messages.Select(message => $"[{message.Severity}] {message.Path} — {message.Description}"));
+            var errors = report.Messages
+                .Where(message => message.Severity == CompilationSeverity.Error && message.Description.Length > 0 && !message.Description.StartsWith("Compiling aborted", System.StringComparison.Ordinal))
+                .Select(message => message.Description)
+                .ToArray();
+            CollectionAssert.AreEqual(OnlyTheStartScreenMissing, errors, described);
+        }
+
         [TestMethod]
         public void GenerateHmiScreen_SymbolicFieldAfterItsTextList_PutsTheScreenOnThePanel()
         {

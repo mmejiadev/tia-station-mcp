@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 using Siemens.Engineering.HW;
+using Siemens.Engineering.HW.Extensions;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -88,8 +89,22 @@ namespace TiaMcpServer.Siemens
 
         private static IEnumerable<PlugLocationInfo> Free(HardwareObject container)
         {
-            return container.GetPlugLocations().Select(
+            return ReadPlugLocations(container).Select(
                 location => new PlugLocationInfo(location.PositionNumber, location.Label ?? string.Empty));
+        }
+
+        /// <summary>The plug locations of a container, without the null entries Openness can return.</summary>
+        /// <param name="container">The rack or module to read.</param>
+        /// <returns>Every free location that exists.</returns>
+        /// <remarks>
+        /// Measured 2026-10-20: the rack of a newly created PC station returns null entries among its
+        /// plug locations, and reading a position from one throws
+        /// <see cref="System.NullReferenceException"/>. A CPU's rack never did, which is why no code
+        /// here checked.
+        /// </remarks>
+        internal static IEnumerable<PlugLocation> ReadPlugLocations(HardwareObject container)
+        {
+            return container.GetPlugLocations().Where(location => location != null);
         }
     }
 }

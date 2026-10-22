@@ -25,6 +25,13 @@ namespace TiaMcpServer.Test
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "assets", "TestProject1.zap20");
 
         /// <summary>
+        /// A class project with one WinCC Unified PC RT whose screen holds a script dynamization with
+        /// no tag — an error TIA Portal's Info tab showed with no text (2026-10-17).
+        /// </summary>
+        public static string UnifiedArchivePath =>
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "assets", "UnifiedProject.zap20");
+
+        /// <summary>
         /// The write policy the suite runs under, resolved the same way as the archive.
         /// </summary>
         /// <remarks>

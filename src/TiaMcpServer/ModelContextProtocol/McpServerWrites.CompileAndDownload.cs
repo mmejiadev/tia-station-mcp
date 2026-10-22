@@ -210,9 +210,20 @@ namespace TiaMcpServer.ModelContextProtocol
             };
         }
 
-        [McpServerTool(Name = "CompileSoftware"), Description("Compile the plc software, or a classic WinCC HMI target (the only way to check imported or generated screens and HMI tags). Pass runAsJob true to get a job id back immediately instead of waiting, then poll GetJobStatus.")]
+        /// <remarks>
+        /// A Unified HMI's counts cover its whole station, hardware included; saying only "software"
+        /// would send the caller looking in the screens for an error that is in the hardware.
+        /// </remarks>
+        private static string DescribeCompileSubject(string softwarePath, string target)
+        {
+            return target == softwarePath
+                ? $"Software '{softwarePath}'"
+                : $"Station '{target}' (compiled whole, hardware included, for WinCC Unified HMI '{softwarePath}')";
+        }
+
+        [McpServerTool(Name = "CompileSoftware"), Description("Compile the plc software, or a classic WinCC HMI target (the only way to check imported or generated screens and HMI tags), or a WinCC Unified HMI such as PC-System_1/HMI_RT_1. A Unified HMI compiles with the whole station around it, hardware included, and every message comes back with its text, including the ones TIA Portal's Info tab leaves blank; a station that also holds a PLC program is refused. Pass runAsJob true to get a job id back immediately instead of waiting, then poll GetJobStatus.")]
         public static ResponseCompileSoftware CompileSoftware(
-            [Description("softwarePath: defines the path in the project structure to the plc software")] string softwarePath,
+            [Description("softwarePath: full path in the project structure to the plc software or HMI, for example PLC_1 or PC-System_1/HMI_RT_1")] string softwarePath,
             [Description("password: the password to access adminsitration, default: no password")] string password = "",
             [Description("runAsJob: return a job id at once and compile in the background, default: wait for the result")] bool runAsJob = false)
         {
@@ -234,8 +245,11 @@ namespace TiaMcpServer.ModelContextProtocol
                 // Guarded even though a compile is the verification half of the loop rather than
                 // the change: it marks blocks consistent, which is what makes them downloadable.
                 // A session whose policy says nothing about a program must not be able to make
-                // that program's code ready for a controller.
-                var request = new Governance.ChangeRequest("CompileSoftware", ChangeTarget.Program(softwarePath), "Compile");
+                // that program's code ready for a controller. The policy is asked about what is
+                // really compiled: for a WinCC Unified HMI, its whole station.
+                var target = Portal.ResolveCompileTarget(softwarePath);
+                var request = new Governance.ChangeRequest("CompileSoftware", ChangeTarget.Program(target), "Compile");
+                var subject = DescribeCompileSubject(softwarePath, target);
 
                 return GuardedTool.Run(
                     GuardedWrites,
@@ -246,11 +260,11 @@ namespace TiaMcpServer.ModelContextProtocol
 
                         var response = Describe(
                             report,
-                            $"Software '{softwarePath}' compiled: {report.WarningCount} warning(s)",
-                            $"Software '{softwarePath}' has {report.ErrorCount} error(s) and {report.WarningCount} warning(s); see Messages");
+                            $"{subject} compiled: {report.WarningCount} warning(s)",
+                            $"{subject} has {report.ErrorCount} error(s) and {report.WarningCount} warning(s); see Messages");
 
                         // The compilation history is the PLC program's; an HMI compile is reported, not recorded.
-                        if (!Portal.IsHmiTarget(softwarePath))
+                        if (!Portal.IsHmi(softwarePath))
                         {
                             response.Message = RecordCompilation(softwarePath, report, response.Message ?? string.Empty);
                         }

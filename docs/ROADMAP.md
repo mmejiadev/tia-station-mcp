@@ -654,6 +654,8 @@ What the hopper exercise of 2026-10-08 could not do without a person in TIA Port
 
 ### Wave D — HMI, classic WinCC
 
+**Held to the full list in `HMI-COVERAGE.md`** (2026-10-20): every device that carries a screen, every tag kind, every screen item, animation (movement included), event, script and runtime feature of classic WinCC and WinCC Unified, each with its status and its "done when". The rows below are the milestones; that document is the checklist they are measured against.
+
 The panels used in class (`6AV2 124-0JC01-0AX0`) are classic WinCC; the round trip was measured on
 2026-10-13.
 
@@ -668,6 +670,40 @@ The panels used in class (`6AV2 124-0JC01-0AX0`) are classic WinCC; the round tr
 | D7 | ISA-101 style as an option (grey background, colour only for abnormal states) | One flag switches the generated screen to it | D4 |
 | D8 | Simulating the panel against PLCSIM, so a button press reaches the PLC | Pressing MARXA on the simulated panel sets `Marxa` in PLCSIM | D4, E1 for S7-1200 |
 
+### Wave U — WinCC Unified
+
+**Held to the full list in `HMI-COVERAGE.md`** (2026-10-20): every device that carries a screen, every tag kind, every screen item, animation (movement included), event, script and runtime feature of classic WinCC and WinCC Unified, each with its status and its "done when". The rows below are the milestones; that document is the checklist they are measured against.
+
+Added 2026-10-17, when the user asked for the same depth on Unified as on classic WinCC. The class
+uses it too (`0967 - unified_00`: a PC station with WinCC Unified PC RT, simulated and opened at
+`https://localhost/WebRH`). Unified is a different Openness object model
+(`Siemens.Engineering.HmiUnified`), not an extension of the classic one, so nothing in wave D carries
+over except the method.
+
+What started it, measured 2026-10-17: a Unified PC RT, even a brand-new empty one, compiled as
+"Compiling aborted" or "errors: 3" with **no error text** in the Info → Compile tab. Compiling through
+Openness (`ICompilable.Compile()` on the device, walking `CompilerResult.Messages` recursively) gave the
+three texts at once, under a "Runtime settings" node the user interface did not show: the
+encrypted-transfer password and its confirmation did not match, the password broke the password
+rules, and no start screen was set. With encrypted transfer filled in correctly (or off and empty)
+and a start screen, it compiled 0/0. Removing screen items, shortening the path and suspecting the
+installation were all false leads; so were the files under `AdditionalFiles\ValidationFiles`, which
+*Save as* copies from the previous state and are not the compile in progress.
+
+| # | Item | Done when | Depends on |
+|---|---|---|---|
+| U1 | Compile a Unified device and return **every** message, nested ones included — done 2026-10-17 on `work/roadmap-unified` (`Test41UnifiedCompile`); a station that also holds a PLC program is refused | The 2026-10-17 empty project returns its three Runtime settings errors with their text through the MCP | A2 |
+| U2 | Read tools: screens, screen items with their properties, tags and tag tables, connections, runtime settings | The class `0967 - unified_00` project read through the MCP, read-only | |
+| U3 | Tags, tag tables and the connection to the PLC, guarded, with a backup | HMI tags created for a program's memory bits, linked to the PLC, and the device compiles | U2 |
+| U4 | Screens and screen items created with their properties: rectangles, circles, text, I/O fields, buttons, bars, gauges, trends | The class screen rebuilt through the MCP and compiling | U3 |
+| U5 | Dynamizations and events: tag, script and resource-list dynamizations, button events | A lamp changes colour and a button sets a PLC bit, both generated | U4 |
+| U6 | Runtime settings: start screen, encrypted transfer, users and roles — **a password never reaches a log, the audit trail or a backup in clear** | A new device is made compilable through the MCP; a test fails if the password appears in any written file | U1 |
+| U7 | Alarms, tag and alarm logging, the audit viewer, and which of them need an option or a licence | One of each configured and compiled; the licence needs written down from the documentation | U4 |
+| U8 | Faceplates, library types and screen templates | A faceplate created, used twice and compiled | U4 |
+| U9 | Download to the simulated runtime and report the result, reading the runtime's own log when TIA Portal says only "Action canceled" | The simulation starts through the MCP and `WebRH` shows the screen | U1, U6 |
+| U10 | The simulated Unified panel against PLCSIM, so a press reaches the PLC | A button on the simulated panel sets a tag in PLCSIM | U5, U9 |
+| U11 | Documentation read and cited: WinCC Unified system manual and the Openness Unified chapter | Each fact the generators rely on carries its source | |
+
 ### Wave E — simulation for the class hardware
 
 | # | Item | Done when |
@@ -680,7 +716,8 @@ The panels used in class (`6AV2 124-0JC01-0AX0`) are classic WinCC; the round tr
 | # | Item | Done when |
 |---|---|---|
 | F1 | Phase 5b blocking criterion | Installed on a machine that never built the project, following only `INSTALL.md`, up to reading a PLCSIM tag |
-| F2 | Web platform phase 4 | The teacher signs in from another machine and reads a project |
+| F0 | Local first (decided 2026-10-17, see "Decisions taken"): the screens the user works with every day run on her machine at `127.0.0.1` with no Docker and no sign-in; the shared part stays optional | The Sala de control shows her projects, compilations and audit trail with Docker Desktop closed and no network |
+| F2 | Web platform phase 4 — the optional shared part | The teacher signs in from another machine and reads a project |
 | F3 | Web platform phase 5: descriptions, images, snapshots, metrics, the diff | Each one shown for a real project |
 | F4 | TIA Portal V21 | The test suite passes against V21, as the institut runs it |
 | F5 | A user guide | A classmate completes an exercise with it and without help |
@@ -706,8 +743,8 @@ The panels used in class (`6AV2 124-0JC01-0AX0`) are classic WinCC; the round tr
 | H4 | Alarms (program alarms, ProDiag) and text lists | An alarm raised in PLCSIM appears on the panel |
 | H5 | Technology objects (axis, PID) | One of each configured and compiled |
 | H6 | Libraries, types and master copies | A type is created, versioned and instantiated |
-| H7 | Project compare and archive (`.zap`) | Two versions compared; an archive retrieved back |
-| H8 | WinCC Unified | A Unified screen created through its object model and compiled |
+| H7 | Project compare and archive (`.zap`). An `ArchiveProject` tool over `Project.Archive` is wanted first: on 2026-10-20 the hopper exercise had to be handed in as a `.zap20` and the archive was made by hand in TIA Portal, because the MCP can only retrieve one (`RetrieveProject`) | Two versions compared; a project archived through the MCP and the archive retrieved back |
+| H8 | ~~WinCC Unified~~ — moved to its own wave, U, on 2026-10-17 | See wave U |
 | H9 | SINAMICS Startdrive | A drive added and parameterised |
 
 ### Wave I — what a company will audit
@@ -721,6 +758,58 @@ The panels used in class (`6AV2 124-0JC01-0AX0`) are classic WinCC; the round tr
 | I5 | IEC 62443 self-assessment | A written gap list against the standard's requirements |
 | I6 | Product law review (Cyber Resilience Act, Openness terms, AI Act, MIT notice) | Written answers, from someone qualified to give them |
 | I7 | Support process: how bugs are reported, fixed and released | Written, and used once |
+
+### Wave K — every other branch of TIA Portal
+
+Added 2026-10-17, when the user set the goal of becoming expert in every branch of TIA Portal, not only
+the ones a class exercise has needed so far. The numbers are names, not the order. **The order agreed
+that day:** K15 first (it turns the class activities into tests), then K2 and K3 (they are the
+subject of module 0967), then K11 (it is the repository's original Git goal), then the rest; **K12
+and K14 last**.
+
+| # | Item | Done when | Depends on |
+|---|---|---|---|
+| K15 | The class exercises (0965, 0967, 0968 and every later one) kept as regression cases: each one's statement, its solution and its checks | Every release of the server solves each kept exercise again with 0 errors and its checks passing | |
+| K1 | PROFINET in depth: device names, topology, I-Device, IO-Link masters and ports | An I-Device link between two CPUs and an IO-Link port configured and compiled through the MCP | |
+| K2 | Communication between controllers: PUT/GET, S7 connections, open user communication (TSEND/TRCV), Modbus TCP client and server | Two simulated CPUs exchange a value over each of them | |
+| K3 | The CPU's OPC UA server configured through the MCP — today it is only read from (phase 9) | A server interface with chosen tags is created, downloaded to PLCSIM Advanced and browsed | |
+| K4 | PROFIBUS and AS-i networks | One of each configured and compiled | |
+| K5 | Diagnostics: the diagnostic buffer, module state, the CPU web server | A fault provoked in PLCSIM is read back with its diagnostic text | |
+| K6 | Protection: block know-how protection, CPU access levels, copy protection, user management (UMAC) — **a password never reaches a log, the audit trail or a backup in clear** | Each one set and removed through the MCP; a test fails if a password appears in any written file | |
+| K7 | Classic WinCC beyond wave D: recipes, panel user administration, HMI alarms and bit messages | One of each configured on the class panel and compiled | D2 |
+| K8 | PLC data types (UDTs), arrays and multi-instance programming as industry writes it | A station's program rewritten on UDTs and multi-instances compiles and passes its tests | |
+| K9 | PLC tests as a tool: test cases written once and run automatically against PLCSIM — the hopper cases are run by hand today | The hopper cases run through the MCP and report pass or fail per case | E1 for S7-1200 |
+| K10 | Siemens programming style guide check of generated code — raises the priority of I4 | Findings reported on the hopper program, each with the rule it breaks | |
+| K11 | TIA Portal's Version Control Interface, linked to the repository's Git goal | A project's blocks round-trip through a VCI workspace and a Git commit | |
+| K13 | Openness Add-Ins, which run inside TIA Portal — a second route to A4 | A small read-only Add-In runs in the user's open TIA Portal and its trade-off against A4 is written down | |
+| K16 | Study sheets per topic, each fact with its source, built from what the waves above measured | One sheet per wave, reviewed by the user | |
+| K12 | Multiuser Engineering: several engineers on one project — **last** | Two sessions check in changes to one server project without conflict | |
+| K14 | Fail-safe CPUs and Safety: **read and learn only. The MCP never generates or writes safety logic**, in any mode — the safety function belongs to certified tools and people — **last** | The safety program of a project is read and explained, and a test proves every write tool refuses a safety block | |
+
+### Wave L — the class corpus
+
+Added 2026-10-20, when the user decided that **all** of the class corpus goes in: the knowledge layer
+and the generators. The corpus is the year's class material on her external disk, extracted on
+2026-10-17 to `C:\Users\mamem\tools\class-corpus` (63 TIA Portal projects of 0965, 0967 and 0968,
+147 PDFs, the statements, her reports, the MPS station manuals) and summarised in `CLASS-STYLE.md`
+beside it.
+
+**What "goes in" means, and what it does not.** The documents and projects are class material and
+classmates' work, so the material itself never enters the public repository, exactly like the
+manufacturer manuals: what is versioned is the code that indexes and uses it, and a recipe template.
+The index, the recipe with its hashes and every exported project stay on this machine. No
+classmate's name appears in a test, an asset or a commit.
+
+| # | Item | Done when | Depends on |
+|---|---|---|---|
+| L1 | A second, private recipe: the corpus documents listed with title, kind (statement, report, manual, data sheet), local path and SHA-256, kept outside the repository; the recipe reader accepts a local source where it now requires a URL | Every document on the disk is in the private recipe, and a file that hashes differently is refused | |
+| L2 | Ingestion of the formats the corpus holds besides PDF (Word, the text already extracted), page or section numbered so a citation can still name where it comes from | All corpus documents indexed; the ones that cannot be are listed by name with the reason | L1 |
+| L3 | The retrieval gate extended with questions the corpus answers and questions it does not, thresholds fixed in code before the first run, as in stage 3 | The gate passes on the class corpus at the stage-3 thresholds | L2 |
+| L4 | The 63 projects searchable as knowledge: block by block and network by network, through the survey exports and `lad_summary.py` turned into indexed text | "How does the class do the emergency network of `0_GEMMA`" comes back cited with project, block and network | L2 |
+| L5 | The generators write in the class style by default (`CLASS-STYLE.md`): FC per GEMMA state numbered in call order, Main only calls, `X<n>` steps with S/R titled `ETAPA n`, outputs in one block, F4 direct, a watchdog timer per step, physical and HMI commands ORed, Catalan names | The 0968 E3 skeleton comes out of the generator in the teacher's layout and compiles with 0 errors. Overlaps B3–B6 and C8 | B5 |
+| L6 | Static checks learned from the corpus, starting with the defect found in the E3 final project (a comparison of a value with itself, which resets a counter every cycle) | The check finds the five E3 networks and nothing in the projects that do not have the defect | |
+| L7 | The exercises kept as regression cases — this is K15 fed by the corpus: each exercise with a statement and a solution on the disk becomes a case with its checks | Every kept exercise is regenerated by the server with 0 errors and its checks passing | L5, B8 |
+| L8 | Study sheets built from the corpus — K16 — each fact with its source | One sheet per module (0965, 0967, 0968), reviewed by the user | L3 |
 
 ### Wave J — Workshop Mode, last and supervised
 
@@ -742,3 +831,4 @@ Agreed on 2026-08-17.
 | Phase 0 timeboxed to two sessions with an automatic fallback | Authorised in advance so the decision is not taken while inside the problem. |
 | `harness/` and `dashboard/` in this repository | The MCP tool surface and the SQLite schema are shared contracts that must change in one commit. |
 | The pattern expander is the main generator; the model one is written and deferred (2026-08-26) | The API is billed separately from a Claude subscription, and cut 3 below already allowed pre-generated specifications. It is also the better engineering: the expander is deterministic — same cell, same SCL, same diff — and a model is not, which is the wrong property for code that may one day command a station. `--generator model` is written and tested against a double, and costs a key and a command whenever there is a reason. |
+| Local first; a desktop shell only as a wrapper, the shared web platform optional (2026-10-17) | The question was whether a web platform is less stable than a desktop app. The connection to TIA Portal does not depend on it: Openness runs only on the machine with TIA Portal, so the C# server is local either way, and the platform only reads what the server already wrote. What is fragile is around the web, not the web: Docker Desktop opened by hand next to TIA Portal, sign-in that needs a public HTTPS URL, and a server whose home is still undecided. A desktop rewrite would drop those and also drop what was asked for — the teacher and classmates reading from other machines. So the daily screens run locally with no Docker and no sign-in; if a window and an icon are wanted, the same front end is wrapped in Tauri rather than rewritten; Postgres and sign-in serve only the shared part. |

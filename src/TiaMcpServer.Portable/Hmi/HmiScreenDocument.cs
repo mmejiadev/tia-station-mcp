@@ -6,9 +6,9 @@ namespace TiaMcpServer.Hmi
 {
     /// <summary>Writes a classic WinCC screen as the XML ImportHmiScreen takes.</summary>
     /// <remarks>
-    /// One layer, the first, holding every item: the class screens use no other. The screen's
-    /// attributes are the ones an export of the teacher's <c>principal</c> carries, less the size,
-    /// which the panel decides.
+    /// One <c>ScreenLayer</c> per layer in use, lowest index first, each with an empty name as every
+    /// export of the class projects writes them. The screen's attributes are the ones an export of the
+    /// teacher's <c>principal</c> carries, less the size, which the panel decides.
     /// </remarks>
     public static class HmiScreenDocument
     {
@@ -23,7 +23,7 @@ namespace TiaMcpServer.Hmi
             var root = writer.Node("Hmi.Screen.Screen", string.Empty, () => new[]
             {
                 HmiScreenWriter.Attributes(ScreenAttributes(screen)),
-                HmiScreenWriter.Objects(new[] { WriteLayer(writer, screen.Items) })
+                HmiScreenWriter.Objects(screen.Layers.Select(layer => WriteLayer(writer, layer)).ToList())
             });
 
             return HmiXmlText.Serialise(new XDocument(new XElement("Document", new XElement("Engineering", new XAttribute("version", EngineeringVersion)), root)));
@@ -52,12 +52,12 @@ namespace TiaMcpServer.Hmi
             return attributes;
         }
 
-        private static XElement WriteLayer(HmiScreenWriter writer, IReadOnlyList<HmiScreenItem> items)
+        private static XElement WriteLayer(HmiScreenWriter writer, HmiScreenLayer layer)
         {
             return writer.Node("Hmi.Screen.ScreenLayer", "Layers", () => new[]
             {
-                HmiScreenWriter.Attributes(new Dictionary<string, string> { ["Index"] = "0", ["Name"] = string.Empty, ["VisibleES"] = "true" }),
-                HmiScreenWriter.Objects(items.Select(item => item.Write(writer)).ToList())
+                HmiScreenWriter.Attributes(new Dictionary<string, string> { ["Index"] = HmiScreenWriter.Number(layer.Index), ["Name"] = string.Empty, ["VisibleES"] = "true" }),
+                HmiScreenWriter.Objects(layer.Items.Select(item => item.Write(writer)).ToList())
             });
         }
     }
