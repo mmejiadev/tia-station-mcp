@@ -654,6 +654,8 @@ What the hopper exercise of 2026-10-08 could not do without a person in TIA Port
 
 ### Wave D — HMI, classic WinCC
 
+**Held to the full list in `HMI-COVERAGE.md`** (2026-10-20): every device that carries a screen, every tag kind, every screen item, animation (movement included), event, script and runtime feature of classic WinCC and WinCC Unified, each with its status and its "done when". The rows below are the milestones; that document is the checklist they are measured against.
+
 The panels used in class (`6AV2 124-0JC01-0AX0`) are classic WinCC; the round trip was measured on
 2026-10-13.
 
@@ -669,6 +671,8 @@ The panels used in class (`6AV2 124-0JC01-0AX0`) are classic WinCC; the round tr
 | D8 | Simulating the panel against PLCSIM, so a button press reaches the PLC | Pressing MARXA on the simulated panel sets `Marxa` in PLCSIM | D4, E1 for S7-1200 |
 
 ### Wave U — WinCC Unified
+
+**Held to the full list in `HMI-COVERAGE.md`** (2026-10-20): every device that carries a screen, every tag kind, every screen item, animation (movement included), event, script and runtime feature of classic WinCC and WinCC Unified, each with its status and its "done when". The rows below are the milestones; that document is the checklist they are measured against.
 
 Added 2026-10-17, when the user asked for the same depth on Unified as on classic WinCC. The class
 uses it too (`0967 - unified_00`: a PC station with WinCC Unified PC RT, simulated and opened at

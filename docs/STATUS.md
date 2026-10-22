@@ -1,9 +1,113 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-10-17**
+> Last updated: **2026-10-21**
 
 ## ▶ RESUME HERE
+
+### HMI devices — 2026-10-20, branch `work/hmi-devices`
+
+The user set the HMI bar on 2026-10-20: **everything** classic WinCC and WinCC Unified can do, and
+every device that carries a screen. The checklist is the new `docs/HMI-COVERAGE.md` (rows H, T, C,
+U, A, E, R, S), built from the Openness API documentation (about 600 HMI types), the class corpus and
+this repository; waves D and U in `ROADMAP.md` point to it. The order it sets: devices, tags,
+drawing, animation and movement, events, runtime features, simulation — classic and Unified side by
+side.
+
+**Done on this branch, measured against TIA Portal V20:**
+
+- `FindCatalogEntries` (H11): searches the hardware catalogue by order number or product name and
+  returns the exact `typeIdentifier` to create; capped at 100 entries and says when it cut. The first
+  search of a session loads the catalogue (31 s), the next ones take 0.1 s. `Test42HardwareCatalog`,
+  `CatalogSearchTests`.
+- The class devices added from catalogue identifiers (H2–H5): 1215C V4.7, 313C-2 DP V2.6, TP900 and
+  TP1200 Comfort 17.0.0.0, MTP700 Unified Basic 20.0.0.2 (`6AV2 123-3GB32-0AW0`, identified through
+  the catalogue). Only the S7-1500 had been added before.
+- `AddPcStation` (H6, H7), guarded: a PC station is the rack `System:Rack.PC` with the HMI runtime
+  plugged in **with an empty name** — a real name fails with "The name could not be set", `null` with
+  "may not be null" — and TIA Portal names it `HMI_RT_1`, read-only. Only the two runtimes measured
+  are accepted, by exact identifier (`PcHmiRuntime`): WinCC Unified PC `6AV2 155-xxxxx-xxxx/20.0.0.2`
+  and RT Advanced `6AV2 104-0xxxx-xxxx/17.0.0.0`, because a failed plug followed by another once took
+  TIA Portal down; another version is added once measured. A failed plug deletes the empty station
+  and says so. `Test43PcStations`, `PcHmiRuntimeTests`, refusal in `Test16GuardedWrites`.
+- Review of 2026-10-21 (`/code-review high`), fixed: `PlugModule`, `MoveModule` and `CopyModule`
+  refuse a PC station's rack in the shared path (`ModulePlugger`), so the crash path is closed for
+  every tool and not only avoided by `AddPcStation`; `FindCatalogEntries` points PC runtimes at
+  `AddPcStation`; `ResolveCompileTarget` (U1) names a Unified station by its full path, groups
+  included, has its decoration block and lists each PLC program once.
+- Second review, 2026-10-21 evening, after the drawing work ran (`/code-review high`, ten findings,
+  all fixed): a Unified screen is **not redrawn when its backup could not put it back** — events,
+  scripts, dynamizations other than tag links, items of a type not drawn, unreadable properties
+  (`UnifiedBackupCoverage`, `UnifiedBackupCheck`); a screen inside a screen group is read but not
+  redrawn; colours keep their alpha (`R, G, B, A`); a tag link on a part without links is refused
+  before anything is deleted (no V20 part lacks them, so it guards later versions); the walk of
+  parts and the names not walked are one definition (`UnifiedPropertyTree`). Classic: shapes, lines
+  and groups refuse fields they have nowhere to write (`HmiFieldsNotTaken`) — a line's colour no
+  longer also writes a `ForeColor` TIA Portal does not know; a line of no length is refused; buttons
+  and fields on two layers are refused, their tab order across layers not being measured. A Unified
+  station whose name holds `/` is refused for compiling, since the policy could not name it apart.
+- Trap worth remembering: a PowerShell probe passes `$null` to a `string` parameter as `""`, so the
+  probe said "null works" when it was the empty string that worked. The C# test caught it.
+
+Tests run 2026-10-20: Governance 258/258; `Test42` 8/8, `Test43` 4/4, the two `AddDevice`/`AddPcStation`
+refusals in `Test16`.
+
+Tests run 2026-10-21/22, after both reviews and the drawing work: Governance 348/348, Spec 128/128,
+OPC UA 33/33; the TIA suite `Test16`, `Test40`–`Test44` 97/100 on the last full run, the three
+failures all in `Test44` and all from the new backup check (below), then `Test44` 11/11 on its own
+(5 min 38 s). No orphan TIA Portal. The backup check met two Openness facts while running: item
+types declare `EventHandlers` again, so `GetProperty` throws `AmbiguousMatchException`, and the
+hidden base getter fails on the derived object (`HmiCircle.EventHandlers` on an `HmiCircleSegment`);
+only the most derived declaration is read.
+
+**H8–H10, read from the V20 API reference 2026-10-21, nothing measured yet:**
+
+- H10 (Unified) has an API: `HmiConnectionComposition.Create(name)` and the connection's `Partner`,
+  `Station`, `Node`, `CommunicationDriver`, `InitialAddress` and `DriverProperties`.
+- H9 (classic) has none for the integrated connection a class project uses: no `Create`, only a
+  SimaticML `Import`, and integrated connections are not exported. Whether connecting the panel to
+  the PLC's subnet, or linking a PLC tag, makes TIA Portal create one is what is to be measured.
+- H8 for a PC station: its rack holds only the runtime, no network interface, so a PC needs a
+  network module (IE general) plugged in. `PlugModule` now refuses a PC station's rack, so that
+  plug will belong in `AddPcStation` once it has been measured.
+- A probe that measures all three in a throw-away project was written outside the repository
+  (`probe-hmi-connections.ps1`, kept by the user); its log decides the design.
+
+**Drawing, 2026-10-21 — built and run against TIA Portal V20 the same day:**
+
+- **WinCC Unified, through its object model.** `DrawUnifiedScreen` draws a whole screen from JSON —
+  35 item types (12 shapes, 13 widgets, 9 controls, the screen window), each drawn, read back,
+  drawn again unchanged and compiled with no error, any
+  property by Openness's own name, parts as `Font.Size`, texts in the editing language, points of
+  polylines and polygons, properties linked to existing HMI tags, the start screen.
+  `GetUnifiedScreen` reads one back in the same JSON, which is also the backup (a Unified screen has
+  no export). `GetUnifiedItemTypes` lists every property of every type from the installed Openness.
+  The whole description is checked against the Openness types and the HMI's tags before anything
+  changes. Code in `src/TiaMcpServer.Portable/UnifiedScreens/` and `Portal`'s
+  `PortalUnifiedScreens.cs`; tests `UnifiedScreenDescriptionReaderTests`,
+  `UnifiedPropertyConverterTests`, `UnifiedItemTypesTests` (no TIA) and `Test44UnifiedScreens`, whose
+  round trip redraws every writable property of every type. **Measured while running it:** a
+  multilingual text is stored as XHTML, `<body><p>…</p></body>` — plain text is refused as "an invalid
+  format", so it is wrapped and unwrapped (`UnifiedRichText`); circles, ellipses and their arcs and
+  segments have no `Left`/`Top`, they are placed by `CenterX`/`CenterY`; a polyline's point list may
+  not drop below two, so new points go in before the old ones come out; a flags enum reads back as
+  `"A, B"` and is taken that way; `HmiLabel` exists in Openness but `Create` answers "Not supported",
+  so it is refused; `HmiToggleSwitch.HotKey` and `HmiTouchArea.ShowFocusVisual` have setters TIA
+  Portal refuses (`UnifiedRefusedSetters`). Not done: faceplate and custom-control
+  containers, lists of parts (thresholds, trend areas, selection items), events and scripts, screen
+  groups, creating Unified HMI tags.
+- **Classic WinCC, from the class exports.** `GenerateHmiScreen` gains `rectangle`, `circle`,
+  `line`, `graphicView`, `group` and `layer`, with the XML taken from the class projects' own exports.
+  The overview screen now matches its export completely (the logo was the last difference) and the
+  teacher's `principal` differs only in the symbol-library group. Groups holding buttons or fields are
+  refused: the teacher's one has a tab index whose rule is not measured. Shapes, a group and a
+  second layer import and compile in `Test40`; measured there, a line along an axis has a box of size
+  0 across it — height 1 is refused and TIA Portal ends the project session. Everything the class
+  projects do not contain needs the feature atlas: `docs/HMI-ATLAS.md` lists the 16 screens to draw
+  once by hand.
+
+**Next:** the second review round and the user's commit; then the probe, H8–H10 from what it
+records, the compile half of H6/H7, then tags (T).
 
 ### Everything still open, in priority order, with progress — 2026-10-14
 
@@ -70,7 +174,8 @@ never run against TIA Portal counts for less than half.
 | Web platform | 65 % |
 | `grafcet` skill | 65 % |
 | Gaps from the hopper exercise (2026-10-08) | 45 % (create, add device and delete tested in TIA Portal) |
-| HMI, classic WinCC | 65 % (read, import, tags, text lists, screens with animations and events; imported and compiled in TIA Portal on internal tags; PLC-linked tags measured only on the teacher's project) |
+| HMI, classic WinCC | 70 % (read, import, tags, text lists, screens with animations and events; imported and compiled in TIA Portal on internal tags; PLC-linked tags measured only on the teacher's project; shapes, graphic views, groups and layers imported and compiled 2026-10-21; the rest waits for the atlas) |
+| HMI, WinCC Unified | 45 % (compile measured; drawing 35 item types and their properties measured 2026-10-21; faceplates, lists of parts, tags, events, alarms open) |
 | Classic S7-PLCSIM for S7-1200 | 5 % |
 | Debt and audit findings | 65 % |
 | **The project as a whole** | **about 60 %** |
