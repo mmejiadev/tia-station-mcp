@@ -42,6 +42,17 @@ namespace TiaMcpServer.Spec.Tests
         }
 
         [TestMethod]
+        public void Parse_ButtonsOnTwoLayers_ThrowsInvalidParams()
+        {
+            var failure = Refusal(@"{ ""name"": ""S"", ""items"": [
+                { ""type"": ""button"", ""left"": 0, ""top"": 0, ""text"": ""A"", ""press"": ""setBitWhilePressed"", ""tag"": ""A"", ""layer"": 3 },
+                { ""type"": ""button"", ""left"": 0, ""top"": 40, ""text"": ""B"", ""press"": ""setBitWhilePressed"", ""tag"": ""B"" } ] }");
+
+            Assert.AreEqual(PortalErrorCode.InvalidParams, failure.Code);
+            StringAssert.Contains(failure.Message, "one layer", StringComparison.Ordinal);
+        }
+
+        [TestMethod]
         public void Parse_ItemWithoutLeft_ThrowsInvalidParams()
         {
             var failure = Refusal(OneItem(@"{ ""type"": ""text"", ""top"": 0, ""text"": ""Title"" }"));
@@ -53,6 +64,39 @@ namespace TiaMcpServer.Spec.Tests
         public void Parse_SetBitButtonWithoutTag_ThrowsInvalidParams()
         {
             var failure = Refusal(OneItem(@"{ ""type"": ""button"", ""left"": 0, ""top"": 0, ""text"": ""Go"", ""press"": ""setBitWhilePressed"" }"));
+
+            Assert.AreEqual(PortalErrorCode.InvalidParams, failure.Code);
+        }
+
+        [TestMethod]
+        [DataRow(@"{ ""type"": ""line"", ""left"": 0, ""top"": 0, ""endLeft"": 10 }", DisplayName = "line without endTop")]
+        [DataRow(@"{ ""type"": ""line"", ""left"": 0, ""top"": 0, ""endLeft"": 10, ""endTop"": 5, ""lineWidth"": 0 }", DisplayName = "line of width 0")]
+        [DataRow(@"{ ""type"": ""graphicView"", ""left"": 0, ""top"": 0 }", DisplayName = "graphic view without picture")]
+        [DataRow(@"{ ""type"": ""rectangle"", ""left"": 0, ""top"": 0, ""layer"": 32 }", DisplayName = "layer above 31")]
+        [DataRow(@"{ ""type"": ""group"", ""items"": [ { ""type"": ""rectangle"", ""left"": 0, ""top"": 0 } ] }", DisplayName = "group of one")]
+        [DataRow(@"{ ""type"": ""group"", ""items"": [ { ""type"": ""rectangle"", ""left"": 0, ""top"": 0 }, { ""type"": ""button"", ""left"": 0, ""top"": 40, ""text"": ""Go"", ""press"": ""setBitWhilePressed"", ""tag"": ""Go"" } ] }", DisplayName = "group with a button")]
+        [DataRow(@"{ ""type"": ""group"", ""items"": [ { ""type"": ""rectangle"", ""left"": 0, ""top"": 0, ""layer"": 2 }, { ""type"": ""circle"", ""left"": 0, ""top"": 40 } ] }", DisplayName = "layer inside a group")]
+        [DataRow(@"{ ""type"": ""group"", ""animations"": [ { ""type"": ""visibility"", ""tag"": ""T"" } ], ""items"": [ { ""type"": ""rectangle"", ""left"": 0, ""top"": 0 }, { ""type"": ""circle"", ""left"": 0, ""top"": 40 } ] }", DisplayName = "animated group")]
+        [DataRow(@"{ ""type"": ""group"", ""left"": 300, ""items"": [ { ""type"": ""rectangle"", ""left"": 0, ""top"": 0 }, { ""type"": ""circle"", ""left"": 0, ""top"": 40 } ] }", DisplayName = "group given a position")]
+        [DataRow(@"{ ""type"": ""group"", ""backColor"": ""blue"", ""items"": [ { ""type"": ""rectangle"", ""left"": 0, ""top"": 0 }, { ""type"": ""circle"", ""left"": 0, ""top"": 40 } ] }", DisplayName = "group given a colour")]
+        [DataRow(@"{ ""type"": ""rectangle"", ""left"": 0, ""top"": 0, ""align"": ""Center"" }", DisplayName = "rectangle given an alignment")]
+        [DataRow(@"{ ""type"": ""circle"", ""left"": 0, ""top"": 0, ""foreColor"": ""red"" }", DisplayName = "circle given a foreground colour")]
+        [DataRow(@"{ ""type"": ""graphicView"", ""left"": 0, ""top"": 0, ""picture"": ""Logo"", ""fontSize"": 12 }", DisplayName = "graphic view given a font")]
+        [DataRow(@"{ ""type"": ""line"", ""left"": 0, ""top"": 0, ""endLeft"": 50, ""endTop"": 0, ""width"": 50 }", DisplayName = "line given a width")]
+        [DataRow(@"{ ""type"": ""line"", ""left"": 10, ""top"": 10, ""endLeft"": 10, ""endTop"": 10 }", DisplayName = "line of no length")]
+        public void Parse_IncompleteShapeOrGroup_ThrowsInvalidParams(string item)
+        {
+            var failure = Refusal(OneItem(item));
+
+            Assert.AreEqual(PortalErrorCode.InvalidParams, failure.Code);
+        }
+
+        [TestMethod]
+        public void Parse_NameRepeatedInsideAGroup_ThrowsInvalidParams()
+        {
+            var failure = Refusal(@"{ ""name"": ""S"", ""number"": 9, ""items"": [
+                { ""type"": ""text"", ""name"": ""Same"", ""left"": 0, ""top"": 0, ""text"": ""A"" },
+                { ""type"": ""group"", ""items"": [ { ""type"": ""rectangle"", ""name"": ""Same"", ""left"": 0, ""top"": 0 }, { ""type"": ""circle"", ""left"": 0, ""top"": 40 } ] } ] }");
 
             Assert.AreEqual(PortalErrorCode.InvalidParams, failure.Code);
         }

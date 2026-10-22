@@ -106,7 +106,7 @@ namespace TiaMcpServer.Siemens
 
             var current = numbers.FirstOrDefault(entry => entry.Key.Equals(screen.Name, StringComparison.OrdinalIgnoreCase));
 
-            return current.Key == null ? screen : new HmiScreenDescription(screen.Name, current.Value, screen.BackColor, screen.Items);
+            return current.Key == null ? screen : new HmiScreenDescription(screen.Name, current.Value, screen.BackColor, screen.Layers);
         }
 
         /// <summary>Refuses a screen document whose number another screen of the panel has.</summary>

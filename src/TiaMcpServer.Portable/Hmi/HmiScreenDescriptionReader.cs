@@ -51,9 +51,9 @@ namespace TiaMcpServer.Hmi
             }
 
             var backColor = HmiColor.Parse(document.BackColor ?? DefaultBackColor, "The screen's backColor");
-            var items = ReadItems(document.Items ?? new List<HmiScreenItemDocument>());
+            var layers = ReadLayers(document.Items ?? new List<HmiScreenItemDocument>());
 
-            return new HmiScreenDescription(document.Name!.Trim(), document.Number, backColor, items);
+            return new HmiScreenDescription(document.Name!.Trim(), document.Number, backColor, layers);
         }
 
         private static ScreenDocument Deserialise(string json)
@@ -69,19 +69,59 @@ namespace TiaMcpServer.Hmi
             }
         }
 
-        private static List<HmiScreenItem> ReadItems(IReadOnlyList<HmiScreenItemDocument> documents)
+        private static List<HmiScreenLayer> ReadLayers(IReadOnlyList<HmiScreenItemDocument> documents)
         {
             var factory = new HmiScreenItemFactory();
-            var items = documents.Select((item, index) => factory.Create(item, index + 1)).ToList();
+            var placed = documents.Select((item, index) => (Layer: ReadLayer(item, index + 1), Item: factory.Create(item, index + 1))).ToList();
 
-            var repeated = items.GroupBy(item => item.Frame.Name, StringComparer.OrdinalIgnoreCase)
+            RequireUniqueNames(placed.Select(entry => entry.Item));
+            RequireFocusOnOneLayer(placed);
+
+            return placed.GroupBy(entry => entry.Layer)
+                .OrderBy(layer => layer.Key)
+                .Select(layer => new HmiScreenLayer(layer.Key, layer.Select(entry => entry.Item).ToList()))
+                .ToList();
+        }
+
+        private static int ReadLayer(HmiScreenItemDocument item, int position)
+        {
+            var layer = item.Layer ?? 0;
+
+            return layer >= 0 && layer <= HmiScreenLayer.MaxIndex
+                ? layer
+                : throw new PortalException(PortalErrorCode.InvalidParams, $"Item {position}: 'layer' is 0 to {HmiScreenLayer.MaxIndex}; got {layer}");
+        }
+
+        /// <remarks>
+        /// Tab indices are handed out in the order items are written, and items are written layer by layer,
+        /// so buttons and fields on two layers would tab in layer order rather than the order described.
+        /// How TIA Portal orders tabbing across layers is not measured, so it is not guessed.
+        /// </remarks>
+        private static void RequireFocusOnOneLayer(IEnumerable<(int Layer, HmiScreenItem Item)> placed)
+        {
+            var layers = placed.Where(entry => HmiGroup.Flatten(entry.Item).Any(HmiScreenItemFactory.IsFocusable)).Select(entry => entry.Layer).Distinct().ToList();
+
+            if (layers.Count > 1)
+            {
+                throw new PortalException(
+                    PortalErrorCode.InvalidParams,
+                    $"Buttons and fields must all be on one layer; they are on layers {string.Join(", ", layers.OrderBy(layer => layer))}. Their tab order across layers is not measured");
+            }
+        }
+
+        /// <remarks>Names inside a group count too: TIA Portal names every item of a screen, grouped or not.</remarks>
+        private static void RequireUniqueNames(IEnumerable<HmiScreenItem> items)
+        {
+            var repeated = items.SelectMany(HmiGroup.Flatten)
+                .GroupBy(item => item.Frame.Name, StringComparer.OrdinalIgnoreCase)
                 .Where(group => group.Count() > 1)
                 .Select(group => group.Key)
                 .ToList();
 
-            return repeated.Count == 0
-                ? items
-                : throw new PortalException(PortalErrorCode.InvalidParams, $"Item names must be unique on a screen; repeated: {string.Join(", ", repeated)}");
+            if (repeated.Count > 0)
+            {
+                throw new PortalException(PortalErrorCode.InvalidParams, $"Item names must be unique on a screen; repeated: {string.Join(", ", repeated)}");
+            }
         }
 
         // CA1812 reports this as never instantiated, and it cannot see otherwise: the only thing that

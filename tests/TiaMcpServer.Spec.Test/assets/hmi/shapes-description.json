@@ -1,0 +1,4 @@
+{ "name": "Shapes", "number": 50, "items": [
+  { "type": "rectangle", "name": "Rectangle_2", "left": 624, "top": 622, "width": 254, "height": 30 },
+  { "type": "line", "name": "Line_1", "left": 174, "top": 98, "endLeft": 654, "endTop": 93 },
+  { "type": "graphicView", "name": "Graphic view_2", "left": 27, "top": 352, "width": 140, "height": 110, "picture": "Graphic_5" } ] }

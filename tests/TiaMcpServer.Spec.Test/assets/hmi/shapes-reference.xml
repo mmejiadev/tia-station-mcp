@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Three items exported by TIA Portal V20 from the class projects, gathered on 2026-10-21 into one
+  screen: the rectangle of 0967-Exercici_1 (principal), the line of 0967-Prova_0 (pantalla principal)
+  and a graphic view of 0967-HMI_PROCÉS (Principal). Each element is as exported; only the screen
+  around them is written by hand.
+-->
+<Document>
+  <Engineering version="V20" />
+  <Hmi.Screen.Screen ID="0">
+    <AttributeList>
+      <ActiveLayer>0</ActiveLayer>
+      <BackColor>255, 255, 255</BackColor>
+      <GridColor>0, 0, 0</GridColor>
+      <Name>Shapes</Name>
+      <Number>50</Number>
+      <Visible>true</Visible>
+    </AttributeList>
+    <ObjectList>
+      <Hmi.Screen.ScreenLayer ID="1" CompositionName="Layers">
+        <AttributeList>
+          <Index>0</Index>
+          <Name />
+          <VisibleES>true</VisibleES>
+        </AttributeList>
+        <ObjectList>
+          <Hmi.Screen.Rectangle ID="2B" CompositionName="ScreenItems"><AttributeList><BackColor>217, 217, 217</BackColor><BackFillStyle>Solid</BackFillStyle><BorderColor>24, 28, 49</BorderColor><BorderWidth>1</BorderWidth><EdgeStyle>Solid</EdgeStyle><Flashing>None</Flashing><Height>30</Height><Left>624</Left><ObjectName>Rectangle_2</ObjectName><RoundCornerHeight>0</RoundCornerHeight><RoundCornerWidth>0</RoundCornerWidth><TabIndex>-1</TabIndex><Top>622</Top><UseDesignColorSchema>false</UseDesignColorSchema><Width>254</Width></AttributeList></Hmi.Screen.Rectangle>
+          <Hmi.Screen.Line ID="4" CompositionName="ScreenItems"><AttributeList><BackColor>255, 255, 255</BackColor><Color>24, 28, 49</Color><EndLeft>654</EndLeft><EndStyle>NoEnd</EndStyle><EndTop>93</EndTop><FillStyle>Transparent</FillStyle><Flashing>None</Flashing><Height>5</Height><Left>174</Left><LineEndShapeStyle>Round</LineEndShapeStyle><LineWidth>1</LineWidth><ObjectName>Line_1</ObjectName><StartLeft>174</StartLeft><StartStyle>NoEnd</StartStyle><StartTop>98</StartTop><Style>Solid</Style><TabIndex>-1</TabIndex><Top>93</Top><UseDesignColorSchema>false</UseDesignColorSchema><Width>480</Width></AttributeList></Hmi.Screen.Line>
+          <Hmi.Screen.GraphicView ID="A" CompositionName="ScreenItems"><AttributeList><AutoSizing>StretchPicture</AutoSizing><BackColor>173, 174, 181</BackColor><BackFillStyle>Transparent</BackFillStyle><BorderColor>0, 0, 0</BorderColor><BorderWidth>0</BorderWidth><EdgeStyle>Solid</EdgeStyle><FitToLargest>false</FitToLargest><Flashing>None</Flashing><Height>110</Height><Left>27</Left><ObjectName>Graphic view_2</ObjectName><TabIndex>-1</TabIndex><Top>352</Top><TransparentColor>255, 0, 255</TransparentColor><UseTransparentColor>false</UseTransparentColor><Width>140</Width></AttributeList><LinkList><Picture TargetID="@OpenLink"><Name>Graphic_5</Name></Picture></LinkList></Hmi.Screen.GraphicView>
+        </ObjectList>
+      </Hmi.Screen.ScreenLayer>
+    </ObjectList>
+  </Hmi.Screen.Screen>
+</Document>
