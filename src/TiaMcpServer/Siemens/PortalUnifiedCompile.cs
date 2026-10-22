@@ -2,8 +2,11 @@
 using Siemens.Engineering.Compiler;
 using Siemens.Engineering.HW;
 using Siemens.Engineering.HW.Features;
+using Microsoft.Extensions.Logging;
 using Siemens.Engineering.SW;
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnifiedHmiSoftware = Siemens.Engineering.HmiUnified.HmiSoftware;
 
 namespace TiaMcpServer.Siemens
@@ -19,8 +22,9 @@ namespace TiaMcpServer.Siemens
         /// </summary>
         /// <param name="softwarePath">The path the caller asked to compile.</param>
         /// <returns>
-        /// The path itself for a PLC program or a classic WinCC HMI; for a WinCC Unified HMI, the name
-        /// of the station that holds it, because the whole station is compiled, hardware included.
+        /// The path itself for a PLC program or a classic WinCC HMI; for a WinCC Unified HMI, the full
+        /// path of the station that holds it, groups included, because the whole station is compiled,
+        /// hardware included.
         /// </returns>
         /// <exception cref="PortalException">
         /// <see cref="PortalErrorCode.InvalidState"/> when a Unified HMI's station also holds a PLC
@@ -29,12 +33,53 @@ namespace TiaMcpServer.Siemens
         /// </exception>
         public string ResolveCompileTarget(string softwarePath)
         {
-            if (IsProjectNull() || GetSoftwareContainer(softwarePath) is not { Software: UnifiedHmiSoftware unified } container)
+            try
             {
-                return softwarePath;
+                if (IsProjectNull() || GetSoftwareContainer(softwarePath) is not { Software: UnifiedHmiSoftware unified } container)
+                {
+                    return softwarePath;
+                }
+
+                return StationPathOf(RequireCompilableStation(container.Parent, unified.Name));
+            }
+            catch (Exception ex)
+            {
+                var pex = ex as PortalException ?? new PortalException(PortalErrorCode.ExportFailed, $"Resolving what compiling '{softwarePath}' compiles failed: {ex.Message}", null, ex);
+
+                pex.Data["softwarePath"] = softwarePath;
+
+                _logger?.LogError(pex, "ResolveCompileTarget failed for {SoftwarePath}", softwarePath);
+                throw pex;
+            }
+        }
+
+        /// <remarks>
+        /// The groups a station sits in are part of its name for the policy: a bare device name would
+        /// match a station of that name in any group, and a policy naming the full path would match none.
+        /// A name holding the separator would make two different stations spell the same path — an
+        /// ungrouped <c>Line/PC</c> and <c>PC</c> in group <c>Line</c> — so the policy could not tell them
+        /// apart; such a station is refused rather than named ambiguously.
+        /// </remarks>
+        private static string StationPathOf(Device device)
+        {
+            var segments = new List<string> { device.Name };
+
+            for (var current = device.Parent; current != null && current is not Project; current = current.Parent)
+            {
+                if (current is DeviceUserGroup group)
+                {
+                    segments.Insert(0, group.Name);
+                }
             }
 
-            return RequireCompilableStation(container.Parent, unified.Name).Name;
+            if (segments.Any(segment => ProjectPath.AddressableDeviceName(segment).Length == 0))
+            {
+                throw new PortalException(
+                    PortalErrorCode.InvalidState,
+                    $"The station '{string.Join(" > ", segments)}' has a name with '/' in it, so the write policy cannot name it unambiguously; rename it in TIA Portal first");
+            }
+
+            return string.Join("/", segments);
         }
 
         /// <remarks>
@@ -63,7 +108,8 @@ namespace TiaMcpServer.Siemens
             var programs = new List<string>();
             CollectPlcPrograms(device, programs, new HashSet<HardwareObject>());
 
-            UnifiedStationCompileRule.RequireNoPlcPrograms(hmiName, device.Name, programs);
+            // Distinct: the walk visits Items and DeviceItems both, and nothing promises one proxy per item.
+            UnifiedStationCompileRule.RequireNoPlcPrograms(hmiName, device.Name, programs.Distinct().ToList());
 
             return device;
         }
