@@ -8,7 +8,7 @@ namespace TiaMcpServer.Hmi
     public sealed class HmiEventBinding
     {
         /// <summary>Creates a handler.</summary>
-        /// <param name="eventName">The event as TIA Portal names it: <c>Press</c>, <c>Click</c>, <c>Change</c>.</param>
+        /// <param name="eventName">The event as TIA Portal names it: <c>Press</c>, <c>Release</c>, <c>Click</c>, <c>Change</c>.</param>
         /// <param name="calls">The functions it runs, in order.</param>
         public HmiEventBinding(string eventName, IReadOnlyList<HmiFunctionCall> calls)
         {

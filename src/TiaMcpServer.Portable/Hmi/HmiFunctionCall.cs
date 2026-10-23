@@ -8,7 +8,9 @@ namespace TiaMcpServer.Hmi
     /// <remarks>
     /// Only the functions measured in the class projects' exports, with the parameters exactly as they
     /// were written there (2026-10-13): <c>SetBitWhileKeyPressed</c>, <c>SetTag</c>,
-    /// <c>ActivateScreen</c>, <c>ActivatePreviousScreen</c> and <c>ActivateScreenByNumber</c>. Another
+    /// <c>ActivateScreen</c>, <c>ActivatePreviousScreen</c> and <c>ActivateScreenByNumber</c>; and
+    /// <c>SetBit</c> and <c>ResetBit</c> (2026-10-23, from a button of 0967-HMI_PROCÉS). Exports read from
+    /// TIA Portal V20; the same names and parameters are to be confirmed on V21. Another
     /// function is left out until its parameters have been read from an export: nothing here could
     /// tell a parameter spelled wrong from a right one.
     /// </remarks>
@@ -43,6 +45,22 @@ namespace TiaMcpServer.Hmi
             return new HmiFunctionCall(
                 "SetBitWhileKeyPressed",
                 new[] { HmiFunctionArgument.Link(TagParameter, tag), HmiFunctionArgument.Constant("Bit", "0", IntegerType) });
+        }
+
+        /// <summary>Sets a Bool tag to 1: on press, with <see cref="ResetBit"/> on release, a jog button.</summary>
+        /// <param name="tag">The HMI tag.</param>
+        /// <returns>The call.</returns>
+        public static HmiFunctionCall SetBit(string tag)
+        {
+            return new HmiFunctionCall("SetBit", new[] { HmiFunctionArgument.Link(TagParameter, tag) });
+        }
+
+        /// <summary>Sets a Bool tag to 0.</summary>
+        /// <param name="tag">The HMI tag.</param>
+        /// <returns>The call.</returns>
+        public static HmiFunctionCall ResetBit(string tag)
+        {
+            return new HmiFunctionCall("ResetBit", new[] { HmiFunctionArgument.Link(TagParameter, tag) });
         }
 
         /// <summary>Writes a value into a tag: the class counter reset button.</summary>

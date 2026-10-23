@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The two events of a button in 0967-HMI_PROCÉS (Principal), exported by TIA Portal V20 and copied as
+  they are: SetBit on press and ResetBit on release, the same tag. Only the root around them is
+  written by hand.
+-->
+<Events>
+  <Hmi.Event.Event ID="B2" CompositionName="Events">
+    <AttributeList>
+      <Name>Press</Name>
+    </AttributeList>
+    <ObjectList>
+      <Hmi.Event.FunctionListEventHandler ID="B3" CompositionName="EventHandler">
+        <ObjectList>
+          <Hmi.Event.FunctionListEntry ID="B4" CompositionName="FunctionListEntries">
+            <AttributeList>
+              <Name>SetBit</Name>
+              <Type>SystemFunction</Type>
+            </AttributeList>
+            <ObjectList>
+              <Hmi.Event.FunctionListEntryParameter ID="B5" CompositionName="Parameters">
+                <AttributeList>
+                  <Name>Tag</Name>
+                </AttributeList>
+                <LinkList>
+                  <Value TargetID="@OpenLink">
+                    <Name>DADES_V3_Man_Obrir</Name>
+                  </Value>
+                </LinkList>
+              </Hmi.Event.FunctionListEntryParameter>
+            </ObjectList>
+          </Hmi.Event.FunctionListEntry>
+        </ObjectList>
+      </Hmi.Event.FunctionListEventHandler>
+    </ObjectList>
+  </Hmi.Event.Event>
+  <Hmi.Event.Event ID="B7" CompositionName="Events">
+    <AttributeList>
+      <Name>Release</Name>
+    </AttributeList>
+    <ObjectList>
+      <Hmi.Event.FunctionListEventHandler ID="B8" CompositionName="EventHandler">
+        <ObjectList>
+          <Hmi.Event.FunctionListEntry ID="B9" CompositionName="FunctionListEntries">
+            <AttributeList>
+              <Name>ResetBit</Name>
+              <Type>SystemFunction</Type>
+            </AttributeList>
+            <ObjectList>
+              <Hmi.Event.FunctionListEntryParameter ID="BA" CompositionName="Parameters">
+                <AttributeList>
+                  <Name>Tag</Name>
+                </AttributeList>
+                <LinkList>
+                  <Value TargetID="@OpenLink">
+                    <Name>DADES_V3_Man_Obrir</Name>
+                  </Value>
+                </LinkList>
+              </Hmi.Event.FunctionListEntryParameter>
+            </ObjectList>
+          </Hmi.Event.FunctionListEntry>
+        </ObjectList>
+      </Hmi.Event.FunctionListEventHandler>
+    </ObjectList>
+  </Hmi.Event.Event>
+</Events>

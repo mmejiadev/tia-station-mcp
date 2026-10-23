@@ -84,6 +84,10 @@ namespace TiaMcpServer.Spec.Tests
         [DataRow(@"{ ""type"": ""graphicView"", ""left"": 0, ""top"": 0, ""picture"": ""Logo"", ""fontSize"": 12 }", DisplayName = "graphic view given a font")]
         [DataRow(@"{ ""type"": ""line"", ""left"": 0, ""top"": 0, ""endLeft"": 50, ""endTop"": 0, ""width"": 50 }", DisplayName = "line given a width")]
         [DataRow(@"{ ""type"": ""line"", ""left"": 10, ""top"": 10, ""endLeft"": 10, ""endTop"": 10 }", DisplayName = "line of no length")]
+        [DataRow(@"{ ""type"": ""button"", ""left"": 0, ""top"": 0, ""text"": ""Go"", ""events"": [ { ""event"": ""press"", ""function"": ""setBit"" } ] }", DisplayName = "setBit without a tag")]
+        [DataRow(@"{ ""type"": ""button"", ""left"": 0, ""top"": 0, ""text"": ""Go"", ""events"": [ { ""event"": ""release"", ""function"": ""setBitWhilePressed"", ""tag"": ""T"" } ] }", DisplayName = "setBitWhilePressed on release")]
+        [DataRow(@"{ ""type"": ""button"", ""left"": 0, ""top"": 0, ""text"": ""Go"", ""events"": [ { ""event"": ""click"", ""function"": ""setBitWhilePressed"", ""tag"": ""T"" } ] }", DisplayName = "setBitWhilePressed on click")]
+        [DataRow(@"{ ""type"": ""symbolicField"", ""left"": 0, ""top"": 0, ""tag"": ""T"", ""textList"": ""L"", ""events"": [ { ""event"": ""release"", ""function"": ""resetBit"", ""tag"": ""T"" } ] }", DisplayName = "release on a symbolic field")]
         public void Parse_IncompleteShapeOrGroup_ThrowsInvalidParams(string item)
         {
             var failure = Refusal(OneItem(item));
