@@ -5,6 +5,26 @@
 
 ## ▶ RESUME HERE
 
+### HMI connections, PC compile and Unified tags — 2026-10-22, branch `work/hmi-connections`
+
+Measured with throw-away probes (outside the repository) and on a copy of a class project:
+
+- **H8 done:** a PC station had no interface at all; `AddPcStation` now plugs the class's network
+  card (`IE general` V8.2, slot 2, `IE general_1`) and the station joins the PLC's subnet (`Test43`).
+  Its node starts at 192.168.0.1, the S7-1200's default too: set its address after connecting.
+- **H9/H10: Openness V20 cannot create the integrated connection**, classic or Unified (Unified
+  `Partner`/`Station`/`Node` are read-only; joining a subnet creates none). It is made once by hand.
+  Through it, a new Unified tag links by name: `Connection` then `PlcTag`, and TIA Portal fills in
+  PLC, type and address. Driver connections can be created (`SIMATIC S7 1200/1500` or `300/400`) but
+  link no symbolic tag. Traps: `Connection` accepts a connection that does not exist; and
+  **`GetAttributeInfos()` on a new `HmiTag` ends the TIA Portal session**.
+- **H6/H7 compile measured** (`Test43`): RT Advanced lacks only its start screen, Unified PC (with a
+  start screen) only the encrypted-transfer password — neither settable through Openness V20.
+- **Unified tags (T):** `CreateUnifiedTags` (guarded, all or nothing, undo reports anything it could not remove) and `GetUnifiedTags`; internal data types measured (`UnifiedTagDataTypes`). TIA Portal takes almost any tag name and refuses only names over 128 characters (measured 2026-10-23); a trailing space is dropped silently.
+- Tests 2026-10-23, after `/code-review high` (ten findings, all fixed or answered: connection and table written with their own spelling, undo that reports leftovers, TIA refusals as InvalidState, the card's absence from the catalogue as InvalidState, the plan naming every tag): Governance 363/363; `Test16`, `Test43`, `Test45` 67/67.
+
+**Next:** the user's commit; then the atlas and the rest of row T (thresholds, groups, system tags).
+
 ### HMI devices — 2026-10-20, branch `work/hmi-devices`
 
 The user set the HMI bar on 2026-10-20: **everything** classic WinCC and WinCC Unified can do, and
