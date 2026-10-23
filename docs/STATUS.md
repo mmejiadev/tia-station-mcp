@@ -5,6 +5,19 @@
 
 ## ▶ RESUME HERE
 
+### Classic HMI events — 2026-10-23, branch `work/hmi-classic-events`
+
+`GenerateHmiScreen` gains the `release` event and the `setBit` and `resetBit` functions, written as a
+button of the class project 0967-HMI_PROCÉS has them (SetBit on press, ResetBit on release, one `Tag`
+parameter); the events match that export element for element (`HmiScreenGenerationTests`, Spec
+129/129, and the test fails when the mapping is broken). `HMI-COVERAGE` rows E1 and E2 had claimed
+release, SetBit and ResetBit before they existed; corrected. Everything here is from V20 exports and
+is to be confirmed on V21 (the user's virtual machine).
+
+Tests 2026-10-23: Spec 133/133, Governance 363/363, `Test40Hmi` 23/23 (the jog button imports and compiles with only the known start-screen error and no warning). `/code-review high`: ten findings; fixed — `setBitWhilePressed` refused on release and click (an unmeasured pairing), error-case tests, warnings asserted, one compile-error helper in `Test40`, named constants, docs; left — `Test40Hmi` is over 300 lines (it was before this branch; to split), the tool description is still a hand-written list, and SetBit's tag type is checked only by the compile.
+
+**Next:** the user's commit; then Unified events (probe of 2026-10-23: event scripts are JavaScript, one per event, `SyntaxCheck()` is the only check — the setter takes broken code).
+
 ### HMI connections, PC compile and Unified tags — 2026-10-22, branch `work/hmi-connections`
 
 Measured with throw-away probes (outside the repository) and on a copy of a class project:

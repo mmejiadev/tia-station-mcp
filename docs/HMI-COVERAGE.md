@@ -138,8 +138,8 @@ Every type below exists in `Siemens.Engineering.HmiUnified.UI`.
 
 | # | Capability | Classic | Unified | Done when |
 |---|---|---|---|---|
-| E1 | Button events: press, release, click, change, activate, deactivate | Built (press, release, click, change) | Open (`UI.Events`, 85 types) | Each fires in simulation |
-| E2 | Bit functions: `SetBit`, `ResetBit`, `InvertBit`, `SetBitWhileKeyPressed` | Built (all but `InvertBit`) | Open (script equivalents) | The PLC bit changes in PLCSIM |
+| E1 | Button events: press, release, click, change, activate, deactivate | Built: press, click (buttons) and change (symbolic field) measured in TIA; release added 2026-10-23 from a class export (Spec matches it; compile in `Test40` to run). Activate and deactivate open. Exports of V20; to confirm on V21 | Open (`UI.Events`, 85 types) | Each fires in simulation |
+| E2 | Bit functions: `SetBit`, `ResetBit`, `InvertBit`, `SetBitWhileKeyPressed` | `SetBitWhileKeyPressed` measured; `SetBit` and `ResetBit` added 2026-10-23 from the export of a class button (press/release jog, `Build_ButtonSetBitOnPressResetBitOnRelease_MatchesTheExport`), compile in `Test40` to run. `InvertBit` is in no class project: atlas | Open (script equivalents) | The PLC bit changes in PLCSIM |
 | E3 | Value functions: `SetTag`, `IncreaseValue`, `DecreaseValue` | Built (`SetTag`) | Open | The value changes in PLCSIM |
 | E4 | Screen navigation: `ActivateScreen`, by number, previous | Built | Open | Navigation works in simulation |
 | E5 | The rest of the classic system-function list (alarms, recipes, users, logging, language, stop runtime) | Open | — | Each function the documentation lists is generated or refused with a reason |
@@ -154,7 +154,7 @@ Every type below exists in `Siemens.Engineering.HmiUnified.UI`.
 | R1 | Discrete and analog alarms, alarm classes and groups | Open | Open | An alarm raised in PLCSIM appears on the panel |
 | R2 | PLC alarms (`Program_Alarm`, ProDiag) shown on the HMI | Open | Open | Same, from the PLC program |
 | R3 | Tag logging and alarm logging | Open | Open (`HmiLogging`, `LoggingTags`) | A log written in simulation |
-| R4 | Recipes | Open | Open | A recipe record written to the PLC |
+| R4 | Recipes (classic) and parameter sets (Unified) | Open | Measured 2026-10-23 on a class practice: Openness V20 exposes no parameter set types or parameter sets at all, only a parameter control's `ParameterSetTypeFixed`, which the MCP can set. In the V20 engineering editor a parameter set type has its UDT, tag and elements but no parameter sets: they are created in runtime with the control (and exported/imported there); the teacher's V21 shows them in the editor — to check on V21 | A recipe record written to the PLC |
 | R5 | Users, roles and authorisations — **a password never reaches a log, the audit trail or a backup in clear** | Open | Open | A protected button refuses an unauthorised user; a test fails if a password is written anywhere |
 | R6 | Runtime settings: start screen, language, encrypted transfer | Start screen: no setter in Openness V20 (measured 2026-10-22), set by hand | Start screen set by `DrawUnifiedScreen`; the encrypted-transfer password is not exposed by Openness V20 (measured 2026-10-22), set by hand; compile messages measured (U1) | A new device made compilable through the MCP |
 | R7 | Reports (classic) and the audit trail (Unified) | Open | Open | One of each configured |
