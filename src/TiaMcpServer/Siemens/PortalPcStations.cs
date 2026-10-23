@@ -11,7 +11,7 @@ namespace TiaMcpServer.Siemens
     /// </remarks>
     public partial class Portal
     {
-        /// <summary>Adds a PC station with an HMI runtime plugged into it.</summary>
+        /// <summary>Adds a PC station with an HMI runtime and a network card plugged into it.</summary>
         /// <param name="stationName">Name for the station, for example <c>PC-System_1</c>.</param>
         /// <param name="runtimeTypeIdentifier">The runtime, exactly as <see cref="FindCatalogEntries"/> gives it.</param>
         /// <returns>The station's name.</returns>
@@ -24,7 +24,8 @@ namespace TiaMcpServer.Siemens
         /// the catalogue, the slot with <c>CanPlugNew</c> — because a failed plug is the step that once
         /// took TIA Portal down. The runtime's own name is chosen by TIA Portal (<c>HMI_RT_1</c>) and
         /// cannot be changed; the software path to use afterwards is read with
-        /// <see cref="GetSoftwarePaths"/>.
+        /// <see cref="GetSoftwarePaths"/>. The network card, <see cref="PcHmiRuntime.NetworkCard"/>, is
+        /// what lets the station join the PLC's subnet with <see cref="ConnectDeviceToSubnet"/>.
         /// </remarks>
         public string AddPcStation(string stationName, string runtimeTypeIdentifier)
         {
@@ -35,9 +36,10 @@ namespace TiaMcpServer.Siemens
                 RequireNewStation(stationName, runtimeTypeIdentifier);
 
                 var runtime = RequireCatalogued(runtimeTypeIdentifier);
+                var networkCard = RequireNetworkCard();
                 var device = CurrentProject!.Devices.CreateWithItem(PcHmiRuntime.PcStationTypeIdentifier, stationName, stationName);
 
-                PlugRuntimeOrRemoveStation(device, runtime);
+                PlugModulesOrRemoveStation(device, runtime, networkCard);
 
                 return device.Name;
             }
@@ -85,26 +87,48 @@ namespace TiaMcpServer.Siemens
                 $"'{runtimeTypeIdentifier}' is not in this TIA Portal's hardware catalogue; copy a typeIdentifier from FindCatalogEntries");
         }
 
-        private static void PlugRuntimeOrRemoveStation(Device device, string runtime)
+        /// <remarks>
+        /// The card is this server's choice, not the caller's, so its absence from the catalogue is the
+        /// installation's state to report, not a parameter to correct.
+        /// </remarks>
+        private string RequireNetworkCard()
+        {
+            return _portal!.HardwareCatalog.Find(PcHmiRuntime.NetworkCard)
+                .FirstOrDefault(candidate => string.Equals(candidate.TypeIdentifier, PcHmiRuntime.NetworkCard, StringComparison.OrdinalIgnoreCase))?.TypeIdentifier
+                ?? throw new PortalException(
+                    PortalErrorCode.InvalidState,
+                    $"This TIA Portal's hardware catalogue has no '{PcHmiRuntime.NetworkCard}', the network card a PC station is built with; nothing was added");
+        }
+
+        /// <remarks>The runtime first, so it takes slot 1 and the card slot 2, as in the class projects.</remarks>
+        private static void PlugModulesOrRemoveStation(Device device, string runtime, string networkCard)
         {
             try
             {
                 var rack = device.DeviceItems.First(item => item.TypeIdentifier == PcHmiRuntime.PcStationTypeIdentifier);
 
-                // An empty name, and neither a real one nor null (measured 2026-10-20): a name fails
-                // with "The name could not be set", null with "The argument 'name' may not be null".
-                // TIA Portal names the runtime itself.
-                var slot = PlugLocationReader.ReadPlugLocations(rack)
-                    .OrderBy(location => location.PositionNumber)
-                    .FirstOrDefault(location => rack.CanPlugNew(runtime, string.Empty, location.PositionNumber))
-                    ?? throw new PortalException(PortalErrorCode.InvalidState, $"No slot of the PC station's rack accepts '{runtime}'");
-
-                rack.PlugNew(runtime, string.Empty, slot.PositionNumber);
+                PlugUnnamed(rack, runtime);
+                PlugUnnamed(rack, networkCard);
             }
             catch (Exception plugFailure)
             {
                 throw RemoveStationAfter(device, plugFailure);
             }
+        }
+
+        /// <remarks>
+        /// An empty name, and neither a real one nor null (measured 2026-10-20): a name fails with "The
+        /// name could not be set", null with "The argument 'name' may not be null". TIA Portal names the
+        /// module itself — <c>HMI_RT_1</c>, <c>IE general_1</c>.
+        /// </remarks>
+        private static void PlugUnnamed(DeviceItem rack, string typeIdentifier)
+        {
+            var slot = PlugLocationReader.ReadPlugLocations(rack)
+                .OrderBy(location => location.PositionNumber)
+                .FirstOrDefault(location => rack.CanPlugNew(typeIdentifier, string.Empty, location.PositionNumber))
+                ?? throw new PortalException(PortalErrorCode.InvalidState, $"No slot of the PC station's rack accepts '{typeIdentifier}'");
+
+            rack.PlugNew(typeIdentifier, string.Empty, slot.PositionNumber);
         }
 
         /// <remarks>
@@ -122,7 +146,7 @@ namespace TiaMcpServer.Siemens
 
                 return new PortalException(
                     (plugFailure as PortalException)?.Code ?? PortalErrorCode.WriteFailed,
-                    $"Plugging the runtime failed ({plugFailure.Message}). The empty station '{stationName}' was removed, "
+                    $"Plugging the station's modules failed ({plugFailure.Message}). The station '{stationName}' was removed, "
                     + "so nothing was added.",
                     null,
                     plugFailure);
@@ -131,7 +155,7 @@ namespace TiaMcpServer.Siemens
             {
                 return new PortalException(
                     PortalErrorCode.WriteFailed,
-                    $"Plugging the runtime failed ({plugFailure.Message}), and removing the empty station '{stationName}' failed too "
+                    $"Plugging the station's modules failed ({plugFailure.Message}), and removing the station '{stationName}' failed too "
                     + $"({deleteFailure.Message}). Delete '{stationName}' in TIA Portal before trying again.",
                     null,
                     new AggregateException(plugFailure, deleteFailure));
