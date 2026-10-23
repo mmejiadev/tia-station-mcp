@@ -96,6 +96,32 @@ namespace TiaMcpServer.Spec.Tests
             CollectionAssert.AreEqual(new[] { "0:Hmi.Screen.Circle", "3:Hmi.Screen.Rectangle" }, layers);
         }
 
+        /// <remarks>
+        /// SetBit on press and ResetBit on release, as a button of 0967-HMI_PROCÉS has them: the events are
+        /// compared with that export element for element, the object IDs aside (they number the file).
+        /// </remarks>
+        [TestMethod]
+        public void Build_ButtonSetBitOnPressResetBitOnRelease_MatchesTheExport()
+        {
+            var screen = HmiScreenDescriptionReader.Parse(@"{ ""name"": ""S"", ""number"": 9, ""items"": [
+                { ""type"": ""button"", ""left"": 0, ""top"": 0, ""text"": ""Obrir"", ""events"": [
+                    { ""event"": ""press"", ""function"": ""setBit"", ""tag"": ""DADES_V3_Man_Obrir"" },
+                    { ""event"": ""release"", ""function"": ""resetBit"", ""tag"": ""DADES_V3_Man_Obrir"" } ] } ] }");
+
+            var built = XDocument.Parse(HmiScreenDocument.Build(screen)).Descendants("Hmi.Screen.Button").Single().Elements("ObjectList").Elements("Hmi.Event.Event");
+            var exported = XDocument.Parse(Asset("button-setbit-events.xml")).Root!.Elements("Hmi.Event.Event");
+
+            Assert.AreEqual(string.Concat(exported.Select(WithoutIds)), string.Concat(built.Select(WithoutIds)));
+        }
+
+        private static string WithoutIds(XElement element)
+        {
+            var copy = new XElement(element);
+            copy.DescendantsAndSelf().Attributes("ID").Remove();
+
+            return copy.ToString(SaveOptions.DisableFormatting);
+        }
+
         [TestMethod]
         public void Build_HorizontalLine_HasHeightZero()
         {

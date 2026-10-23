@@ -300,11 +300,8 @@ namespace TiaMcpServer.Test
 
             var report = AssemblyHooks.SharedPortal.CompileSoftware(_hmiPath);
 
-            var described = string.Join("\n", report.Messages.Select(message => $"[{message.Severity}] {message.Path} — {message.Description}"));
-            var errors = report.Messages
-                .Where(message => message.Severity == CompilationSeverity.Error && message.Description.Length > 0 && !message.Description.StartsWith("Compiling aborted", System.StringComparison.Ordinal))
-                .Select(message => message.Description)
-                .ToArray();
+            var (errors, described) = ErrorsBesidesAborted(report);
+
             CollectionAssert.AreEqual(OnlyTheStartScreenMissing, errors, described);
             Assert.AreEqual(0, report.WarningCount, described);
         }
@@ -327,12 +324,28 @@ namespace TiaMcpServer.Test
             AssemblyHooks.SharedPortal.GenerateHmiScreen(_hmiPath, string.Empty, screen, _backupDirectory);
             var report = AssemblyHooks.SharedPortal.CompileSoftware(_hmiPath);
 
-            var described = string.Join("\n", report.Messages.Select(message => $"[{message.Severity}] {message.Path} — {message.Description}"));
-            var errors = report.Messages
-                .Where(message => message.Severity == CompilationSeverity.Error && message.Description.Length > 0 && !message.Description.StartsWith("Compiling aborted", System.StringComparison.Ordinal))
-                .Select(message => message.Description)
-                .ToArray();
+            var (errors, described) = ErrorsBesidesAborted(report);
+
             CollectionAssert.AreEqual(OnlyTheStartScreenMissing, errors, described);
+        }
+
+        /// <remarks>SetBit on press and ResetBit on release, as the class project 0967-HMI_PROCÉS has them.</remarks>
+        [TestMethod]
+        public void GenerateHmiScreen_JogButton_CompilesWithNoErrorButTheMissingStartScreen()
+        {
+            ImportInternalTags();
+            var screen = HmiScreenDescriptionReader.Parse(@"{ ""name"": ""Jog"", ""items"": [
+                { ""type"": ""button"", ""left"": 40, ""top"": 40, ""text"": ""Obrir"", ""events"": [
+                    { ""event"": ""press"", ""function"": ""setBit"", ""tag"": ""TiaMcpBit"" },
+                    { ""event"": ""release"", ""function"": ""resetBit"", ""tag"": ""TiaMcpBit"" } ] } ] }");
+
+            AssemblyHooks.SharedPortal.GenerateHmiScreen(_hmiPath, string.Empty, screen, _backupDirectory);
+            var report = AssemblyHooks.SharedPortal.CompileSoftware(_hmiPath);
+
+            var (errors, described) = ErrorsBesidesAborted(report);
+
+            CollectionAssert.AreEqual(OnlyTheStartScreenMissing, errors, described);
+            Assert.AreEqual(0, report.WarningCount, described);
         }
 
         [TestMethod]
@@ -407,6 +420,19 @@ namespace TiaMcpServer.Test
 
             AssemblyHooks.SharedPortal.CreateTag(
                 Settings.Project1PlcSoftwarePath0, new TagDefinition($"{table.Path}/{name}", "Bool", address), Path.Combine(_testDirectory, "tag-backup"));
+        }
+
+        /// <summary>The compile errors that count, and every message as text for an assertion's message.</summary>
+        /// <remarks>"Compiling aborted" and the empty lines are the summary of the errors, not more of them.</remarks>
+        private static (string[] Errors, string Described) ErrorsBesidesAborted(CompilationReport report)
+        {
+            var described = string.Join("\n", report.Messages.Select(message => $"[{message.Severity}] {message.Path} — {message.Description}"));
+            var errors = report.Messages
+                .Where(message => message.Severity == CompilationSeverity.Error && message.Description.Length > 0 && !message.Description.StartsWith("Compiling aborted", System.StringComparison.Ordinal))
+                .Select(message => message.Description)
+                .ToArray();
+
+            return (errors, described);
         }
 
         private static HmiScreenDescription ControlScreen()

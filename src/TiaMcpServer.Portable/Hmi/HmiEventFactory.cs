@@ -14,15 +14,17 @@ namespace TiaMcpServer.Hmi
     ///   { "event": "click", "function": "setTag", "tag": "Mode", "value": 1 },
     ///   { "event": "click", "function": "activateScreen", "screen": "Manual" } ]
     /// </code>
-    /// Events are <c>press</c> and <c>click</c>, measured on buttons in the class exports, and
-    /// <c>change</c>, measured on a symbolic I/O field.
+    /// Events are <c>press</c>, <c>release</c> and <c>click</c>, measured on buttons in the class
+    /// exports, and <c>change</c>, measured on a symbolic I/O field (exports of TIA Portal V20).
     /// </remarks>
     internal static class HmiEventFactory
     {
         private const string PressEvent = "press";
+        private const string ReleaseEvent = "release";
+        private const string HoldWhilePressed = "setBitWhilePressed";
 
         /// <summary>The events measured on buttons.</summary>
-        public static readonly IReadOnlyCollection<string> ButtonEvents = new[] { PressEvent, "click" };
+        public static readonly IReadOnlyCollection<string> ButtonEvents = new[] { PressEvent, ReleaseEvent, "click" };
 
         /// <summary>The event measured on a symbolic I/O field.</summary>
         public static readonly IReadOnlyCollection<string> FieldEvents = new[] { "change" };
@@ -30,6 +32,7 @@ namespace TiaMcpServer.Hmi
         private static readonly Dictionary<string, string> EventNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             [PressEvent] = "Press",
+            [ReleaseEvent] = "Release",
             ["click"] = "Click",
             ["change"] = "Change"
         };
@@ -37,7 +40,9 @@ namespace TiaMcpServer.Hmi
         private static readonly Dictionary<string, Func<HmiActionDocument, string, HmiFunctionCall>> Functions =
             new Dictionary<string, Func<HmiActionDocument, string, HmiFunctionCall>>(StringComparer.OrdinalIgnoreCase)
             {
-                ["setBitWhilePressed"] = (action, where) => HmiFunctionCall.SetBitWhileKeyPressed(HmiRefusal.RequireText(action.Tag, where, "tag")),
+                [HoldWhilePressed] = (action, where) => HmiFunctionCall.SetBitWhileKeyPressed(HmiRefusal.RequireText(action.Tag, where, "tag")),
+                ["setBit"] = (action, where) => HmiFunctionCall.SetBit(HmiRefusal.RequireText(action.Tag, where, "tag")),
+                ["resetBit"] = (action, where) => HmiFunctionCall.ResetBit(HmiRefusal.RequireText(action.Tag, where, "tag")),
                 ["setTag"] = (action, where) => HmiFunctionCall.SetTag(HmiRefusal.RequireText(action.Tag, where, "tag"), action.Value ?? 0),
                 ["activateScreen"] = (action, where) => HmiFunctionCall.ActivateScreen(HmiRefusal.RequireText(action.Screen, where, "screen")),
                 ["activatePreviousScreen"] = (action, where) => HmiFunctionCall.ActivatePreviousScreen(),
@@ -67,7 +72,7 @@ namespace TiaMcpServer.Hmi
         public static List<HmiEventBinding> ReadOptional(HmiScreenItemDocument item, string where, IReadOnlyCollection<string> allowed)
         {
             return ShortForm(item).Concat(item.Events ?? new List<HmiActionDocument>())
-                .Select((action, index) => new { Event = EventName(action, where, allowed), Call = Call(action, $"{where}, function {index + 1}") })
+                .Select((action, index) => new { Event = EventName(action, where, allowed), Call = Call(RequirePairing(action, $"{where}, function {index + 1}"), $"{where}, function {index + 1}") })
                 .GroupBy(entry => entry.Event, StringComparer.Ordinal)
                 .Select(group => new HmiEventBinding(group.Key, group.Select(entry => entry.Call).ToList()))
                 .ToList();
@@ -94,6 +99,20 @@ namespace TiaMcpServer.Hmi
             return allowed.Contains(requested, StringComparer.OrdinalIgnoreCase) && EventNames.TryGetValue(requested, out var name)
                 ? name
                 : throw HmiRefusal.Refuse(where, $"'event' must be one of: {string.Join(", ", allowed)} for this kind of item");
+        }
+
+        /// <remarks>
+        /// SetBitWhileKeyPressed holds the bit while the key is down, so it belongs on press, the only
+        /// event the class exports pair it with; on release or click it would mean nothing, and an
+        /// unmeasured pairing TIA Portal refused at import could end the session.
+        /// </remarks>
+        private static HmiActionDocument RequirePairing(HmiActionDocument action, string where)
+        {
+            var isHold = HoldWhilePressed.Equals((action.Function ?? string.Empty).Trim(), StringComparison.OrdinalIgnoreCase);
+
+            return !isHold || PressEvent.Equals((action.Event ?? PressEvent).Trim(), StringComparison.OrdinalIgnoreCase)
+                ? action
+                : throw HmiRefusal.Refuse(where, $"'{HoldWhilePressed}' runs only on press; for release use 'resetBit', or 'setBit' on press with 'resetBit' on release");
         }
 
         /// <summary>Whether a description gives an item events at all, in either form.</summary>
