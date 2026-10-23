@@ -29,6 +29,16 @@ namespace TiaMcpServer.Siemens
         /// <summary>WinCC RT Advanced V17, measured 2026-10-20.</summary>
         public const string RuntimeAdvanced = "OrderNumber:6AV2 104-0xxxx-xxxx/17.0.0.0";
 
+        /// <summary>The network card a PC station is built with: "IE general", firmware V8.2.</summary>
+        /// <remarks>
+        /// A PC station's rack holds no interface of its own, so without a card it cannot join a subnet
+        /// (measured 2026-10-22). The class projects use this one, in slot 2 after the runtime, named
+        /// <c>IE general_1</c> (<c>0967_1</c>); plugged with an empty name it gets exactly that name and a
+        /// PROFINET node <c>X1</c> whose address starts at 192.168.0.1 — the S7-1200's default too, so the
+        /// station's address is set once it is on the PLC's subnet.
+        /// </remarks>
+        public const string NetworkCard = "OrderNumber:IE_CP/SW V8.2 ...";
+
         private static readonly string[] MeasuredRuntimes = { UnifiedPc, RuntimeAdvanced };
 
         /// <summary>Refuses a runtime that has not been measured as plugging into a PC station.</summary>
