@@ -38,6 +38,50 @@ namespace TiaMcpServer.UnifiedScreens
             return NotProperties.Contains(name ?? string.Empty);
         }
 
+        /// <summary>The declaration of a property that the object's own type makes, when several types in its hierarchy declare one.</summary>
+        /// <param name="type">The object's type.</param>
+        /// <param name="name">The property's name.</param>
+        /// <returns>The most derived declaration, or null when the type has none.</returns>
+        /// <remarks>
+        /// Openness item types declare <c>EventHandlers</c> again with their own event type, so
+        /// <c>GetProperty(name)</c> throws an ambiguous match, and the hidden getter of a base type fails on
+        /// the derived object (<c>HmiCircle.EventHandlers</c> on an <c>HmiCircleSegment</c>, measured
+        /// 2026-10-21). The one declaration to read is the most derived.
+        /// </remarks>
+        public static System.Reflection.PropertyInfo? MostDerived(Type type, string name)
+        {
+            if (type == null)
+            {
+                throw new ArgumentNullException(nameof(type));
+            }
+
+            System.Reflection.PropertyInfo? found = null;
+            var foundDepth = -1;
+
+            foreach (var property in type.GetProperties())
+            {
+                var depth = Depth(property.DeclaringType);
+                if (property.Name == name && property.GetIndexParameters().Length == 0 && depth > foundDepth)
+                {
+                    found = property;
+                    foundDepth = depth;
+                }
+            }
+
+            return found;
+        }
+
+        private static int Depth(Type? type)
+        {
+            var depth = 0;
+            for (var current = type; current != null; current = current.BaseType)
+            {
+                depth++;
+            }
+
+            return depth;
+        }
+
         /// <summary>Whether a property's type is a part, walked into rather than set as a value.</summary>
         /// <param name="type">The property's type.</param>
         /// <returns>True for a part; false for a value or a list of parts.</returns>

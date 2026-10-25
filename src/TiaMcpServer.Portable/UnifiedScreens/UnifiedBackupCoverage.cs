@@ -17,13 +17,19 @@ namespace TiaMcpServer.UnifiedScreens
     {
         private const string TagLink = "TagDynamization";
 
-        private static readonly string[] EventCollections = { "EventHandlers", "PropertyEventHandlers" };
+        private const string EventHandlers = "EventHandlers";
+
+        private const string PropertyEventHandlers = "PropertyEventHandlers";
 
         /// <summary>Lists what an object and its parts hold that the backup would lose.</summary>
         /// <param name="owner">The screen, an item, or one of their parts.</param>
         /// <param name="where">How a reason names the object, e.g. <c>'Tank'</c>.</param>
+        /// <param name="eventsKept">
+        /// True for an item: its event scripts are read into the backup since 2026-10-23 and drawn back.
+        /// Property events, and a screen's own events, are not, and still count as lost.
+        /// </param>
         /// <returns>One reason per thing lost; empty when the backup keeps everything.</returns>
-        public static IReadOnlyList<string> Lost(object owner, string where)
+        public static IReadOnlyList<string> Lost(object owner, string where, bool eventsKept = false)
         {
             if (owner == null)
             {
@@ -31,16 +37,22 @@ namespace TiaMcpServer.UnifiedScreens
             }
 
             var lost = new List<string>();
-            AddLost(owner, where, lost, 0);
+            AddLost(owner, where, lost, eventsKept, 0);
 
             return lost;
         }
 
-        private static void AddLost(object owner, string where, List<string> lost, int depth)
+        /// <remarks>
+        /// Only the item's own events are read into the backup, so <paramref name="eventsKept"/> applies
+        /// at the top level; a part's events, should one have any, still count as lost.
+        /// </remarks>
+        private static void AddLost(object owner, string where, List<string> lost, bool eventsKept, int depth)
         {
-            if (EventCollections.Any(name => Entries(owner, name).Any()))
+            var collections = eventsKept && depth == 0 ? new[] { PropertyEventHandlers } : new[] { EventHandlers, PropertyEventHandlers };
+
+            foreach (var collection in collections.Where(name => Entries(owner, name).Any()))
             {
-                lost.Add($"{where} has events or scripts");
+                lost.Add($"{where} has {collection} its backup does not keep");
             }
 
             if (Entries(owner, "Dynamizations").Any(dynamization => dynamization.GetType().Name != TagLink))
@@ -58,38 +70,17 @@ namespace TiaMcpServer.UnifiedScreens
             {
                 if (part.GetValue(owner) is object value)
                 {
-                    AddLost(value, $"{where}.{part.Name}", lost, depth + 1);
+                    AddLost(value, $"{where}.{part.Name}", lost, eventsKept, depth + 1);
                 }
             }
         }
 
-        /// <remarks>
-        /// Not <c>GetProperty(name)</c>: Openness item types declare <c>EventHandlers</c> again with their
-        /// own event type, so reflection sees several properties of that name and the lookup throws an
-        /// <see cref="System.Reflection.AmbiguousMatchException"/>. Nor every one of them: the hidden
-        /// getter of a base type fails on the derived object — <c>HmiCircle.EventHandlers</c> read on an
-        /// <c>HmiCircleSegment</c> cannot cast its composition (both measured 2026-10-21). The declaration
-        /// of the most derived type is the one read.
-        /// </remarks>
+        /// <remarks>The most derived declaration only: see <see cref="UnifiedPropertyTree.MostDerived"/>.</remarks>
         private static IEnumerable<object> Entries(object owner, string collection)
         {
-            var property = owner.GetType().GetProperties()
-                .Where(candidate => candidate.Name == collection && candidate.GetIndexParameters().Length == 0)
-                .OrderByDescending(candidate => InheritanceDepth(candidate.DeclaringType))
-                .FirstOrDefault();
-
-            return property?.GetValue(owner) is IEnumerable entries ? entries.Cast<object>() : Enumerable.Empty<object>();
-        }
-
-        private static int InheritanceDepth(Type? type)
-        {
-            var depth = 0;
-            for (var current = type; current != null; current = current.BaseType)
-            {
-                depth++;
-            }
-
-            return depth;
+            return UnifiedPropertyTree.MostDerived(owner.GetType(), collection)?.GetValue(owner) is IEnumerable entries
+                ? entries.Cast<object>()
+                : Enumerable.Empty<object>();
         }
     }
 }
