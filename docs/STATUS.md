@@ -5,6 +5,52 @@
 
 ## ▶ RESUME HERE
 
+### Unified tag settings, arrays, groups and system tags — 2026-10-25, branch `work/unified-tags-complete`
+
+`CreateUnifiedTags` takes per tag a comment, a start value, retention, a WString's length, limits
+(constant or held by another tag), and for a linked tag its acquisition, linear scaling and substitute
+value; internal arrays (`Array [0..n] of T`); and new tables as `Group/Subgroup/Table` paths, creating
+the missing groups. `GetUnifiedTags` reads all of it back in the same shape, plus `tableGroups` and the
+HMI's `systemTags`. HMI-COVERAGE rows T4–T9.
+
+Measured on V20 by six probes (outside the repository), the linked half on a copy of the 0968 final
+project, the one class project at hand with an integrated connection (Openness cannot create one, so
+no test project has it). **Thresholds cannot be created** ("New thresholds are not supported", internal
+and linked). **An acquisition cycle is a named object**: Openness takes any name and only `T100ms`,
+`T250ms`, `T500ms`, `T1s`, `T2s`, `T5s`, `T10s` compile, of 24 tried; cyclic continuous compiles as
+invalid on an S7-1200 connection, so only cyclic on use and on demand (no cycle) are offered.
+Acquisition, scaling and the substitute value are disabled fields on an internal tag, retention on a
+linked one, limits on Bool and text tags. Openness takes, and only the compile refuses: crossed limits,
+a value outside the type, `true` for a Bool (0 or 1 only), `1,5` for a Real, a limit tag that does not
+exist or is of another data type, a flat scaling range, a cycle that does not exist. Each is refused by
+the tool before anything is written (the limit tag's type once every tag exists, since TIA Portal fills
+in a linked tag's type; a mismatch undoes the call). Table names are unique on the whole HMI, groups or
+not; deleting a group deletes its tables and tags; a user tag named like a system tag is created
+without a word, so the tool refuses it. Internal arrays are one-dimensional from 0; PLC arrays, UDTs,
+one element and one member link by `plcTag` path.
+
+`/code-review high`: ten findings, nine fixed — a tag whose table path was not the table's own landed
+in the default table without a word (a table is now found by its name, unique on the HMI, and a path
+written with it must match); an array bound too long or in non-ASCII digits threw a raw exception; a
+failing delete of a half-made tag replaced the refusal and went unnamed; a WString start value that
+looked numeric read back as a number and an LReal limit beyond a decimal as a tag name (values now read
+back by the tag's type); LInt and ULInt limits compared as doubles; a default acquisition was written for
+every linked tag; scaling was not refused on a linked non-numeric tag; the read tool promised a shape
+`tagType` and thresholds are not part of; the limit-tag walk was written twice. The tenth, STATUS not
+updated, was this entry, written while the review ran.
+
+Tests: Governance 518/518; `Test50UnifiedTagSettings` 13/13 against TIA Portal V20 (settings read back,
+Real/Bool/text values, an array, compiled with only the known messages, nested groups and their undo, a
+group reused, a table path that is not the table's, a table name taken in another group, system tags
+read and their names refused, a missing limit tag, a limit tag of another type); `Test16`, `Test45`,
+`Test48` unchanged, 73/73 together. The linked half verified through the MCP over stdio on the 0968
+copy, never saved: six linked tags with every setting read back, five refusals (a substitute that does
+not fit, crossed limits, limits on a UDT, a limit tag of another type, scaling on a Bool), and the
+station compiled 0/0. To confirm on V21.
+
+**Next:** the user's commit; then Unified alarms (rows R1, R2), then a checker for Unified scripts (the
+four defects found in the 0968 final project), then working with TIA Portal open (A4).
+
 ### Unified process displays — 2026-10-25, branch `work/unified-consolidation`
 
 No new drawing code: HMI-COVERAGE rows A3 (horizontal and vertical movement: `Left`/`Top` linked),

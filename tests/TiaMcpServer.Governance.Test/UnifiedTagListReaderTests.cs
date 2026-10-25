@@ -1,4 +1,5 @@
-﻿using TiaMcpServer.Siemens;
+﻿using System.Linq;
+using TiaMcpServer.Siemens;
 using TiaMcpServer.UnifiedTags;
 
 namespace TiaMcpServer.Governance.Tests
@@ -10,6 +11,10 @@ namespace TiaMcpServer.Governance.Tests
     [TestClass]
     public sealed class UnifiedTagListReaderTests
     {
+        private static readonly string[] NewTablePaths = { "Plant/Area_1/Valves", "Motors" };
+
+        private static readonly string[] ValvesGroups = { "Plant", "Area_1" };
+
         [TestMethod]
         public void Parse_InternalAndLinkedTags_ReadsBoth()
         {
@@ -35,15 +40,28 @@ namespace TiaMcpServer.Governance.Tests
         [DataRow(@"{ ""tags"": [ { ""name"": ""A"", ""plcTag"": ""Start"" } ] }", DisplayName = "PLC tag without a connection")]
         [DataRow(@"{ ""tags"": [ { ""name"": ""A"", ""connection"": ""C"", ""plcTag"": ""Start"", ""dataType"": ""Bool"" } ] }", DisplayName = "linked tag with a data type")]
         [DataRow(@"{ ""tags"": [ { ""name"": ""A"", ""dataType"": ""Int"" }, { ""name"": ""a"", ""dataType"": ""Int"" } ] }", DisplayName = "name repeated in another case")]
-        [DataRow(@"{ ""tags"": [ { ""name"": ""A"", ""dataType"": ""Int"", ""comment"": ""x"" } ] }", DisplayName = "a field the tool does not set")]
+        [DataRow(@"{ ""tags"": [ { ""name"": ""A"", ""dataType"": ""Int"", ""colour"": ""x"" } ] }", DisplayName = "a field the tool does not set")]
         [DataRow(@"{ ""tables"": [ ""Motors"" ], ""tags"": [ { ""name"": ""A"", ""dataType"": ""Int"" } ] }", DisplayName = "a list field the tool does not know")]
         [DataRow(@"{ ""tags"": [ { ""name"": 5, ""dataType"": ""Int"" } ] }", DisplayName = "name that is not a string")]
         [DataRow(@"not json", DisplayName = "not JSON")]
+        [DataRow(@"{ ""newTables"": [ ""Plant//Valves"" ], ""tags"": [ { ""name"": ""A"", ""dataType"": ""Int"" } ] }", DisplayName = "a table path with an empty group")]
+        [DataRow(@"{ ""newTables"": [ ""Plant/Valves"", ""Area/valves"" ], ""tags"": [ { ""name"": ""A"", ""dataType"": ""Int"" } ] }", DisplayName = "two new tables of one name in different groups")]
         public void Parse_IncompleteOrUnknown_ThrowsInvalidParams(string json)
         {
             var failure = Assert.ThrowsException<PortalException>(() => UnifiedTagListReader.Parse(json));
 
             Assert.AreEqual(PortalErrorCode.InvalidParams, failure.Code);
+        }
+
+        [TestMethod]
+        public void Parse_TablePaths_KeepTheirGroups()
+        {
+            var list = UnifiedTagListReader.Parse(@"{ ""newTables"": [ "" Plant / Area_1 / Valves "", ""Motors"" ], ""tags"": [ { ""name"": ""A"", ""table"": ""Valves"", ""dataType"": ""Int"" } ] }");
+
+            CollectionAssert.AreEqual(NewTablePaths, list.NewTables.ToArray());
+            Assert.AreEqual("Valves", UnifiedTagListReader.TableName(list.NewTables[0]));
+            CollectionAssert.AreEqual(ValvesGroups, UnifiedTagListReader.GroupsOf(list.NewTables[0]).ToArray());
+            Assert.AreEqual(0, UnifiedTagListReader.GroupsOf(list.NewTables[1]).Count);
         }
 
         [TestMethod]
