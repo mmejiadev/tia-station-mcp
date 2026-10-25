@@ -10,18 +10,24 @@ namespace TiaMcpServer.UnifiedTags
     /// <remarks>
     /// The shape:
     /// <code>
-    /// { "newTables": [ "Motors" ],
+    /// { "newTables": [ "Motors", "Plant/Area_1/Valves" ],
     ///   "tags": [
-    ///     { "name": "Speed_SP", "table": "Motors", "dataType": "Int" },
+    ///     { "name": "Speed_SP", "table": "Motors", "dataType": "Int", "limits": { "lower": 0, "upper": 1500 } },
+    ///     { "name": "Levels", "dataType": "Array [0..3] of Real" },
     ///     { "name": "Motor_Run", "connection": "HMI_Connection_1", "plcTag": "Motor_Run" } ] }
     /// </code>
     /// A tag is internal, with a <c>dataType</c>, or linked, with a <c>connection</c> and a
     /// <c>plcTag</c>; never both, because a linked tag takes its type from the PLC tag (measured
-    /// 2026-10-22: TIA Portal fills it in). A field nobody reads is refused rather than ignored.
+    /// 2026-10-22: TIA Portal fills it in). Its settings are read by <see cref="UnifiedTagSettingsReader"/>.
+    /// A new table is a name or a path of groups ending in the table's name; the groups are created when
+    /// missing. Table names are unique on the whole HMI, groups or not (measured 2026-10-25), so a table is
+    /// found by its name alone. A field nobody reads is refused rather than ignored.
     /// </remarks>
     public static class UnifiedTagListReader
     {
-        private static readonly HashSet<string> TagFields = new HashSet<string>(StringComparer.Ordinal) { "name", "table", "dataType", "connection", "plcTag" };
+        private const char GroupSeparator = '/';
+
+        private static readonly HashSet<string> TagFields = new HashSet<string>(new[] { "name", "table", "dataType", "connection", "plcTag" }.Concat(UnifiedTagSettingsReader.Fields), StringComparer.Ordinal);
 
         private static readonly HashSet<string> ListFields = new HashSet<string>(StringComparer.Ordinal) { "newTables", "tags" };
 
@@ -38,13 +44,31 @@ namespace TiaMcpServer.UnifiedTags
         public static UnifiedTagList Parse(string json)
         {
             using var document = ParseDocument(json);
-            var root = RequireObject(document.RootElement, "The tag list");
-            RequireKnownFields(root, ListFields, "The tag list");
+            var root = UnifiedTagJson.RequireObject(document.RootElement, "The tag list");
+            UnifiedTagJson.RequireKnownFields(root, ListFields, "The tag list");
 
-            var newTables = ReadNames(root, "newTables");
+            var newTables = ReadTablePaths(root);
             var tags = ReadTags(root);
 
             return new UnifiedTagList(newTables, tags);
+        }
+
+        /// <summary>The name of the table a path ends in.</summary>
+        /// <param name="path">A table's name, or its path of groups, e.g. <c>Plant/Area_1/Valves</c>.</param>
+        /// <returns>The table's name, e.g. <c>Valves</c>.</returns>
+        public static string TableName(string path)
+        {
+            return (path ?? throw new ArgumentNullException(nameof(path))).Split(GroupSeparator).Last();
+        }
+
+        /// <summary>The groups a table path goes through, outermost first.</summary>
+        /// <param name="path">A table's path, e.g. <c>Plant/Area_1/Valves</c>.</param>
+        /// <returns>The group names, e.g. <c>Plant</c> and <c>Area_1</c>; empty for a table outside any group.</returns>
+        public static IReadOnlyList<string> GroupsOf(string path)
+        {
+            var parts = (path ?? throw new ArgumentNullException(nameof(path))).Split(GroupSeparator);
+
+            return parts.Take(parts.Length - 1).ToList();
         }
 
         private static JsonDocument ParseDocument(string json)
@@ -77,10 +101,10 @@ namespace TiaMcpServer.UnifiedTags
 
         private static UnifiedTagDescription ReadTag(JsonElement element, int position)
         {
-            var tag = RequireObject(element, $"Tag {position}");
-            var name = OptionalString(tag, "name");
+            var tag = UnifiedTagJson.RequireObject(element, $"Tag {position}");
+            var name = UnifiedTagJson.OptionalString(tag, "name");
             var what = string.IsNullOrWhiteSpace(name) ? $"Tag {position}" : $"Tag '{name}'";
-            RequireKnownFields(tag, TagFields, what);
+            UnifiedTagJson.RequireKnownFields(tag, TagFields, what);
 
             if (string.IsNullOrWhiteSpace(name))
             {
@@ -88,24 +112,31 @@ namespace TiaMcpServer.UnifiedTags
             }
 
             // An empty table means the default one, as leaving the field out does.
-            var table = string.IsNullOrWhiteSpace(OptionalString(tag, "table")) ? null : OptionalString(tag, "table")!.Trim();
+            var table = string.IsNullOrWhiteSpace(UnifiedTagJson.OptionalString(tag, "table")) ? null : UnifiedTagJson.OptionalString(tag, "table")!.Trim();
+            var source = ReadSource(tag, what);
+
+            return new UnifiedTagDescription(name!.Trim(), table, source, UnifiedTagSettingsReader.Read(tag, source, what));
+        }
+
+        private static UnifiedTagSource ReadSource(JsonElement tag, string what)
+        {
             var link = ReadLink(tag, what);
-            var dataType = OptionalString(tag, "dataType");
+            var dataType = UnifiedTagJson.OptionalString(tag, "dataType");
 
             if (link != null)
             {
                 return dataType == null
-                    ? new UnifiedTagDescription(name!.Trim(), table, null, link)
+                    ? UnifiedTagSource.Linked(link)
                     : throw new PortalException(PortalErrorCode.InvalidParams, $"{what} is linked to a PLC tag and takes its data type from it; leave 'dataType' out");
             }
 
-            return new UnifiedTagDescription(name!.Trim(), table, UnifiedTagDataTypes.Normalise(dataType, what), null);
+            return UnifiedTagSource.Internal(UnifiedTagDataTypes.NormaliseInternal(dataType, what));
         }
 
         private static UnifiedTagLink? ReadLink(JsonElement tag, string what)
         {
-            var connection = OptionalString(tag, "connection")?.Trim();
-            var plcTag = OptionalString(tag, "plcTag")?.Trim();
+            var connection = UnifiedTagJson.OptionalString(tag, "connection")?.Trim();
+            var plcTag = UnifiedTagJson.OptionalString(tag, "plcTag")?.Trim();
 
             if (string.IsNullOrEmpty(connection) && string.IsNullOrEmpty(plcTag))
             {
@@ -117,48 +148,33 @@ namespace TiaMcpServer.UnifiedTags
                 : throw new PortalException(PortalErrorCode.InvalidParams, $"{what}: a linked tag needs both 'connection' and 'plcTag'; an internal one needs neither, and a 'dataType'");
         }
 
-        private static List<string> ReadNames(JsonElement root, string field)
+        private static List<string> ReadTablePaths(JsonElement root)
         {
-            if (!root.TryGetProperty(field, out var names) || names.ValueKind == JsonValueKind.Null)
+            if (!root.TryGetProperty("newTables", out var names) || names.ValueKind == JsonValueKind.Null)
             {
                 return new List<string>();
             }
 
             if (names.ValueKind != JsonValueKind.Array || names.EnumerateArray().Any(name => name.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(name.GetString())))
             {
-                throw new PortalException(PortalErrorCode.InvalidParams, $"'{field}' must be a list of names");
+                throw new PortalException(PortalErrorCode.InvalidParams, "'newTables' must be a list of names");
             }
 
-            return names.EnumerateArray().Select(name => name.GetString()!.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            var paths = names.EnumerateArray().Select(name => NormalisePath(name.GetString()!)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            var repeated = paths.GroupBy(TableName, StringComparer.OrdinalIgnoreCase).Where(group => group.Count() > 1).Select(group => group.Key).ToList();
+
+            return repeated.Count == 0
+                ? paths
+                : throw new PortalException(PortalErrorCode.InvalidParams, $"Table names are unique on the whole HMI, groups or not; repeated: {string.Join(", ", repeated)}");
         }
 
-        private static void RequireKnownFields(JsonElement owner, HashSet<string> known, string what)
+        private static string NormalisePath(string path)
         {
-            var unknown = owner.EnumerateObject().Select(property => property.Name).Where(name => !known.Contains(name)).ToList();
+            var parts = path.Split(GroupSeparator).Select(part => part.Trim()).ToList();
 
-            if (unknown.Count > 0)
-            {
-                throw new PortalException(PortalErrorCode.InvalidParams, $"{what} has fields this tool does not set: {string.Join(", ", unknown)}. It takes: {string.Join(", ", known)}");
-            }
-        }
-
-        private static JsonElement RequireObject(JsonElement element, string what)
-        {
-            return element.ValueKind == JsonValueKind.Object
-                ? element
-                : throw new PortalException(PortalErrorCode.InvalidParams, $"{what} must be a JSON object");
-        }
-
-        private static string? OptionalString(JsonElement owner, string field)
-        {
-            if (!owner.TryGetProperty(field, out var value) || value.ValueKind == JsonValueKind.Null)
-            {
-                return null;
-            }
-
-            return value.ValueKind == JsonValueKind.String
-                ? value.GetString()
-                : throw new PortalException(PortalErrorCode.InvalidParams, $"'{field}' must be a string; got {value.GetRawText()}");
+            return parts.Any(part => part.Length == 0)
+                ? throw new PortalException(PortalErrorCode.InvalidParams, $"'{path}' has an empty group or table name; write it as 'Group/Table'")
+                : string.Join(GroupSeparator.ToString(), parts);
         }
     }
 }
