@@ -31,14 +31,14 @@ namespace TiaMcpServer.Governance.Tests
         }
 
         [TestMethod]
-        public void Lost_ItemWithAScript_IsNamed()
+        public void Lost_ItemWithAResourceList_IsNamedWithItsProperty()
         {
-            var item = new FakeItem(new List<object>(), new List<object> { new TagDynamization(), new ScriptDynamization() });
+            var item = new FakeItem(new List<object>(), new List<object> { new TagDynamization(), new ResourceListDynamization() });
 
             var lost = UnifiedBackupCoverage.Lost(item, "'Level'");
 
             Assert.AreEqual(1, lost.Count);
-            StringAssert.Contains(lost[0], "not a tag link", StringComparison.Ordinal);
+            StringAssert.Contains(lost[0], "'Level' has a ResourceListDynamization on Text", StringComparison.Ordinal);
         }
 
         [TestMethod]
@@ -98,8 +98,9 @@ namespace TiaMcpServer.Governance.Tests
             public List<object> EventHandlers { get; } = new List<object>();
         }
 
-        private sealed class ScriptDynamization
+        private sealed class ResourceListDynamization
         {
+            public string PropertyName { get; } = "Text";
         }
 
         private sealed class FakeItem

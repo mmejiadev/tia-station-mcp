@@ -5,6 +5,41 @@
 
 ## ▶ RESUME HERE
 
+### Unified animations — 2026-10-25, branch `work/unified-animations`
+
+`DrawUnifiedScreen` gives items `animations`, one per property: a **range table** on a tag (a value
+per closed range of whole numbers — the pilot light red on 0 and green on 1, `Visible` false/true — and
+a colour range may flash with a rate and an alternate colour), a **flashing** colour tied to no tag,
+and a **script** returning the value on a trigger (automatic, a named cycle, or a tag list). HMI-COVERAGE
+rows A1, A2, A5 and the script part of A8.
+
+Measured on V20 by three probes (outside the repository): a range bound takes only a 16, 32 or 64-bit
+integer, on every tag type including Real, and never null; TIA takes reversed and overlapping ranges
+without a word (refused here); a property holds one dynamization and creating a second replaces the
+first silently (a property both in `tags` and `animations`, or animated twice, is refused); `Text` and
+`Alignment` refuse a dynamization, which only TIA knows; flashing is refused on `Visible`; Openness lists
+an item's dynamizations in an order of its own, so the reader sorts them by path. **Creating a
+`MappingTableEntrySimple` — in a range or an expression table — ended the TIA Portal session**, the
+second such trap after `GetAttributeInfos()` on an `HmiTag`; the code never creates one.
+
+Because only TIA knows some refusals, every animation and event script is now **rehearsed on a
+throw-away screen** (`UnifiedRehearsal`) before the real one is touched; the screen is deleted again
+and the tests check it is gone. Fixed on the way: the backup read a tag link with a range table as a
+plain link, so a redraw lost the table without a word. The backup now keeps range tables, flashing and
+scripts; anything else (single-bit, bitmask and expression tables, formulas, indirect addressing,
+resource lists, unlisted triggers, a screen's own dynamizations) refuses a redraw, and so does a backup
+that the description reader or the item checks would refuse when drawn back.
+
+`/code-review high`: ten findings, nine fixed (backup checked by drawing it through the reader, an
+allow-list of triggers, whole-number bounds only, the property's own name given to Openness, the
+screen-group check before the rehearsal, screen dynamizations refused, a non-text `rate` refused, one
+resolution and named constants, this entry); left — the item's parts are walked three times during a
+redraw's checks (a cost, not a fault). Tests: Governance 435/435; `Test44`–`Test47` 30/30 against TIA
+Portal V20, `Test47UnifiedAnimations` compiling every kind. To confirm on V21.
+
+**Next:** the user's commit; then row T (thresholds, tag groups, system tags), movement (A3) and
+rotation (A4), and the classic atlas.
+
 ### Unified events — 2026-10-23, branch `work/unified-events`
 
 `DrawUnifiedScreen` gives items JavaScript events: named functions (`setBit`, `resetBit`, `setTag`,

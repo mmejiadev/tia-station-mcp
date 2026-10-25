@@ -10,7 +10,7 @@ using TiaMcpServer.UnifiedScreens;
 
 namespace TiaMcpServer.Siemens
 {
-    /// <summary>Draws one WinCC Unified screen item: creates it, sets its properties, its points and its tag links.</summary>
+    /// <summary>Draws one WinCC Unified screen item: creates it, sets its properties, its points, its tag links, its events and its animations.</summary>
     /// <remarks>
     /// Openness creates an item with a generic method, <c>ScreenItems.Create&lt;T&gt;(name)</c>, and the
     /// type comes from the description, so the method is closed over it by reflection. That is what lets
@@ -19,7 +19,8 @@ namespace TiaMcpServer.Siemens
     internal sealed class UnifiedScreenItemWriter
     {
         private const string PointsProperty = "Points";
-        private const string DynamizationsProperty = "Dynamizations";
+        /// <summary>The collection of an item, or of one of its parts, that holds its tag links and animations.</summary>
+        internal const string DynamizationsProperty = "Dynamizations";
 
         private static readonly MethodInfo CreateItem = typeof(HmiScreenItemBaseComposition).GetMethods()
             .Single(method => method.Name == "Create" && method.IsGenericMethodDefinition && method.GetParameters().Length == 1);
@@ -57,23 +58,32 @@ namespace TiaMcpServer.Siemens
             {
                 UnifiedEventWriter.Check(type, script, item.Name);
             }
+
+            foreach (var animation in item.Animations)
+            {
+                UnifiedAnimationWriter.Check(type, animation, item.Name);
+            }
         }
 
+        /// <summary>Refuses a property whose owner takes no dynamizations, so it can be neither linked nor animated.</summary>
+        /// <param name="type">The item's Openness type.</param>
+        /// <param name="path">The property's path.</param>
+        /// <returns>The property, as its owner declares it.</returns>
+        /// <exception cref="PortalException"><see cref="PortalErrorCode.InvalidParams"/> naming the owner.</exception>
         /// <remarks>
         /// A link is made on the object that holds the property, through its <c>Dynamizations</c>; a part
         /// without them (a font) is refused here, before the screen's items are deleted, not while drawing.
         /// </remarks>
-        private static void RequireLinkable(Type type, string path)
+        public static PropertyInfo RequireLinkable(Type type, string path)
         {
             var property = UnifiedPropertyWriter.ResolveOnType(type, path.Split('.'), path);
             var owner = property.ReflectedType!;
 
-            if (owner.GetProperty(DynamizationsProperty) == null)
-            {
-                throw new PortalException(
+            return owner.GetProperty(DynamizationsProperty) != null
+                ? property
+                : throw new PortalException(
                     PortalErrorCode.InvalidParams,
                     $"'{path}' cannot be linked to a tag: {owner.Name} takes no links; link a property of the item itself");
-            }
         }
 
         /// <summary>Draws an item on a screen.</summary>
@@ -81,7 +91,7 @@ namespace TiaMcpServer.Siemens
         /// <param name="item">The item, already passed through <see cref="Check"/>.</param>
         public void Draw(HmiScreen screen, UnifiedItemDescription item)
         {
-            var created = Invoke(CreateItem.MakeGenericMethod(ResolveType(item.TypeName)), screen.ScreenItems, item.Name);
+            var created = Create(screen, item.TypeName, item.Name);
 
             foreach (var setting in item.Properties)
             {
@@ -102,6 +112,21 @@ namespace TiaMcpServer.Siemens
             {
                 UnifiedEventWriter.Write(created, script, item.Name);
             }
+
+            foreach (var animation in item.Animations)
+            {
+                UnifiedAnimationWriter.Write(created, animation, item.Name);
+            }
+        }
+
+        /// <summary>Creates an empty item of a type on a screen.</summary>
+        /// <param name="screen">The screen.</param>
+        /// <param name="typeName">The full Openness type name, from <see cref="UnifiedItemTypes"/>.</param>
+        /// <param name="name">The item's name.</param>
+        /// <returns>The new item.</returns>
+        public static object Create(HmiScreen screen, string typeName, string name)
+        {
+            return Invoke(CreateItem.MakeGenericMethod(ResolveType(typeName)), screen.ScreenItems, name);
         }
 
         /// <summary>The Openness type of an item.</summary>
@@ -141,7 +166,9 @@ namespace TiaMcpServer.Siemens
             var dynamizations = owner.GetType().GetProperty(DynamizationsProperty)?.GetValue(owner) as DynamizationBaseComposition
                 ?? throw new PortalException(PortalErrorCode.InvalidParams, $"'{path}' cannot be linked to a tag");
 
-            var dynamization = (TagDynamization)Invoke(CreateDynamization.MakeGenericMethod(typeof(TagDynamization)), dynamizations, segments.Last());
+            // The property's own spelling: the description's is matched case aside, Openness's name is exact.
+            var name = UnifiedPropertyWriter.ResolveOnType(owner.GetType(), new[] { segments.Last() }, path).Name;
+            var dynamization = (TagDynamization)Invoke(CreateDynamization.MakeGenericMethod(typeof(TagDynamization)), dynamizations, name);
 
             dynamization.Tag = tag;
         }

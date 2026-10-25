@@ -16,7 +16,8 @@ namespace TiaMcpServer.Siemens
     /// <remarks>
     /// A Unified screen has no export in Openness V20 — <c>HmiScreen</c> offers none — so this is the
     /// backup taken before a screen is redrawn, and drawing what it wrote puts the screen back. Only what
-    /// a description can set is read: writable values, texts, parts, points and tag links. A property that
+    /// a description can set is read: writable values, texts, parts, points, tag links, events and
+    /// animations. A property that
     /// throws when read is named under <c>unreadable</c> rather than left out without a word.
     /// </remarks>
     internal sealed class UnifiedScreenReader
@@ -74,16 +75,22 @@ namespace TiaMcpServer.Siemens
                 read["points"] = new JsonArray(points.Select(point => (JsonNode)new JsonArray(point.X, point.Y)).ToArray());
             }
 
-            var tags = new JsonObject();
-            ReadTags(item, string.Empty, tags, 0);
+            var tags = new SortedDictionary<string, string>(StringComparer.Ordinal);
+            var animations = new SortedDictionary<string, JsonObject>(StringComparer.Ordinal);
+            ReadDynamizations(item, string.Empty, (tags, animations), 0);
             if (tags.Count > 0)
             {
-                read["tags"] = tags;
+                read["tags"] = new JsonObject(tags.Select(tag => new KeyValuePair<string, JsonNode?>(tag.Key, tag.Value)));
             }
 
             if (UnifiedEventWriter.Read(item) is JsonArray events)
             {
                 read["events"] = events;
+            }
+
+            if (animations.Count > 0)
+            {
+                read["animations"] = new JsonArray(animations.Values.Cast<JsonNode>().ToArray());
             }
 
             return read;
@@ -135,13 +142,53 @@ namespace TiaMcpServer.Siemens
             return described.HasValue ? JsonValue.Create(described.Value) : null;
         }
 
-        private void ReadTags(object owner, string prefix, JsonObject into, int depth)
+        /// <summary>Every dynamization of an item and of its parts.</summary>
+        /// <param name="owner">The item.</param>
+        /// <returns>The dynamizations, the item's own first.</returns>
+        /// <remarks>A part that throws when read ends the call here, before anything was deleted.</remarks>
+        public static IReadOnlyList<DynamizationBase> Dynamizations(object owner)
         {
-            if (owner.GetType().GetProperty("Dynamizations")?.GetValue(owner) is DynamizationBaseComposition dynamizations)
+            var found = new List<DynamizationBase>();
+            CollectDynamizations(owner, found, 0);
+
+            return found;
+        }
+
+        private static void CollectDynamizations(object owner, List<DynamizationBase> found, int depth)
+        {
+            if (owner.GetType().GetProperty(UnifiedScreenItemWriter.DynamizationsProperty)?.GetValue(owner) is DynamizationBaseComposition dynamizations)
             {
-                foreach (var tag in dynamizations.OfType<TagDynamization>())
+                found.AddRange(dynamizations);
+            }
+
+            if (depth >= UnifiedPropertyTree.MaxPartDepth)
+            {
+                return;
+            }
+
+            foreach (var part in Readable(owner.GetType()).Where(property => UnifiedPropertyTree.IsPart(property.PropertyType)))
+            {
+                if (part.GetValue(owner) is object value)
                 {
-                    into[prefix + tag.PropertyName] = tag.Tag;
+                    CollectDynamizations(value, found, depth + 1);
+                }
+            }
+        }
+
+        /// <remarks>
+        /// A plain tag link is written under <c>tags</c>; a range table, a flashing colour or a script under
+        /// <c>animations</c>. Before 2026-10-25 every tag link went under <c>tags</c>, so a range table
+        /// was backed up as a plain link and lost on a redraw without a word. Both are kept in the order of
+        /// their paths: Openness lists an item's dynamizations in an order of its own, not the order they
+        /// were created in (measured 2026-10-25), and a screen read twice must read the same.
+        /// </remarks>
+        private void ReadDynamizations(object owner, string prefix, (SortedDictionary<string, string> Tags, SortedDictionary<string, JsonObject> Animations) into, int depth)
+        {
+            if (owner.GetType().GetProperty(UnifiedScreenItemWriter.DynamizationsProperty)?.GetValue(owner) is DynamizationBaseComposition dynamizations)
+            {
+                foreach (var dynamization in dynamizations)
+                {
+                    AddDynamization(dynamization, prefix + dynamization.PropertyName, into);
                 }
             }
 
@@ -154,8 +201,22 @@ namespace TiaMcpServer.Siemens
             {
                 if (TryRead(part, owner, prefix + part.Name, out var value) && value != null)
                 {
-                    ReadTags(value, prefix + part.Name + ".", into, depth + 1);
+                    ReadDynamizations(value, prefix + part.Name + ".", into, depth + 1);
                 }
+            }
+        }
+
+        private static void AddDynamization(DynamizationBase dynamization, string path, (SortedDictionary<string, string> Tags, SortedDictionary<string, JsonObject> Animations) into)
+        {
+            if (dynamization is TagDynamization link && UnifiedDynamizationCoverage.IsPlainLink(link))
+            {
+                into.Tags[path] = link.Tag;
+                return;
+            }
+
+            if (UnifiedAnimationReader.Read(dynamization, path) is JsonObject animation)
+            {
+                into.Animations[path] = animation;
             }
         }
 

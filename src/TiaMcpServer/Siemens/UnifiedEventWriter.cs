@@ -1,5 +1,6 @@
 ﻿using Siemens.Engineering.HmiUnified.UI.Dynamization.Script;
 using Siemens.Engineering.HmiUnified.UI.Enum;
+using Siemens.Engineering.HmiUnified.UI.Screens;
 using Siemens.Engineering.HmiUnified.UI.Widgets;
 using System;
 using System.Collections;
@@ -7,7 +8,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Nodes;
 using TiaMcpServer.UnifiedScreens;
-using UnifiedHmiSoftware = Siemens.Engineering.HmiUnified.HmiSoftware;
 
 namespace TiaMcpServer.Siemens
 {
@@ -17,13 +17,12 @@ namespace TiaMcpServer.Siemens
     /// <c>Create</c> takes that type's event enum (a button's: Activated, Deactivated, Tapped, KeyDown,
     /// KeyUp, Down, Up, ContextTapped); a handler holds an event type and one script, nothing else. The
     /// script's setter takes broken JavaScript without a word, and only <c>SyntaxCheck()</c> reports it
-    /// ("missing ) after argument list"), so every script is checked: before anything is drawn, on a
-    /// throw-away screen, and again where it is written.
+    /// ("missing ) after argument list"), so every script is checked: before anything is drawn, on the
+    /// throw-away screen of <see cref="UnifiedRehearsal"/>, and again where it is written.
     /// </remarks>
     internal static class UnifiedEventWriter
     {
         private const string EventHandlersProperty = "EventHandlers";
-        private const string ScratchScreenPrefix = "TiaMcp_SyntaxCheck_";
 
         /// <summary>The text TIA Portal puts in a new script's global definition area, left out when read back.</summary>
         private const string DefaultGlobalDefinitions = "//Insert definitions for events here";
@@ -38,46 +37,27 @@ namespace TiaMcpServer.Siemens
             EventValue(EventEnum(itemType, itemName), script.EventName, itemName);
         }
 
-        /// <summary>Checks every script before anything is drawn.</summary>
-        /// <param name="hmi">The WinCC Unified software.</param>
-        /// <param name="screenName">The screen about to be drawn.</param>
+        /// <summary>Checks every event script on a throw-away screen, before anything is drawn.</summary>
+        /// <param name="scratch">A screen made for the purpose, deleted by the caller.</param>
         /// <param name="items">The items and their events.</param>
-        /// <exception cref="PortalException"><see cref="PortalErrorCode.InvalidParams"/> naming each broken script.</exception>
-        /// <remarks>
-        /// A script is only checked inside a handler, so a button on a screen made for the purpose holds
-        /// each in turn, and the screen is deleted again whatever happens. The check is more than syntax:
-        /// it resolves the screens a script names (measured 2026-10-25: "The object HmiScreen with the
-        /// name 'Drawn' was not found"), so when the screen being drawn does not exist yet, the holder is
-        /// made under that very name, and a script that changes to it checks as it will run.
-        /// </remarks>
-        public static void CheckSyntax(UnifiedHmiSoftware hmi, string screenName, IReadOnlyList<UnifiedItemDescription> items)
+        /// <returns>One reason per broken script; empty when all are valid.</returns>
+        /// <remarks>A script is only checked inside a handler, so one button's handler holds each in turn.</remarks>
+        public static IReadOnlyList<string> CheckScripts(HmiScreen scratch, IReadOnlyList<UnifiedItemDescription> items)
         {
             var scripts = items.SelectMany(item => item.Events.Select(script => (Item: item.Name, Script: script))).ToList();
             if (scripts.Count == 0)
             {
-                return;
+                return Array.Empty<string>();
             }
 
-            var scratch = hmi.Screens.Create(hmi.Screens.Find(screenName) == null ? screenName : ScratchScreenPrefix + Guid.NewGuid().ToString("N"));
-            try
-            {
-                var code = scratch.ScreenItems.Create<HmiButton>("Check").EventHandlers.Create(HmiButtonEventType.Tapped).Script;
-                var broken = scripts.Select(entry => Errors(code, entry.Script, entry.Item)).Where(problem => problem != null).ToList();
+            var code = scratch.ScreenItems.Create<HmiButton>("Check").EventHandlers.Create(HmiButtonEventType.Tapped).Script;
 
-                if (broken.Count > 0)
-                {
-                    throw new PortalException(PortalErrorCode.InvalidParams, $"Nothing was drawn: {string.Join("; ", broken)}");
-                }
-            }
-            finally
-            {
-                scratch.Delete();
-            }
+            return scripts.Select(entry => Errors(code, entry.Script, entry.Item)).OfType<string>().ToList();
         }
 
         /// <summary>Writes an event's script onto a new item and checks its syntax again.</summary>
         /// <param name="item">The item, just created.</param>
-        /// <param name="script">The event, already passed through <see cref="Check"/> and <see cref="CheckSyntax"/>.</param>
+        /// <param name="script">The event, already passed through <see cref="Check"/> and <see cref="CheckScripts"/>.</param>
         /// <param name="itemName">The item, as a refusal names it.</param>
         /// <exception cref="PortalException"><see cref="PortalErrorCode.InvalidParams"/> when TIA Portal finds the JavaScript broken.</exception>
         public static void Write(object item, UnifiedEventScript script, string itemName)

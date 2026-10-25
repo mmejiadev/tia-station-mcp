@@ -7,16 +7,13 @@ namespace TiaMcpServer.UnifiedScreens
 {
     /// <summary>What a WinCC Unified screen or item holds that its backup does not keep.</summary>
     /// <remarks>
-    /// The backup holds only what a description draws: values, texts, points and tag links. Events,
-    /// scripts and any dynamization other than a tag link are not in it, so they are named here, and a
-    /// screen that has them is not redrawn. Read by reflection over the Openness object, which is what
-    /// lets the rule be tested without TIA Portal. A dynamization is recognised as a tag link by its type
-    /// name, so anything else — a script, a resource list, a type a later Openness adds — counts as lost.
+    /// The backup holds only what a description draws: values, texts, points, tag links, an item's events
+    /// and the animations <see cref="UnifiedDynamizationCoverage"/> keeps. Anything else is named here,
+    /// and a screen that has it is not redrawn. Read by reflection over the Openness object, which is
+    /// what lets the rule be tested without TIA Portal.
     /// </remarks>
     public static class UnifiedBackupCoverage
     {
-        private const string TagLink = "TagDynamization";
-
         private const string EventHandlers = "EventHandlers";
 
         private const string PropertyEventHandlers = "PropertyEventHandlers";
@@ -55,9 +52,12 @@ namespace TiaMcpServer.UnifiedScreens
                 lost.Add($"{where} has {collection} its backup does not keep");
             }
 
-            if (Entries(owner, "Dynamizations").Any(dynamization => dynamization.GetType().Name != TagLink))
+            foreach (var dynamization in Entries(owner, "Dynamizations"))
             {
-                lost.Add($"{where} has a dynamization that is not a tag link (a script or a resource list)");
+                if (UnifiedDynamizationCoverage.Lost(dynamization) is string reason)
+                {
+                    lost.Add($"{where} has {reason} on {PropertyOf(dynamization)}, which its backup does not keep");
+                }
             }
 
             if (depth >= UnifiedPropertyTree.MaxPartDepth)
@@ -73,6 +73,11 @@ namespace TiaMcpServer.UnifiedScreens
                     AddLost(value, $"{where}.{part.Name}", lost, eventsKept, depth + 1);
                 }
             }
+        }
+
+        private static string PropertyOf(object dynamization)
+        {
+            return UnifiedPropertyTree.MostDerived(dynamization.GetType(), "PropertyName")?.GetValue(dynamization) as string ?? "a property";
         }
 
         /// <remarks>The most derived declaration only: see <see cref="UnifiedPropertyTree.MostDerived"/>.</remarks>
