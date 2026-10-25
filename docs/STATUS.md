@@ -5,6 +5,39 @@
 
 ## ▶ RESUME HERE
 
+### Unified script checker — 2026-10-25, branch `work/unified-alarms`
+
+`CheckUnifiedScripts` (one new tool, read only): the scripts of a WinCC Unified screen, or of every
+screen of the HMI, screen groups included, checked for faults TIA Portal draws and compiles without a
+word. The screen's own events, each item's events and script animations are read, nothing else, and
+each script is checked knowing its global definitions. Rules, each from a fault of the 0968 final project
+or from TIA Portal's own definitions: `assignment-in-condition` (`if (man = true)`), `local-variable-write`
+(`let p = Tags("X"); p = true;` leaves the tag as it was), `bit-function` (`SetBitInTag` sets a bit to 1
+and takes no value, so `SetBitInTag(tag, 0)` switches nothing off; a warning on a Bool, an error for a bit
+past the tag's width), `not-javascript` (`not(...)`, `and`, `or`), `missing-tag`.
+
+**Security**: a script is project content, so data from outside. It is read one character at a time by
+a lexer of our own, never run and never matched with a regular expression; past 100 000 characters it is
+not read and says so. The test that guards this caught a quadratic rule (100 000 characters of `if (`
+took 18 s) before it shipped; the rule is now one pass with a stack. Measured 2026-10-25: TIA Portal V20
+ships no readable list of the Unified system functions (`Data\Hmi\Scripting\Utah-Functions.en.xml` is
+classic WinCC's, with no `SetTagValue`; the Unified model is an undocumented binary), so function names
+are not checked rather than checked against the wrong list, and the bit-function rule cites that classic
+definition for what it is.
+
+`/code-review high`: ten findings, all fixed — a comment-only script made the whole check fail; a
+screen's own events were not read; global definitions were checked apart from their script (false
+errors, a missed local write); a computed template tag name was called missing; the local-write rule
+flagged a read-modify-write and missed `HMIRuntime.Tags`; the double-bracket idiom and functions passed in
+a condition were errors; a regular expression holding a quote swallowed the rest of the script; every
+property of every item was read to find the scripts; the main method broke the size rules; this entry.
+
+Tests: Governance 636/636; `Test52UnifiedScriptCheck` 5/5 against TIA Portal V20 (the four faults of the
+0968 project drawn and found with screen, item, event and line; a clean screen with none; every screen;
+a missing screen); `Test44`, `Test46`–`Test48` with the shared screen lookup, 31/31 together. Not run yet on the 0968
+copy itself: the rebuilt server could not connect to TIA Portal, most likely waiting on its Openness
+permission prompt for the new executable.
+
 ### Unified alarms — 2026-10-25, branch `work/unified-alarms`
 
 `CreateUnifiedAlarms` and `GetUnifiedAlarms` (two new tools): alarm classes with priority, state machine

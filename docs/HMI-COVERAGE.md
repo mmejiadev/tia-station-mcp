@@ -144,7 +144,7 @@ Every type below exists in `Siemens.Engineering.HmiUnified.UI`.
 | E4 | Screen navigation: `ActivateScreen`, by number, previous | Built | Built 2026-10-23: `changeScreen` as `HMIRuntime.UI.SysFct.ChangeScreen(screen, window)`, the window path relative to the item's screen (measured on a class project) | Navigation works in simulation |
 | E5 | The rest of the classic system-function list (alarms, recipes, users, logging, language, stop runtime) | Open | — | Each function the documentation lists is generated or refused with a reason |
 | E6 | VBScript (Advanced and PC) and C scripts | Open | — | A script called from a button |
-| E7 | JavaScript: event scripts and global script modules | — | Open (`HmiScriptModule`) | A script-module function called from an event |
+| E7 | JavaScript: event scripts and global script modules | — | Event scripts written (row E1) and, from 2026-10-25, checked: `CheckUnifiedScripts` (`Test52`) finds what TIA Portal compiles without a word — an assignment in a condition, a tag held in a local variable and overwritten, a bit function on a Bool or past its tag, `not(...)`/`and`/`or`, a missing tag — and found the four faults of the 0968 final project. Global script modules open (`HmiScriptModule`) | A script-module function called from an event |
 | E8 | Scheduled tasks and tag-change triggers | Open | Open | A task runs on a trigger |
 
 ## 6. Runtime features
