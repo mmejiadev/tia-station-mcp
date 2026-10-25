@@ -60,6 +60,19 @@ namespace TiaMcpServer.Governance.Tests
         }
 
         [TestMethod]
+        public void Read_List_KeepsItsTagAndList()
+        {
+            var list = (UnifiedListAnimation)Read(@"[ { ""property"": ""Text"", ""tag"": "" State "", ""list"": "" States "" } ]").Single();
+
+            Assert.AreEqual("State", list.Tag);
+            Assert.AreEqual("States", list.List);
+            CollectionAssert.AreEqual(new[] { "State" }, list.LinkedTags.ToArray());
+        }
+
+        [TestMethod]
+        [DataRow(@"[ { ""property"": ""Text"", ""list"": ""States"" } ]", DisplayName = "list without a tag")]
+        [DataRow(@"[ { ""property"": ""Text"", ""tag"": ""State"", ""list"": """" } ]", DisplayName = "empty list name")]
+        [DataRow(@"[ { ""property"": ""Text"", ""tag"": ""State"", ""list"": ""States"", ""ranges"": [ { ""from"": 1, ""value"": ""A"" } ] } ]", DisplayName = "list and ranges")]
         [DataRow(@"[ { ""property"": ""BackColor"", ""tag"": ""M"", ""ranges"": [ { ""from"": 5, ""to"": 1, ""value"": ""red"" } ] } ]", DisplayName = "reversed range")]
         [DataRow(@"[ { ""property"": ""BackColor"", ""tag"": ""M"", ""ranges"": [ { ""from"": 0, ""to"": 10, ""value"": ""red"" }, { ""from"": 10, ""to"": 20, ""value"": ""blue"" } ] } ]", DisplayName = "overlapping ranges")]
         [DataRow(@"[ { ""property"": ""BackColor"", ""tag"": ""M"", ""ranges"": [ { ""from"": 0.5, ""value"": ""red"" } ] } ]", DisplayName = "fractional bound")]

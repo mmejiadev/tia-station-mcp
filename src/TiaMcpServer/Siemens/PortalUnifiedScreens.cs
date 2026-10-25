@@ -141,6 +141,15 @@ namespace TiaMcpServer.Siemens
             {
                 throw new PortalException(PortalErrorCode.InvalidState, $"Nothing was drawn: these HMI tags do not exist on the HMI: {string.Join(", ", missing)}");
             }
+
+            // Openness takes a list that does not exist without a word, and only the compile reports it.
+            var missingLists = screen.LinkedTextLists.Where(list => software.HmiTextLists.Find(list) == null).ToList();
+            if (missingLists.Count > 0)
+            {
+                throw new PortalException(
+                    PortalErrorCode.InvalidState,
+                    $"Nothing was drawn: these text lists do not exist on the HMI: {string.Join(", ", missingLists)}. Create them first with CreateUnifiedTextList");
+            }
         }
 
         /// <summary>Saves the screen as it is, and refuses when that copy would not put it back.</summary>

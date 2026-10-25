@@ -13,7 +13,7 @@ using TiaMcpServer.UnifiedScreens;
 
 namespace TiaMcpServer.Siemens
 {
-    /// <summary>Writes and checks the animations of a WinCC Unified screen item: range tables, flashing and scripts.</summary>
+    /// <summary>Writes and checks the animations of a WinCC Unified screen item: range tables, flashing, scripts and text lists.</summary>
     /// <remarks>
     /// Measured 2026-10-25 on TIA Portal V20. A range table is a tag dynamization whose
     /// <c>ValueConverter.MappingTable</c> is set to <c>Range</c> and given one <c>MappingTableEntryRange</c>
@@ -49,6 +49,7 @@ namespace TiaMcpServer.Siemens
                     UnifiedPropertyConverter.Convert(typeof(Color), flashing.Alternate, $"{what} alternate colour");
                     break;
                 case UnifiedScriptAnimation _:
+                case UnifiedListAnimation _:
                     break;
                 default:
                     throw new PortalException(PortalErrorCode.InvalidState, $"Unrecognised animation: {animation.GetType().Name}");
@@ -98,6 +99,11 @@ namespace TiaMcpServer.Siemens
                     break;
                 case UnifiedScriptAnimation script:
                     WriteScript(dynamizations.Create<ScriptDynamization>(name), script, what);
+                    break;
+                case UnifiedListAnimation list:
+                    var dynamization = dynamizations.Create<ResourceListDynamization>(name);
+                    dynamization.Tag = list.Tag;
+                    dynamization.ResourceList = list.List;
                     break;
                 default:
                     throw new PortalException(PortalErrorCode.InvalidState, $"Unrecognised animation: {animation.GetType().Name}");

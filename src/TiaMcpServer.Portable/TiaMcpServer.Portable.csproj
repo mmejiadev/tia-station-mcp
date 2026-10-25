@@ -38,6 +38,11 @@
 
   <ItemGroup>
     <PackageReference Include="System.Text.Json" Version="10.0.11" />
+    <!--
+      WinCC Unified text lists exist in Openness V20 only as YAML files (Export and Import on the
+      composition); the exported files are read with a real parser, not a hand-written one.
+    -->
+    <PackageReference Include="YamlDotNet" Version="18.1.0" />
   </ItemGroup>
 
   <ItemGroup>

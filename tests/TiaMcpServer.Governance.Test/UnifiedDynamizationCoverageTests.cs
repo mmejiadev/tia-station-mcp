@@ -122,11 +122,25 @@ namespace TiaMcpServer.Governance.Tests
             Assert.IsNull(UnifiedDynamizationCoverage.Lost(new FlashingDynamization()));
         }
 
-        /// <remarks>Anything not foreseen refuses: a type a later Openness adds counts as lost.</remarks>
+        [TestMethod]
+        public void Lost_TextList_IsNothing()
+        {
+            Assert.IsNull(UnifiedDynamizationCoverage.Lost(new ResourceListDynamization("State", "States")));
+        }
+
+        [TestMethod]
+        [DataRow("", "States", DisplayName = "no tag")]
+        [DataRow("State", "", DisplayName = "no list")]
+        public void Lost_TextListMissingAPart_IsNamed(string tag, string list)
+        {
+            Assert.AreEqual("a text list missing its tag or its list", UnifiedDynamizationCoverage.Lost(new ResourceListDynamization(tag, list)));
+        }
+
+        /// <remarks>Anything not foreseen refuses: a type the reader does not draw, or one a later Openness adds, counts as lost.</remarks>
         [TestMethod]
         public void Lost_UnknownDynamizationType_IsNamedByItsType()
         {
-            Assert.AreEqual("a ResourceListDynamization", UnifiedDynamizationCoverage.Lost(new ResourceListDynamization()));
+            Assert.AreEqual("a TagParameterDynamization", UnifiedDynamizationCoverage.Lost(new TagParameterDynamization()));
         }
 
         private sealed class TagDynamization
@@ -214,6 +228,19 @@ namespace TiaMcpServer.Governance.Tests
         }
 
         private sealed class ResourceListDynamization
+        {
+            public ResourceListDynamization(string tag, string resourceList)
+            {
+                Tag = tag;
+                ResourceList = resourceList;
+            }
+
+            public string Tag { get; }
+
+            public string ResourceList { get; }
+        }
+
+        private sealed class TagParameterDynamization
         {
         }
     }

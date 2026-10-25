@@ -8,8 +8,9 @@ namespace TiaMcpServer.UnifiedScreens
     /// <summary>Which dynamizations of a WinCC Unified item its backup keeps, and why one is not kept.</summary>
     /// <remarks>
     /// The backup keeps a tag link with no table, a range table (<see cref="UnifiedRangeAnimation"/>), a
-    /// flashing colour and a script on a named trigger: what a description draws. Anything else — a
-    /// single-bit, bitmask or expression table, a formula, indirect addressing, a resource list, a
+    /// flashing colour, a script on a named trigger and a text list (<see cref="UnifiedListAnimation"/>):
+    /// what a description draws. Anything else — a single-bit, bitmask or expression table, a formula,
+    /// indirect addressing, a tag-parameter dynamization, a trigger it does not list, a
     /// custom cycle, a type a later Openness adds — is named. Read by reflection over the Openness
     /// object, by type and property names, so the rule is tested without TIA Portal.
     /// </remarks>
@@ -18,6 +19,7 @@ namespace TiaMcpServer.UnifiedScreens
         private const string TagLink = "TagDynamization";
         private const string Flashing = "FlashingDynamization";
         private const string Script = "ScriptDynamization";
+        private const string ResourceList = "ResourceListDynamization";
         private const string RangeEntry = "MappingTableEntryRange";
         private const string NoTable = "None";
         private const string RangeTable = "Range";
@@ -42,6 +44,7 @@ namespace TiaMcpServer.UnifiedScreens
             {
                 TagLink => LostFromTagLink(dynamization!),
                 Flashing => null,
+                ResourceList => LostFromTextList(dynamization!),
                 Script => LostFromScript(dynamization!),
                 _ => $"a {typeName}"
             };
@@ -93,6 +96,14 @@ namespace TiaMcpServer.UnifiedScreens
                 && Read(entry, "From") is object from && WholeBounds.Contains(from.GetType())
                 && Read(entry, "To") is object to && WholeBounds.Contains(to.GetType())
                 && (Read(entry, "Flashing") is not true || Read(entry, "AlternateValue") is System.Drawing.Color);
+        }
+
+        /// <remarks>A text list is drawn back from its tag and its list's name; one missing either is not.</remarks>
+        private static string? LostFromTextList(object list)
+        {
+            return string.IsNullOrWhiteSpace(Read(list, "Tag") as string) || string.IsNullOrWhiteSpace(Read(list, "ResourceList") as string)
+                ? "a text list missing its tag or its list"
+                : null;
         }
 
         private static string? LostFromScript(object script)
