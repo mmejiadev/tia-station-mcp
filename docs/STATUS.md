@@ -5,6 +5,47 @@
 
 ## ▶ RESUME HERE
 
+### Unified alarms — 2026-10-25, branch `work/unified-alarms`
+
+`CreateUnifiedAlarms` and `GetUnifiedAlarms` (two new tools): alarm classes with priority, state machine
+and the colours of their four states; discrete alarms raised by a bit of an HMI tag on a rising or
+falling edge; analog alarms comparing a number tag with a value; text, info text, origin, area, class
+and priority on each. All or nothing, like `CreateUnifiedTags`, and read back in the shape it takes.
+HMI-COVERAGE row R1.
+
+Measured on V20 by three probes on a copy of the 0968 final project (never saved): the 18 system
+classes can be neither renamed nor deleted, a class name is unique in any case, priorities run from 0
+to 16. **A discrete alarm takes only a bit string (Bool, Byte, Word, DWord, LWord), an analog alarm only
+a number (any integer type, Real, LReal)**: every other pairing, a PLC-linked Int under a discrete
+alarm included, compiled as "The data type of the tag is not permitted for this type of alarm". A bit
+past its tag's width is refused by Openness; a tag and bit raising two alarms, a missing trigger tag, a
+missing class and an analog value outside its tag's type are taken by Openness and refused only by the
+compile, so the tool refuses them first. Texts must be formatted text (a plain one is "an invalid
+format"). Deleting a class that alarms use succeeds and leaves them naming a class that is gone, so the
+tool never deletes one. The class project itself turned out to hold 24 discrete alarms the 2026-10-17
+survey had counted as none, since it could not read Unified alarms then.
+
+`/code-review high`: ten findings, all fixed — a part of a list TIA Portal refused came back as an
+operation failure naming no alarm (now a bad request naming it); the checker read the HMI's alarms once
+per alarm (now once); the undo was a copy of the tag writer's (now one `UnifiedRollback` for both); a
+colour that is not opaque lost its alpha; the plan line left out state colours, info, origin and area,
+though it is the only record; an LInt value past 2^53 would be rounded by the double TIA Portal keeps
+it in (now refused); a value check used an exception for control flow (now `UnifiedTagValues.Problem`);
+the empty formatted text was a magic string; the shared tag-and-bit refusal read as garbled; an unknown
+trigger mode would have read as a rising edge.
+
+Tests: Governance 588/588 (the type rules caught that a Byte, Word, DWord or LWord counts as a number
+for limits but not for an analog alarm); `Test51UnifiedAlarms` 15/15 against TIA Portal V20 (classes
+and alarms read back, an alarm control drawn and compiled with only the known messages, seven refusals
+of what the compile would refuse, a bit raising another alarm, a system class name, the undo of a class
+and alarms when TIA Portal refuses one); `Test16` with the new refusal; with `Test45`, `Test48` and `Test50` (the tag writer moved onto the shared undo), 89/89. On the 0968 copy through the MCP
+over stdio: its 24 alarms read, a class, two discrete alarms on PLC Bools and an analog one on a PLC Int
+created, two refusals, and the station compiled 0/0. To confirm on V21.
+
+**Next:** the user's commit; then a checker for Unified scripts (the four defects found in the 0968 final
+project), then working with TIA Portal open (A4). Still open in R1: alarm groups, alarm parameters,
+acknowledgement tags; R2 (PLC alarms on the HMI).
+
 ### Unified tag settings, arrays, groups and system tags — 2026-10-25, branch `work/unified-tags-complete`
 
 `CreateUnifiedTags` takes per tag a comment, a start value, retention, a WString's length, limits
