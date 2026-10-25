@@ -16,8 +16,10 @@ namespace TiaMcpServer.UnifiedScreens
     ///     { "type": "rectangle", "name": "Tank", "properties": { "Left": 40, "Top": 60, "Width": 120, "Height": 200, "BackColor": "blue" } },
     ///     { "type": "polyline", "name": "Pipe", "points": [[0, 0], [60, 0], [60, 90]], "properties": { "LineWidth": 4 } },
     ///     { "type": "ioField", "name": "Level", "properties": { "Left": 200, "Top": 60, "Font.Size": 14 }, "tags": { "ProcessValue": "Level" } },
+    ///     { "type": "circle", "name": "Lamp", "animations": [ { "property": "BackColor", "tag": "Motor", "ranges": [ { "from": 0, "value": "red" }, { "from": 1, "value": "green" } ] } ] },
     ///     { "type": "text", "name": "Title", "properties": { "Text": "Tank 1" } } ] }
     /// </code>
+    /// Events are read by <see cref="UnifiedEventListReader"/> and animations by <see cref="UnifiedAnimationListReader"/>.
     /// Property names are Openness's own; <c>GetUnifiedItemTypes</c> lists them for every type. An item
     /// without a name gets <c>&lt;type&gt;_&lt;n&gt;</c>. Comments and trailing commas are allowed.
     /// </remarks>
@@ -90,7 +92,10 @@ namespace TiaMcpServer.UnifiedScreens
             var itemName = string.IsNullOrEmpty(name) ? $"{UnifiedItemTypes.ShortName(typeName)}_{position}" : name!;
             var what = $"Item '{itemName}'";
 
-            var drawing = new UnifiedItemDrawing(ReadPoints(item, typeName, what), ReadTags(item, what), UnifiedEventListReader.Read(item, what));
+            var tags = ReadTags(item, what);
+            var animations = UnifiedAnimationListReader.Read(item, what);
+            RequireOneDynamizationEach(tags, animations, what);
+            var drawing = new UnifiedItemDrawing(ReadPoints(item, typeName, what), tags, UnifiedEventListReader.Read(item, what), animations);
 
             return new UnifiedItemDescription(typeName, itemName, ReadProperties(item, what), drawing);
         }
@@ -170,6 +175,22 @@ namespace TiaMcpServer.UnifiedScreens
             }
 
             return tags;
+        }
+
+        /// <remarks>
+        /// A tag link and an animation are both dynamizations, and a property holds one: the second would
+        /// replace the first without a word (measured 2026-10-25 on TIA Portal V20).
+        /// </remarks>
+        private static void RequireOneDynamizationEach(IReadOnlyDictionary<string, string> tags, IReadOnlyList<UnifiedAnimation> animations, string what)
+        {
+            var both = animations.Select(animation => animation.Path).Where(tags.ContainsKey).ToList();
+
+            if (both.Count > 0)
+            {
+                throw new PortalException(
+                    PortalErrorCode.InvalidParams,
+                    $"{what} both links and animates {string.Join(", ", both)}: a property takes one or the other; an animation's 'tag' already reads the tag");
+            }
         }
 
         private static void RequireUniqueNames(IReadOnlyList<UnifiedItemDescription> items)

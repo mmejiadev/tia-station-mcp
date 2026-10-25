@@ -32,7 +32,10 @@ namespace TiaMcpServer.UnifiedScreens
         /// <summary>The items.</summary>
         public IReadOnlyList<UnifiedItemDescription> Items { get; }
 
-        /// <summary>Every HMI tag the items link to, once each.</summary>
-        public IReadOnlyList<string> LinkedTags => Items.SelectMany(item => item.Tags.Values).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        /// <summary>Every HMI tag the items link to or animate by, once each.</summary>
+        public IReadOnlyList<string> LinkedTags => Items
+            .SelectMany(item => item.Tags.Values.Concat(item.Animations.SelectMany(animation => animation.LinkedTags)))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 }

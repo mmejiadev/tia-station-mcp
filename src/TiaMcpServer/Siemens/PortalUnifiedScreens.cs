@@ -29,9 +29,10 @@ namespace TiaMcpServer.Siemens
         /// nothing was changed; or TIA Portal refused an item, which the message names.
         /// </exception>
         /// <remarks>
-        /// The whole description is checked against the Openness types and the HMI's tags before anything
-        /// changes. What can still fail afterwards is TIA Portal refusing a value, and then the items
-        /// before it are drawn and the backup holds the screen as it was.
+        /// The whole description is checked against the Openness types and the HMI's tags, and its scripts
+        /// and animations rehearsed on a throw-away screen, before anything changes. What can still fail
+        /// afterwards is TIA Portal refusing a value, and then the items before it are drawn and the backup
+        /// holds the screen as it was.
         /// </remarks>
         public JsonObject DrawUnifiedScreen(string hmiPath, UnifiedScreenDescription screen, string backupDirectory)
         {
@@ -42,10 +43,13 @@ namespace TiaMcpServer.Siemens
                 var requested = screen ?? throw new PortalException(PortalErrorCode.InvalidParams, "A screen description is required");
                 var software = RequireUnifiedSoftware(hmiPath);
                 RequireDrawable(software, requested);
-                UnifiedEventWriter.CheckSyntax(software, requested.Name, requested.Items);
+
+                // Before the rehearsal, which holds its screen under the requested name when no screen
+                // outside a group has it: one inside a group must be refused, not shadowed.
+                RequireNotInScreenGroup(software, requested.Name);
+                UnifiedRehearsal.Run(software, requested.Name, requested.Items);
 
                 var language = CurrentProject!.LanguageSettings.EditingLanguage;
-                RequireNotInScreenGroup(software, requested.Name);
                 var existing = software.Screens.Find(requested.Name);
                 var backup = BackUpUnifiedScreen(existing, software, language, backupDirectory);
 

@@ -54,6 +54,28 @@ namespace TiaMcpServer.Governance.Tests
         }
 
         [TestMethod]
+        public void Parse_AnimationTags_AreLinkedTagsToo()
+        {
+            var screen = UnifiedScreenDescriptionReader.Parse(@"{ ""name"": ""S"", ""items"": [
+                { ""type"": ""circle"", ""tags"": { ""BorderColor"": ""Border"" }, ""animations"": [ { ""property"": ""BackColor"", ""tag"": ""Motor"", ""ranges"": [ { ""from"": 1, ""value"": ""green"" } ] } ] },
+                { ""type"": ""circle"", ""animations"": [ { ""property"": ""BackColor"", ""script"": ""return 0;"", ""trigger"": [ ""Level"", ""motor"" ] } ] } ] }");
+
+            CollectionAssert.AreEqual(new[] { "Border", "Motor", "Level" }, screen.LinkedTags.ToArray());
+        }
+
+        /// <remarks>A tag link and an animation are both dynamizations; TIA Portal replaces one with the other without a word.</remarks>
+        [TestMethod]
+        public void Parse_PropertyLinkedAndAnimated_ThrowsInvalidParams()
+        {
+            var json = @"{ ""name"": ""S"", ""items"": [ { ""type"": ""circle"", ""tags"": { ""BackColor"": ""Motor"" }, ""animations"": [ { ""property"": ""backColor"", ""tag"": ""Motor"", ""ranges"": [ { ""from"": 1, ""value"": ""green"" } ] } ] } ] }";
+
+            var failure = Assert.ThrowsException<PortalException>(() => UnifiedScreenDescriptionReader.Parse(json));
+
+            Assert.AreEqual(PortalErrorCode.InvalidParams, failure.Code);
+            StringAssert.Contains(failure.Message, "both links and animates backColor", System.StringComparison.Ordinal);
+        }
+
+        [TestMethod]
         [DataRow(@"{ ""items"": [] }", DisplayName = "no name")]
         [DataRow(@"{ ""name"": ""S"", ""items"": [ { ""type"": ""hologram"" } ] }", DisplayName = "unknown type")]
         [DataRow(@"{ ""name"": ""S"", ""items"": [ { ""type"": ""faceplateContainer"" } ] }", DisplayName = "needs a contained type")]

@@ -10,7 +10,7 @@ namespace TiaMcpServer.UnifiedScreens
         /// <param name="typeName">The full Openness type name, from <see cref="UnifiedItemTypes.Resolve"/>.</param>
         /// <param name="name">The item's name, unique on the screen.</param>
         /// <param name="properties">The properties to set, in the order given.</param>
-        /// <param name="drawing">The item's points and tag links.</param>
+        /// <param name="drawing">The item's points, tag links, events and animations.</param>
         public UnifiedItemDescription(string typeName, string name, IReadOnlyList<UnifiedPropertySetting> properties, UnifiedItemDrawing drawing)
         {
             if (drawing == null)
@@ -24,7 +24,11 @@ namespace TiaMcpServer.UnifiedScreens
             Points = drawing.Points;
             Tags = drawing.Tags;
             Events = drawing.Events;
+            Animations = drawing.Animations;
         }
+
+        /// <summary>One animation per animated property; empty when the item has none.</summary>
+        public IReadOnlyList<UnifiedAnimation> Animations { get; }
 
         /// <summary>One script per event; empty when the item has none.</summary>
         public IReadOnlyList<UnifiedEventScript> Events { get; }
