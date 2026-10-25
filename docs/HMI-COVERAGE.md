@@ -72,9 +72,9 @@ The order numbers are the ones the class projects use, read from the corpus surv
 |---|---|---|---|---|
 | T1 | PLC memory bits (`%M`), inputs, outputs, in a tag table | Measured (`CreateTag`) | — | — |
 | T2 | PLC data-block members as the HMI's source | Open | Open | An HMI tag bound to a DB member reads it in simulation |
-| T3 | HMI tags with a PLC connection, generated from PLC tags | Built (`GenerateHmiTags`; measured only by a probe) | Open | Every memory bit of a program gets its HMI tag, compiled |
-| T4 | Internal HMI tags (no connection) | Open | Open | One of each data type created and compiled |
-| T5 | HMI tag tables and groups | Measured (`ImportHmiTagTable`) | Open (`HmiTagTable`, `HmiTagTableGroup`) | Created, nested, compiled |
+| T3 | HMI tags with a PLC connection, generated from PLC tags | Built (`GenerateHmiTags`; measured only by a probe) | Measured 2026-10-22 by a probe on a copy of a class project: `CreateUnifiedTags` links a tag by `connection` and `plcTag` through an existing integrated connection, which Openness V20 cannot create, so `Test45` tests only the refusal of a missing one; each tag is given, none is generated from a PLC table | Every memory bit of a program gets its HMI tag, compiled |
+| T4 | Internal HMI tags (no connection) | Open | Measured 2026-10-22 (`CreateUnifiedTags`, `Test45` against TIA Portal): every data type TIA Portal V20 takes for one | One of each data type created and compiled |
+| T5 | HMI tag tables and groups | Measured (`ImportHmiTagTable`) | Tables measured 2026-10-22 (`CreateUnifiedTags` `newTables`, `Test45`); groups open (`HmiTagTableGroup`) | Created, nested, compiled |
 | T6 | Acquisition cycle and mode, update scope | Open | Open | Set and read back |
 | T7 | Limits, thresholds, linear scaling, substitute values | Open | Open (`HmiThreshold`, `HmiSubstituteValue`) | Set and read back; scaling checked in simulation |
 | T8 | System tags | — | Open (`HmiSystemTag`) | Read and used by a screen item |
@@ -126,11 +126,11 @@ Every type below exists in `Siemens.Engineering.HmiUnified.UI`.
 |---|---|---|---|---|
 | A1 | Colour by value or range (the class's pilot lights) | Built (`RangeAppearanceAnimation`, 66 in class) | Built 2026-10-25 and run against TIA Portal V20 (`DrawUnifiedScreen` animations, `Test47`): a range table on any property that takes one, one value per closed range of whole numbers, compiled; read back and kept by the backup. Single-bit, bitmask and expression tables are named by the backup check, not drawn (a `MappingTableEntrySimple` ended the TIA session in the probe) | A lamp changes colour in simulation |
 | A2 | Visibility by a bit | Built (`SingleBitVisibilityAnimation`) | Built 2026-10-25: a range table on `Visible` (`false`/`true` per value), `Test47` | An item appears and disappears in simulation |
-| A3 | **Movement**: horizontal, vertical, diagonal, direct | **Open — never used in the class, so its XML must be measured** | Open (`Left`/`Top` dynamized by tag or expression) | A box moves with a PLC value in simulation, both kinds |
-| A4 | Rotation | — | Open (`IHmiRotationFeature`) | An item rotates with a value |
+| A3 | **Movement**: horizontal, vertical, diagonal, direct | **Open — never used in the class, so its XML must be measured** | Measured 2026-10-25: horizontal and vertical, `Left` and `Top` linked to tags through `tags`, read back and compiled with no error or warning of its own (`Test48`); diagonal and expression-driven movement open | A box moves with a PLC value in simulation, both kinds |
+| A4 | Rotation | — | Measured 2026-10-25: `RotationAngle` linked to a tag, read back and compiled (`Test48`); the rotation centre open | An item rotates with a value |
 | A5 | Flashing | Open | Built 2026-10-25: a range that flashes (rate and alternate colour), and `FlashingDynamization` on a colour property (TIA refuses it on `Visible`), `Test47` | An alarm lamp flashes |
-| A6 | Operability and enable by authorisation or bit | Open | Open | A button disabled by a bit |
-| A7 | Bar and gauge driven by a value with limits | Built (bar) | Open | A level shown live |
+| A6 | Operability and enable by authorisation or bit | Open | By a bit measured 2026-10-25: a range animation on `Enabled`, read back and compiled (`Test48`); by authorisation open (needs users, row R) | A button disabled by a bit |
+| A7 | Bar and gauge driven by a value with limits | Built (bar) | Measured 2026-10-25: `ProcessValue` linked on a bar and a gauge; limits `StraightScale`/`CurvedScale` `BeginValue`/`EndValue` set away from their defaults and read back, and a bar's `StraightScale.EndValue` linked to a tag; compiled (`Test48`) | A level shown live |
 | A8 | Expression, resource-list and script dynamizations | — | Script built 2026-10-25 (trigger automatic, a named cycle or a tag list; syntax-checked; compiled in `Test47`); expression and resource list open, named by the backup check | One of each compiled and seen working |
 | A9 | Tag-indexed text and graphics (text and graphic lists) | Built (symbolic field) | Open | A state shown as text and as a picture |
 

@@ -5,6 +5,29 @@
 
 ## ▶ RESUME HERE
 
+### Unified process displays — 2026-10-25, branch `work/unified-consolidation`
+
+No new drawing code: HMI-COVERAGE rows A3 (horizontal and vertical movement: `Left`/`Top` linked),
+A4 (rotation: `RotationAngle` linked), A6 by a bit (a range animation on `Enabled`) and A7 (a bar and a
+gauge on `ProcessValue`, scale limits `BeginValue`/`EndValue` set away from their defaults or linked)
+are drawn with what already existed. `Test48UnifiedProcessDisplays` settles that TIA Portal V20 takes
+them, reads them back unchanged and compiles them with nothing but the known encrypted-transfer
+password errors and the unconnected network card's warning, every message in the project counted
+(3/3). The property names were read from the Openness V20 types by reflection in a throw-away
+PowerShell session; the test's remarks list them. The `DrawUnifiedScreen` description, which LLM
+clients read, now names these links. Rows T3, T4 and T5 said Open for Unified, though Unified tags
+were measured on 2026-10-22, and are corrected; T3's PLC link is a probe result, not a test.
+
+`/code-review high`: nine findings, all taken — claims nothing backed removed (rotation centre,
+expression-driven movement), T3 reworded, values set away from defaults and `StraightScale.EndValue`
+linked, every compile error and warning counted, dates, the status word `Measured` for what ran against
+TIA Portal, this entry, and the four read-back tests made one. Open: diagonal and expression-driven
+movement, the rotation centre, and A6 by authorisation, which waits for users (row R).
+
+**Next:** the user's commit; then text and graphic lists (A9: the state shown as text, a resource-list
+dynamization, which needs a probe of how Openness creates Unified text lists), row T (thresholds,
+scaling, tag groups, system tags) and the classic atlas.
+
 ### Unified animations — 2026-10-25, branch `work/unified-animations`
 
 `DrawUnifiedScreen` gives items `animations`, one per property: a **range table** on a tag (a value
