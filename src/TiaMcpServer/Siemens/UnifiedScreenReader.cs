@@ -81,6 +81,11 @@ namespace TiaMcpServer.Siemens
                 read["tags"] = tags;
             }
 
+            if (UnifiedEventWriter.Read(item) is JsonArray events)
+            {
+                read["events"] = events;
+            }
+
             return read;
         }
 

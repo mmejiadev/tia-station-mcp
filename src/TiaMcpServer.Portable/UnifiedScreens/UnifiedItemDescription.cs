@@ -23,7 +23,11 @@ namespace TiaMcpServer.UnifiedScreens
             Properties = properties;
             Points = drawing.Points;
             Tags = drawing.Tags;
+            Events = drawing.Events;
         }
+
+        /// <summary>One script per event; empty when the item has none.</summary>
+        public IReadOnlyList<UnifiedEventScript> Events { get; }
 
         /// <summary>The full Openness type name.</summary>
         public string TypeName { get; }

@@ -27,7 +27,7 @@ namespace TiaMcpServer.Governance.Tests
             var lost = UnifiedBackupCoverage.Lost(item, "'Start'");
 
             Assert.AreEqual(1, lost.Count);
-            StringAssert.Contains(lost[0], "'Start' has events", StringComparison.Ordinal);
+            StringAssert.Contains(lost[0], "'Start' has EventHandlers", StringComparison.Ordinal);
         }
 
         [TestMethod]
@@ -39,6 +39,35 @@ namespace TiaMcpServer.Governance.Tests
 
             Assert.AreEqual(1, lost.Count);
             StringAssert.Contains(lost[0], "not a tag link", StringComparison.Ordinal);
+        }
+
+        [TestMethod]
+        public void Lost_ItemWhoseEventsAreKept_IsNothing()
+        {
+            var item = new FakeItem(new List<object> { new object() }, new List<object>());
+
+            Assert.AreEqual(0, UnifiedBackupCoverage.Lost(item, "'Start'", eventsKept: true).Count);
+        }
+
+        [TestMethod]
+        public void Lost_ItemWithPropertyEvents_IsNamedEvenWhenEventsAreKept()
+        {
+            var item = new FakeItemWithPropertyEvents(new List<object> { new object() });
+
+            var lost = UnifiedBackupCoverage.Lost(item, "'Level'", eventsKept: true);
+
+            Assert.AreEqual(1, lost.Count);
+            StringAssert.Contains(lost[0], "PropertyEventHandlers", StringComparison.Ordinal);
+        }
+
+        private sealed class FakeItemWithPropertyEvents
+        {
+            public FakeItemWithPropertyEvents(List<object> propertyEventHandlers)
+            {
+                PropertyEventHandlers = propertyEventHandlers;
+            }
+
+            public List<object> PropertyEventHandlers { get; }
         }
 
         [TestMethod]

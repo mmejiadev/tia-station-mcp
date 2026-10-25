@@ -33,7 +33,8 @@ namespace TiaMcpServer.Siemens
                     lost.Add($"'{item.Name}' is a {item.GetType().Name}, which this tool does not draw back");
                 }
 
-                lost.AddRange(UnifiedBackupCoverage.Lost(item, $"'{item.Name}'"));
+                lost.AddRange(UnifiedBackupCoverage.Lost(item, $"'{item.Name}'", eventsKept: true));
+                lost.AddRange(UnifiedEventWriter.Problems(item, item.Name));
             }
 
             if (backup["unreadable"] is JsonArray unreadable)

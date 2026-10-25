@@ -5,6 +5,18 @@
 
 ## ▶ RESUME HERE
 
+### Unified events — 2026-10-23, branch `work/unified-events`
+
+`DrawUnifiedScreen` gives items JavaScript events: named functions (`setBit`, `resetBit`, `setTag`,
+`changeScreen`) written as the runtime calls measured that day, or a script as given; functions on
+one event run in order in one script (TIA Portal takes one handler per event). Measured on V20 by a
+probe: the script setter takes broken JavaScript silently, so every script goes through
+`SyntaxCheck()` and a broken one is refused as InvalidParams (the test fails with the check removed). The check runs on a throw-away screen **before anything is drawn**, and it is more than syntax: it resolves the screens a script names (measured 2026-10-25, "The object HmiScreen with the name 'Drawn' was not found"), so a new screen's own name is used for that holder;
+an event the item's type lacks is refused before anything is drawn, naming the events it has.
+`GetUnifiedScreen` reads events back and the backup keeps them, so a screen with item events is
+redrawn (property events and a screen's own events still refuse a redraw). Names go into JavaScript
+string literals escaped, control characters as `\uXXXX`. A redraw is also refused when an existing item has an empty or broken event script, which its backup could not draw back. `/code-review high`: ten findings, nine fixed (the tenth, handler state other than its script, does not exist: a V20 handler holds an event type and a script only). Tests: Governance 388/388; `Test44` 11/11, `Test46UnifiedEvents` 5/5 against TIA Portal (the scratch screen is checked to be gone). To confirm on V21.
+
 ### Classic HMI events — 2026-10-23, branch `work/hmi-classic-events`
 
 `GenerateHmiScreen` gains the `release` event and the `setBit` and `resetBit` functions, written as a

@@ -52,6 +52,11 @@ namespace TiaMcpServer.Siemens
             {
                 RequireLinkable(type, path);
             }
+
+            foreach (var script in item.Events)
+            {
+                UnifiedEventWriter.Check(type, script, item.Name);
+            }
         }
 
         /// <remarks>
@@ -91,6 +96,11 @@ namespace TiaMcpServer.Siemens
             foreach (var link in item.Tags)
             {
                 BindTag(created, link.Key, link.Value);
+            }
+
+            foreach (var script in item.Events)
+            {
+                UnifiedEventWriter.Write(created, script, item.Name);
             }
         }
 

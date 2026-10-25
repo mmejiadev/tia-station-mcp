@@ -42,6 +42,7 @@ namespace TiaMcpServer.Siemens
                 var requested = screen ?? throw new PortalException(PortalErrorCode.InvalidParams, "A screen description is required");
                 var software = RequireUnifiedSoftware(hmiPath);
                 RequireDrawable(software, requested);
+                UnifiedEventWriter.CheckSyntax(software, requested.Name, requested.Items);
 
                 var language = CurrentProject!.LanguageSettings.EditingLanguage;
                 RequireNotInScreenGroup(software, requested.Name);
@@ -224,8 +225,10 @@ namespace TiaMcpServer.Siemens
             }
             catch (Exception failure) when (!(failure is NonRecoverableException || failure is EngineeringObjectDisposedException))
             {
+                // A refusal of the description itself (a broken event script) keeps its own code: it is
+                // a mistake to fix in the call, not an environment failure to retry.
                 throw new PortalException(
-                    PortalErrorCode.WriteFailed,
+                    (failure as PortalException)?.Code ?? PortalErrorCode.WriteFailed,
                     $"TIA Portal refused item '{item.Name}': {failure.Message}. The items before it were drawn; "
                     + $"the screen as it was is in '{backup}', and DrawUnifiedScreen with that file's content draws it back.",
                     null,

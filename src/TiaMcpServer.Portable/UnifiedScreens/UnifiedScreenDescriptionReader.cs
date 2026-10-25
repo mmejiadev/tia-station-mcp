@@ -90,7 +90,7 @@ namespace TiaMcpServer.UnifiedScreens
             var itemName = string.IsNullOrEmpty(name) ? $"{UnifiedItemTypes.ShortName(typeName)}_{position}" : name!;
             var what = $"Item '{itemName}'";
 
-            var drawing = new UnifiedItemDrawing(ReadPoints(item, typeName, what), ReadTags(item, what));
+            var drawing = new UnifiedItemDrawing(ReadPoints(item, typeName, what), ReadTags(item, what), UnifiedEventListReader.Read(item, what));
 
             return new UnifiedItemDescription(typeName, itemName, ReadProperties(item, what), drawing);
         }
