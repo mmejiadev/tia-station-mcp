@@ -53,6 +53,24 @@ namespace TiaMcpServer.UnifiedTags
         /// <exception cref="PortalException"><see cref="PortalErrorCode.InvalidParams"/> when the value does not fit the type.</exception>
         public static string Constant(string dataType, string value, string what)
         {
+            var problem = Problem(dataType, value, what);
+            if (problem != null)
+            {
+                throw new PortalException(PortalErrorCode.InvalidParams, problem);
+            }
+
+            return Integers.ContainsKey(dataType)
+                ? decimal.Parse(value, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture)
+                : value.Trim();
+        }
+
+        /// <summary>Why a value does not fit a data type, or null when it does; <see cref="Constant"/> without the exception.</summary>
+        /// <param name="dataType">The tag's data type, as TIA Portal spells it.</param>
+        /// <param name="value">The value as given.</param>
+        /// <param name="what">The tag and setting, as the reason names them.</param>
+        /// <returns>The reason, or null.</returns>
+        public static string? Problem(string dataType, string value, string what)
+        {
             if (dataType == null || value == null)
             {
                 throw new ArgumentNullException(dataType == null ? nameof(dataType) : nameof(value));
@@ -60,24 +78,22 @@ namespace TiaMcpServer.UnifiedTags
 
             if (Integers.TryGetValue(dataType, out var range))
             {
-                return Integer(value, range, dataType, what);
+                return IntegerProblem(value, range, dataType, what);
             }
 
             if (Reals.TryGetValue(dataType, out var largest))
             {
-                return Real(value, largest, dataType, what);
+                return RealProblem(value, largest, dataType, what);
             }
 
             if (dataType.Equals("Bool", StringComparison.OrdinalIgnoreCase))
             {
-                return value == "0" || value == "1"
-                    ? value
-                    : throw new PortalException(PortalErrorCode.InvalidParams, $"{what}: a Bool takes 0 or 1 (true and false are given as 1 and 0); got '{value}'");
+                return value == "0" || value == "1" ? null : $"{what}: a Bool takes 0 or 1 (true and false are given as 1 and 0); got '{value}'";
             }
 
             return dataType.Equals("WString", StringComparison.OrdinalIgnoreCase)
-                ? value
-                : throw new PortalException(PortalErrorCode.InvalidParams, $"{what}: a {dataType} tag takes no value through this tool; only numbers, Bool and WString were measured");
+                ? null
+                : $"{what}: a {dataType} tag takes no value through this tool; only numbers, Bool and WString were measured";
         }
 
         /// <summary>Refuses a lower limit that is not below the upper one, which the compile refuses too.</summary>
@@ -93,28 +109,24 @@ namespace TiaMcpServer.UnifiedTags
             }
         }
 
-        private static string Integer(string value, (decimal Min, decimal Max) range, string dataType, string what)
+        private static string? IntegerProblem(string value, (decimal Min, decimal Max) range, string dataType, string what)
         {
             if (!decimal.TryParse(value, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var number))
             {
-                throw new PortalException(PortalErrorCode.InvalidParams, $"{what}: a {dataType} takes a whole number; got '{value}'");
+                return $"{what}: a {dataType} takes a whole number; got '{value}'";
             }
 
-            return number >= range.Min && number <= range.Max
-                ? number.ToString(CultureInfo.InvariantCulture)
-                : throw new PortalException(PortalErrorCode.InvalidParams, $"{what}: {value} is outside the range of a {dataType}, {range.Min} to {range.Max}");
+            return number >= range.Min && number <= range.Max ? null : $"{what}: {value} is outside the range of a {dataType}, {range.Min} to {range.Max}";
         }
 
-        private static string Real(string value, double largest, string dataType, string what)
+        private static string? RealProblem(string value, double largest, string dataType, string what)
         {
             if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var number) || double.IsNaN(number) || double.IsInfinity(number))
             {
-                throw new PortalException(PortalErrorCode.InvalidParams, $"{what}: a {dataType} takes a number written with a point, e.g. 1.5 or 1e3; got '{value}'");
+                return $"{what}: a {dataType} takes a number written with a point, e.g. 1.5 or 1e3; got '{value}'";
             }
 
-            return Math.Abs(number) <= largest
-                ? value.Trim()
-                : throw new PortalException(PortalErrorCode.InvalidParams, $"{what}: {value} is outside the range of a {dataType}");
+            return Math.Abs(number) <= largest ? null : $"{what}: {value} is outside the range of a {dataType}";
         }
 
         /// <remarks>

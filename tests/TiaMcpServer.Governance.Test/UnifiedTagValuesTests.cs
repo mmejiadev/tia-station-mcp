@@ -40,6 +40,13 @@ namespace TiaMcpServer.Governance.Tests
         }
 
         [TestMethod]
+        public void Problem_ValueThatFitsAndOneThatDoesNot_AnswersWithoutThrowing()
+        {
+            Assert.IsNull(UnifiedTagValues.Problem("Int", "7", "T"));
+            StringAssert.Contains(UnifiedTagValues.Problem("Int", "99999", "T"), "outside the range", System.StringComparison.Ordinal);
+        }
+
+        [TestMethod]
         public void RequireOrdered_LowerNotBelowUpper_ThrowsInvalidParams()
         {
             var failure = Assert.ThrowsException<PortalException>(() => UnifiedTagValues.RequireOrdered("50", "10", "T"));
