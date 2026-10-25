@@ -79,7 +79,7 @@ The order numbers are the ones the class projects use, read from the corpus surv
 | T7 | Limits, thresholds, linear scaling, substitute values | Open | Open (`HmiThreshold`, `HmiSubstituteValue`) | Set and read back; scaling checked in simulation |
 | T8 | System tags | — | Open (`HmiSystemTag`) | Read and used by a screen item |
 | T9 | Arrays, UDT tags and HMI UDTs | Open | Open | A UDT tag used by a faceplate |
-| T10 | Text lists and graphic lists | Text lists measured (`ImportHmiTextList`); graphic lists open | Open | Each created and used by a symbolic or graphic field |
+| T10 | Text lists and graphic lists | Text lists measured (`ImportHmiTextList`); graphic lists open | Text lists measured 2026-10-25 (`CreateUnifiedTextList`, `GetUnifiedTextLists`, `Test49`): one value per entry, written as the YAML Openness imports and read back after every write. Ranges are not offered (TIA Portal V20 imports them as an empty list). **Graphic lists: Openness V20 has none for Unified** | Each created and used by a symbolic or graphic field |
 
 ## 3. Drawing — every screen item
 
@@ -131,8 +131,8 @@ Every type below exists in `Siemens.Engineering.HmiUnified.UI`.
 | A5 | Flashing | Open | Built 2026-10-25: a range that flashes (rate and alternate colour), and `FlashingDynamization` on a colour property (TIA refuses it on `Visible`), `Test47` | An alarm lamp flashes |
 | A6 | Operability and enable by authorisation or bit | Open | By a bit measured 2026-10-25: a range animation on `Enabled`, read back and compiled (`Test48`); by authorisation open (needs users, row R) | A button disabled by a bit |
 | A7 | Bar and gauge driven by a value with limits | Built (bar) | Measured 2026-10-25: `ProcessValue` linked on a bar and a gauge; limits `StraightScale`/`CurvedScale` `BeginValue`/`EndValue` set away from their defaults and read back, and a bar's `StraightScale.EndValue` linked to a tag; compiled (`Test48`) | A level shown live |
-| A8 | Expression, resource-list and script dynamizations | — | Script built 2026-10-25 (trigger automatic, a named cycle or a tag list; syntax-checked; compiled in `Test47`); expression and resource list open, named by the backup check | One of each compiled and seen working |
-| A9 | Tag-indexed text and graphics (text and graphic lists) | Built (symbolic field) | Open | A state shown as text and as a picture |
+| A8 | Expression, resource-list and script dynamizations | — | Script built 2026-10-25 (trigger automatic, a named cycle or a tag list; syntax-checked; compiled in `Test47`); resource list built 2026-10-25 as the `list` animation (`Test49`, row A9); expression open, named by the backup check | One of each compiled and seen working |
+| A9 | Tag-indexed text and graphics (text and graphic lists) | Built (symbolic field) | Text measured 2026-10-25: a symbolic IO field's `ResourceList` and a text's `list` animation, drawn, read back, compiled (`Test49`); a list that does not exist is refused before drawing. Graphics: not possible through Openness V20 | A state shown as text and as a picture |
 
 ## 5. Events, functions and scripts
 
