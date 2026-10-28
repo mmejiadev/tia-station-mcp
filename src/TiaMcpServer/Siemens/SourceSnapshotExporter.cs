@@ -6,7 +6,6 @@ using Siemens.Engineering.SW.ExternalSources;
 using Siemens.Engineering.SW.Tags;
 using Siemens.Engineering.SW.Types;
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 
@@ -29,16 +28,7 @@ namespace TiaMcpServer.Siemens
         private const string BlocksFolderName = "blocks";
         private const string TypesFolderName = "types";
         private const string TagsFolderName = "tags";
-        private const string TypeExtension = ".udt";
         private const string TagTableExtension = ".xml";
-
-        private static readonly Dictionary<ProgrammingLanguage, string> SourceExtensions =
-            new Dictionary<ProgrammingLanguage, string>
-            {
-                [ProgrammingLanguage.SCL] = ".scl",
-                [ProgrammingLanguage.DB] = ".db",
-                [ProgrammingLanguage.STL] = ".awl"
-            };
 
         private readonly PlcSoftware _software;
         private readonly PlcExternalSourceSystemGroup _externalSourceGroup;
@@ -102,7 +92,7 @@ namespace TiaMcpServer.Siemens
 
         private void ExportBlock(PlcBlock block, string directory, SnapshotReportBuilder report)
         {
-            if (!SourceExtensions.TryGetValue(block.ProgrammingLanguage, out var extension))
+            if (!SourceFileExtension.TryFor(block.ProgrammingLanguage, out var extension))
             {
                 report.AddUnsupported(block.Name, block.ProgrammingLanguage.ToString());
 
@@ -160,7 +150,7 @@ namespace TiaMcpServer.Siemens
                 return;
             }
 
-            var file = PrepareFile(directory, type.Name, TypeExtension, report);
+            var file = PrepareFile(directory, type.Name, SourceFileExtension.Type, report);
 
             if (file == null)
             {
