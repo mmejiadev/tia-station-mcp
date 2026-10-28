@@ -68,8 +68,6 @@ namespace TiaMcpServer.ModelContextProtocol
 
             try
             {
-                Portal.CloseProject();
-
                 // get project extension
                 string extension = Path.GetExtension(path).ToLowerInvariant();
 
@@ -88,6 +86,13 @@ namespace TiaMcpServer.ModelContextProtocol
                 }
                 if (extension.StartsWith(".als"))
                 {
+                    // A project open in somebody else's TIA Portal is theirs: only the server's own
+                    // is closed to make room. See ProjectOpeningRule for the same rule on projects.
+                    if (Portal.OwnsPortalProcess)
+                    {
+                        Portal.CloseProject();
+                    }
+
                     success = Portal.OpenSession(path);
                 }
 
@@ -95,11 +100,13 @@ namespace TiaMcpServer.ModelContextProtocol
                 {
                     return new ResponseOpenProject
                     {
-                        Message = RecordOpenProject(ProjectEvent.Opened, $"Project '{path}' opened"),
+                        Message = RecordOpenProject(ProjectEvent.Opened, $"Project '{path}' opened in {Portal.AttachedProcess}"),
                         Meta = new JsonObject
                         {
                             ["timestamp"] = DateTime.Now,
-                            ["success"] = true
+                            ["success"] = true,
+                            ["processId"] = Portal.AttachedProcess?.Id,
+                            ["ownsProcess"] = Portal.OwnsPortalProcess
                         }
                     };
                 }
@@ -107,6 +114,10 @@ namespace TiaMcpServer.ModelContextProtocol
                 {
                     throw new McpException($"Failed to open project '{path}'", McpErrorCode.InternalError);
                 }
+            }
+            catch (PortalException pex)
+            {
+                throw ToMcpException(pex, $"Failed to open project '{path}'");
             }
             catch (Exception ex) when (ex is not McpException)
             {

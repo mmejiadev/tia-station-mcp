@@ -4,7 +4,6 @@ using Siemens.Engineering.Multiuser;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 
 namespace TiaMcpServer.Siemens
 {
@@ -66,50 +65,47 @@ namespace TiaMcpServer.Siemens
             return projects;
         }
 
+        /// <summary>
+        /// Opens a local project, or takes it where it is already open, without closing a project
+        /// that belongs to somebody else. <see cref="ProjectOpeningRule"/> decides how.
+        /// </summary>
+        /// <param name="projectPath">The project file, <c>.apNN</c>.</param>
+        /// <returns>True when the project is open and current; false when no portal is connected.</returns>
+        /// <exception cref="PortalException">
+        /// <see cref="PortalErrorCode.InvalidState"/> when the user's TIA Portal holds another
+        /// project; an operation failure when TIA Portal could not open it.
+        /// </exception>
         public bool OpenProject(string projectPath)
         {
-            _logger?.LogInformation($"Opening project: {projectPath}");
+            _logger?.LogInformation("Opening project: {ProjectPath}", projectPath);
 
             if (IsPortalNull())
             {
                 return false;
             }
 
-            if (CurrentProject != null)
-            {
-                (CurrentProject as Project)?.Close();
-                CurrentProject = null;
-            }
-
-            if (_session != null)
-            {
-                _session.Close();
-                _session = null;
-            }
-
             try
             {
-                var projects = FindProjects();
-                var projectName = Path.GetFileNameWithoutExtension(projectPath);
+                var requested = FullProjectPath(projectPath);
 
-                if (!string.IsNullOrEmpty(projectName) && projects.Any(p => p.Name.Equals(projectName)))
+                if (requested.Length == 0)
                 {
-                    // Project is already open
-                    CurrentProject = _portal?.Projects.FirstOrDefault(p => p.Name == projectName);
-
-                    return CurrentProject != null;
+                    throw new PortalException(PortalErrorCode.InvalidParams, "A project path is required");
                 }
-                else
-                {
-                    // see [5.3.1 Projekt öffnen, S.113]
-                    CurrentProject = _portal?.Projects.OpenWithUpgrade(new FileInfo(projectPath));
 
-                    return CurrentProject != null;
-                }
+                var openPath = ProjectPathInAttachedPortal(requested);
+
+                return CarryOut(DecideOpening(requested, openPath), requested, openPath);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                return false;
+                var pex = ex as PortalException ?? new PortalException(PortalErrorCode.ExportFailed, $"Failed to open project: {ex.Message}", null, ex);
+
+                pex.Data["projectPath"] = projectPath;
+                pex.Data["attachedProcess"] = AttachedProcess?.ToString();
+
+                _logger?.LogError(pex, "OpenProject failed for {ProjectPath} in {Process}", projectPath, AttachedProcess);
+                throw pex;
             }
         }
 
@@ -135,7 +131,7 @@ namespace TiaMcpServer.Siemens
             try
             {
                 ValidateRetrieveRequest(archivePath, targetDirectory);
-                CloseOpenProject();
+                MakeRoomForNewProject(targetDirectory);
 
                 // Retrieve() upgrades nothing: an archive from an older TIA version needs
                 // RetrieveWithUpgrade instead, which rewrites the project irreversibly.
@@ -179,7 +175,7 @@ namespace TiaMcpServer.Siemens
             try
             {
                 ValidateCreateRequest(targetDirectory, projectName);
-                CloseOpenProject();
+                MakeRoomForNewProject(Path.Combine(targetDirectory, projectName));
 
                 CurrentProject = _portal!.Projects.Create(new DirectoryInfo(targetDirectory), projectName);
 
@@ -262,15 +258,6 @@ namespace TiaMcpServer.Siemens
             }
         }
 
-        private void CloseOpenProject()
-        {
-            (CurrentProject as Project)?.Close();
-            CurrentProject = null;
-
-            _session?.Close();
-            _session = null;
-        }
-
         public object? GetProjectInfo()
         {
             _logger?.LogInformation("Getting project info...");
@@ -326,6 +313,10 @@ namespace TiaMcpServer.Siemens
             var di = new DirectoryInfo(path);
 
             (CurrentProject as Project)?.SaveAs(di);
+
+            // The remembered path read anew: if the open project now lives at the new path, GetState
+            // would otherwise find the old one closed and let go of it.
+            OpenProjectPath = CurrentProject?.Path?.FullName ?? string.Empty;
 
             return true;
         }
