@@ -5,6 +5,48 @@
 
 ## ▶ RESUME HERE
 
+### Unified logging — 2026-10-28, branch `work/unified-logging`
+
+`CreateUnifiedLogging` and `GetUnifiedLogging` (two new tools): data logs, alarm logs with the alarm
+classes logged to them, and logging tags that log an HMI tag into a data log on change, cyclically
+(with a cycle) or on demand. All or nothing, like `CreateUnifiedAlarms`, and read back in the shape it
+takes. HMI-COVERAGE row R3.
+
+Measured on V20 by four probes on copies of `UnifiedProject` in the server's own headless TIA Portal
+(the user's window untouched, nothing saved). A logging tag names its data log, and an alarm class
+its alarm log, **by string**: Openness refuses a name that is not a log. Data logs and alarm logs share
+one set of names, unique in any case; a logging tag's name is unique among the logging tags of its HMI
+tag only. With one data log a new logging tag is given it; with two it is left empty. Openness takes,
+and only the compile refuses: a logging tag with no data log, a cyclic one with no cycle, an alarm log
+no class is logged to. Each is refused by the tool first. Deleting a data log or an alarm log that is
+still named succeeds and leaves the name pointing at nothing, so the undo deletes logging tags and
+empties classes before it deletes logs, and the tool never deletes a log. An alarm class's log is set
+back to empty with `''` (null is refused), which is why the tool only sets a class's log from empty
+and refuses one already logged elsewhere: undoing it is then exact. Cycles T500ms, T1s, T2s, T5s and
+T10s are taken; T100ms and T250ms are refused on an internal tag ("LoggingCycleConsistency check
+failed") and named minutes or hours do not exist. Scheduled tasks (row E8) are not exposed by
+Openness V20 at all.
+
+The create-and-undo step the alarm writer had is now shared (`UnifiedRollback.Create`) rather than
+copied, and an undo that cannot finish asks to undo the rest by hand rather than to delete it.
+
+`/code-review high`: ten findings, all fixed — an alarm class's log changed with no saved previous
+state (now `alarm-class-logs.json` in the backup registry, before any class changes); a class still
+naming a deleted log would have been logged to a new log of that name without the plan saying so (now
+refused, asking to empty its log); a missing tag, log or class came back as invalid state rather than
+invalid parameters; an existing logging tag was found by exact name only; a cycle read back on a logging
+tag that is not cyclic would not go back in; a refused class was reported as its log; a class twice in
+one log was reported as one in two logs; reading back read every tag's logging tags; the shared
+create step took five parameters; an undo that could not empty a class said to delete it.
+
+Tests: Governance 702/704 (2 skipped; `UnifiedLoggingListReaderTests` 12, `UnifiedLoggingSummaryTests`
+1). For tonight, against TIA Portal: `Test53UnifiedLogging` (read back, compile with only the known
+messages, four refusals, a class already logged, a refused cycle undone, the classes' logs saved first) and `Test16` with the new
+refusal; `Test51` again, for the shared undo step.
+
+**Next:** the user's commit; tonight the Openness suite; then log settings (size, duration, storage)
+and a trend control on a screen to show a data log.
+
 ### A4 closed: a killed server's TIA Portal is left running, on purpose — 2026-10-28, branch `work/a4-close`
 
 The last open part of A4 was a TIA Portal the server starts itself and leaves running with no
