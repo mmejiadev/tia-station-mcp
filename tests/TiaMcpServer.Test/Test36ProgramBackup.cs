@@ -28,6 +28,16 @@ BEGIN
 END_FUNCTION
 ";
 
+        private const string GeneratedTypeName = "UDT_BackedUpByTest";
+
+        private const string TypeScl = @"TYPE ""UDT_BackedUpByTest""
+VERSION : 0.1
+   STRUCT
+      Done : Bool;
+   END_STRUCT;
+END_TYPE
+";
+
         private string _directory = string.Empty;
 
         [TestInitialize]
@@ -54,6 +64,42 @@ END_FUNCTION
 
             var saved = Directory.EnumerateFiles(backupDirectory, $"{Test33DocumentExport.BrokenName}.s7dcl", SearchOption.AllDirectories);
             Assert.IsTrue(saved.Any(), $"The block that does not compile is missing from the backup in {backupDirectory}");
+        }
+
+        /// <remarks>
+        /// The second of two writes in a row, as a correction is: the block the first one generated
+        /// has not been compiled. On 2026-10-28 that block, a Main, refused to be exported as a
+        /// document, and the second write was refused with it. Its source is what WriteScl reads.
+        /// </remarks>
+        [TestMethod]
+        public void WriteScl_AnSclBlockNotYetCompiled_BacksItUpAsSource()
+        {
+            AssemblyHooks.SharedPortal.WriteScl(Software, ValidScl, Path.Combine(_directory, "first"));
+            Assert.IsFalse(AssemblyHooks.SharedPortal.GetBlock(Software, GeneratedName)?.IsConsistent ?? true, "The generated block is already compiled, so it no longer tests an uncompiled one");
+            var backupDirectory = Path.Combine(_directory, "second");
+
+            AssemblyHooks.SharedPortal.WriteScl(Software, ValidScl, backupDirectory);
+
+            AssertSavedAsSource(backupDirectory, $"{GeneratedName}.scl", GeneratedName);
+        }
+
+        /// <remarks>A type a WriteScl declared is as uncompiled as its blocks, and is backed up the same way.</remarks>
+        [TestMethod]
+        public void WriteScl_ATypeNotYetCompiled_BacksItUpAsSource()
+        {
+            AssemblyHooks.SharedPortal.WriteScl(Software, TypeScl, Path.Combine(_directory, "first"));
+            var backupDirectory = Path.Combine(_directory, "second");
+
+            AssemblyHooks.SharedPortal.WriteScl(Software, TypeScl, backupDirectory);
+
+            AssertSavedAsSource(backupDirectory, $"{GeneratedTypeName}.udt", GeneratedTypeName);
+        }
+
+        private static void AssertSavedAsSource(string backupDirectory, string fileName, string name)
+        {
+            var saved = Directory.EnumerateFiles(backupDirectory, fileName, SearchOption.AllDirectories).ToList();
+            Assert.AreEqual(1, saved.Count, $"{name} is not in the backup in {backupDirectory} as its source");
+            StringAssert.Contains(File.ReadAllText(saved[0]), name);
         }
 
         /// <remarks>
