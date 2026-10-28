@@ -528,6 +528,14 @@ namespace TiaMcpServer.Test
         }
 
         [TestMethod]
+        public void CreateUnifiedLogging_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.CreateUnifiedLogging("HMI_MTP700/HMI_RT_1", @"{ ""dataLogs"": [ { ""name"": ""Refused"" } ] }");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
         public void GenerateHmiTextList_WithNoPolicy_IsRefused()
         {
             const string List = @"{ ""name"": ""Refused"", ""entries"": [ { ""value"": 0, ""text"": ""STOPPED"" } ] }";
