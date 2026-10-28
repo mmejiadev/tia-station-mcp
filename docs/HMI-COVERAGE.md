@@ -103,7 +103,7 @@ The order numbers are the ones the class projects use, read from the corpus surv
 | C11 | Symbol library (pumps, valves, motors, tanks) | 2 | Open | A valve from the library placed and animated |
 | C12 | Date/time field | 0 | Built | As C1 |
 | C13 | Graphic I/O field, switch, slider, gauge, clock | 0 | Open | Each generated, as C1 |
-| C14 | Views: alarm, trend, f(x) trend, recipe, user, status/force, system diagnostics, HTML browser, media player, PDF | 0 | Open | Each placed and compiled |
+| C14 | Views: alarm, trend, f(x) trend, recipe, user, status/force, system diagnostics, HTML browser, media player, PDF | 0 | Open; Unified alarm control drawn and compiled 2026-10-25 (`Test51`) | Each placed and compiled |
 | C15 | Layers, pop-up screens, slide-in screens, global elements | layers: 96 | Layers built 2026-10-21 (`layer` 0–31, one `ScreenLayer` per layer in use); the rest open | Each used on a generated screen |
 | C16 | Faceplates (library types with an interface) | 0 | Open | A faceplate created, used twice, compiled |
 | C17 | Styles and multilingual texts | — | Open | A style applied; a second language shown |
@@ -144,14 +144,14 @@ Every type below exists in `Siemens.Engineering.HmiUnified.UI`.
 | E4 | Screen navigation: `ActivateScreen`, by number, previous | Built | Built 2026-10-23: `changeScreen` as `HMIRuntime.UI.SysFct.ChangeScreen(screen, window)`, the window path relative to the item's screen (measured on a class project) | Navigation works in simulation |
 | E5 | The rest of the classic system-function list (alarms, recipes, users, logging, language, stop runtime) | Open | — | Each function the documentation lists is generated or refused with a reason |
 | E6 | VBScript (Advanced and PC) and C scripts | Open | — | A script called from a button |
-| E7 | JavaScript: event scripts and global script modules | — | Open (`HmiScriptModule`) | A script-module function called from an event |
+| E7 | JavaScript: event scripts and global script modules | — | Event scripts written (row E1) and, from 2026-10-25, checked: `CheckUnifiedScripts` (`Test52`) finds what TIA Portal compiles without a word — an assignment in a condition, a tag held in a local variable and overwritten, a bit function on a Bool or past its tag, `not(...)`/`and`/`or`, a missing tag — and found the four faults of the 0968 final project. Global script modules open (`HmiScriptModule`) | A script-module function called from an event |
 | E8 | Scheduled tasks and tag-change triggers | Open | Open | A task runs on a trigger |
 
 ## 6. Runtime features
 
 | # | Capability | Classic | Unified | Done when |
 |---|---|---|---|---|
-| R1 | Discrete and analog alarms, alarm classes and groups | Open | Open | An alarm raised in PLCSIM appears on the panel |
+| R1 | Discrete and analog alarms, alarm classes and groups | Open | Measured 2026-10-25 (`CreateUnifiedAlarms`, `GetUnifiedAlarms`, `Test51`): classes with priority, state machine and state colours; discrete alarms on a bit of a Bool, Byte, Word, DWord or LWord tag, analog alarms on a number tag; texts, info, origin, area; compiled. The type pairings, bit widths, a tag and bit raising two alarms, a missing tag or class and an analog value outside its type were each measured as compile errors Openness takes silently, and are refused first. Alarms on PLC-linked tags verified on a class project copy. Groups, alarm parameters and acknowledgement tags open; raised in PLCSIM: open (row S3) | An alarm raised in PLCSIM appears on the panel |
 | R2 | PLC alarms (`Program_Alarm`, ProDiag) shown on the HMI | Open | Open | Same, from the PLC program |
 | R3 | Tag logging and alarm logging | Open | Open (`HmiLogging`, `LoggingTags`) | A log written in simulation |
 | R4 | Recipes (classic) and parameter sets (Unified) | Open | Measured 2026-10-23 on a class practice: Openness V20 exposes no parameter set types or parameter sets at all, only a parameter control's `ParameterSetTypeFixed`, which the MCP can set. In the V20 engineering editor a parameter set type has its UDT, tag and elements but no parameter sets: they are created in runtime with the control (and exported/imported there); the teacher's V21 shows them in the editor — to check on V21 | A recipe record written to the PLC |

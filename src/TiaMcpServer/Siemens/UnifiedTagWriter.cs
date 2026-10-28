@@ -83,7 +83,7 @@ namespace TiaMcpServer.Siemens
 
                 return made.Tags;
             }
-            catch (Exception failure) when (!IsSessionEnded(failure))
+            catch (Exception failure) when (!UnifiedRollback.IsSessionEnded(failure))
             {
                 throw Undo(made, failure);
             }
@@ -201,7 +201,7 @@ namespace TiaMcpServer.Siemens
             {
                 throw new PortalException(refusal.Code, refusal.Message + RemoveHalfMade(tag), null, refusal);
             }
-            catch (Exception failure) when (!IsSessionEnded(failure))
+            catch (Exception failure) when (!UnifiedRollback.IsSessionEnded(failure))
             {
                 throw new PortalException(PortalErrorCode.InvalidState, $"TIA Portal refused tag '{description.Name}': {failure.Message.Trim()}{RemoveHalfMade(tag)}", null, failure);
             }
@@ -220,7 +220,7 @@ namespace TiaMcpServer.Siemens
 
             var name = tag.Name;
 
-            return TryDelete(tag.Delete) ? string.Empty : $" Removing the half-made tag '{name}' failed too; delete it in TIA Portal.";
+            return UnifiedRollback.TryDelete(tag.Delete) ? string.Empty : $" Removing the half-made tag '{name}' failed too; delete it in TIA Portal.";
         }
 
         private void Configure(HmiTag tag, UnifiedTagDescription description)
@@ -258,46 +258,15 @@ namespace TiaMcpServer.Siemens
                 : null;
         }
 
-        /// <remarks>Once the session has ended there is nothing to undo with; the caller must reopen the project.</remarks>
-        private static bool IsSessionEnded(Exception failure)
-        {
-            return failure is NonRecoverableException || failure is EngineeringObjectDisposedException;
-        }
-
-        /// <remarks>
-        /// A delete that fails must not hide the failure that explains what went wrong, and the caller
-        /// must learn what is left, so a retry does not stumble on it: compare RemoveStationAfter. Tags go
-        /// first, then tables, then the new groups, which take with them anything still inside.
-        /// </remarks>
+        /// <remarks>Tags go first, then tables, then the new groups, which take with them anything still inside.</remarks>
         private static PortalException Undo(Made made, Exception failure)
         {
-            var left = Enumerable.Reverse(made.Tags).Select(entry => (Name: $"tag '{entry.Tag.Name}'", Delete: (Action)entry.Tag.Delete))
-                .Concat(Enumerable.Reverse(made.Tables).Select(table => (Name: $"tag table '{table.Name}'", Delete: (Action)table.Delete)))
-                .Concat(Enumerable.Reverse(made.Groups).Select(group => (Name: $"tag table group '{group.Name}'", Delete: (Action)group.Delete)))
-                .Where(entry => !TryDelete(entry.Delete))
-                .Select(entry => entry.Name)
+            var inOrder = made.Groups.Select(group => (Name: $"tag table group '{group.Name}'", Delete: (Action)group.Delete))
+                .Concat(made.Tables.Select(table => (Name: $"tag table '{table.Name}'", Delete: (Action)table.Delete)))
+                .Concat(made.Tags.Select(entry => (Name: $"tag '{entry.Tag.Name}'", Delete: (Action)entry.Tag.Delete)))
                 .ToList();
 
-            var code = (failure as PortalException)?.Code ?? PortalErrorCode.WriteFailed;
-            var outcome = left.Count == 0
-                ? "Nothing was created: the tags, tables and groups made before it were removed again."
-                : $"Removing what was made before it failed for {string.Join(", ", left)}; delete those in TIA Portal before trying again.";
-
-            return new PortalException(code, $"{failure.Message.Trim()} {outcome}", null, failure);
-        }
-
-        private static bool TryDelete(Action delete)
-        {
-            try
-            {
-                delete();
-                return true;
-            }
-            catch (Exception deleteFailure) when (!IsSessionEnded(deleteFailure))
-            {
-                // Not swallowed: the caller of Undo names every object whose delete failed.
-                return false;
-            }
+            return UnifiedRollback.Undo(inOrder, failure, "tags, tables and groups");
         }
     }
 }

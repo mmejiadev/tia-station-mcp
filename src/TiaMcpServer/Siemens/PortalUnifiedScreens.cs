@@ -79,11 +79,7 @@ namespace TiaMcpServer.Siemens
             try
             {
                 var software = RequireUnifiedSoftware(hmiPath);
-                var screen = software.Screens.Find(screenName ?? string.Empty)
-                    ?? FindInScreenGroups(software.ScreenGroups, screenName ?? string.Empty)?.Screen
-                    ?? throw new PortalException(
-                        PortalErrorCode.NotFound,
-                        $"'{hmiPath}' has no screen '{screenName}'. Screens: {string.Join(", ", software.Screens.Select(candidate => candidate.Name))}");
+                var screen = FindUnifiedScreen(software, hmiPath, screenName ?? string.Empty);
 
                 return new UnifiedScreenReader(CurrentProject!.LanguageSettings.EditingLanguage).Read(screen, software.RuntimeSettings.StartScreen);
             }
@@ -175,6 +171,17 @@ namespace TiaMcpServer.Siemens
                     PortalErrorCode.InvalidState,
                     $"Nothing was drawn: the screen '{screenName}' is in the screen group '{group}', and this tool draws only screens outside a group");
             }
+        }
+
+        /// <summary>A screen of the HMI, at the top or in a screen group.</summary>
+        /// <exception cref="PortalException"><see cref="PortalErrorCode.NotFound"/> naming the screens there are.</exception>
+        private static HmiScreen FindUnifiedScreen(UnifiedHmiSoftware software, string hmiPath, string screenName)
+        {
+            return software.Screens.Find(screenName)
+                ?? FindInScreenGroups(software.ScreenGroups, screenName)?.Screen
+                ?? throw new PortalException(
+                    PortalErrorCode.NotFound,
+                    $"'{hmiPath}' has no screen '{screenName}'. Screens: {string.Join(", ", software.Screens.Select(candidate => candidate.Name))}");
         }
 
         private static (HmiScreen Screen, string Group)? FindInScreenGroups(HmiScreenGroupComposition groups, string screenName)
