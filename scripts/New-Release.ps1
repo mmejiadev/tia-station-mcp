@@ -21,6 +21,11 @@
 .PARAMETER OutputDirectory
     Where to write the artefact. Defaults to 'release' beside the repository.
 
+.PARAMETER TiaVersion
+    The TIA Portal version to build for: 20 (default) or 21. V21 changed the Openness API
+    incompatibly, so each version is its own artefact; the V21 one is named with a -v21 suffix.
+    On a machine without TIA Portal V21, set OPENNESS_V21_PATH to a copy of PublicAPI\V21\net48.
+
 .PARAMETER AllowDirtyTree
     Pack even though the working tree has uncommitted changes. For trying the script out; a release
     built this way cannot be tied to a commit.
@@ -34,6 +39,7 @@
 [CmdletBinding()]
 param(
     [string] $OutputDirectory,
+    [ValidateSet('20', '21')] [string] $TiaVersion = '20',
     [switch] $AllowDirtyTree
 )
 
@@ -77,7 +83,9 @@ Write-Host 'Building the server...'
 
 $project = Join-Path $repository 'src\TiaMcpServer\TiaMcpServer.csproj'
 
-& dotnet build $project -c $configuration --nologo -v quiet
+# Not incremental: both versions build into the same folder, and a leftover from the other one
+# would ship a binary bound to the wrong Openness API.
+& dotnet build $project -c $configuration --nologo -v quiet --no-incremental "-p:TiaVersion=$TiaVersion"
 
 if ($LASTEXITCODE -ne 0) {
     throw 'The build failed, so there is nothing to pack.'
@@ -94,7 +102,7 @@ if (-not (Test-Path -LiteralPath $executable)) {
 # says it is, and those two can differ if a build was skipped.
 $version = [Diagnostics.FileVersionInfo]::GetVersionInfo($executable).FileVersion
 $commit = Get-Commit
-$name = "tia-station-mcp-$version"
+$name = if ($TiaVersion -eq '20') { "tia-station-mcp-$version" } else { "tia-station-mcp-$version-v$TiaVersion" }
 
 Write-Host "Packing $name (commit $commit)..."
 
@@ -131,8 +139,8 @@ try {
         "commit $commit"
         "built $(Get-Date -Format 'o')"
         ''
-        'TIA Portal V20 with Openness is required and is not included: it is resolved from the'
-        'installation on the machine this runs on.'
+        "TIA Portal V$TiaVersion with Openness is required and is not included: it is resolved from the"
+        'installation on the machine this runs on. A build for one version does not run on another.'
     )
 
     New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
