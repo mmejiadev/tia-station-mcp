@@ -1,9 +1,40 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-10-27**
+> Last updated: **2026-10-28**
 
 ## ▶ RESUME HERE
+
+### Backup of an uncompiled SCL block — 2026-10-28, branch `work/backup-uncompiled-scl`
+
+Found on a class exercise (0965, a vertical warehouse in SCL) through the installed MCP 0.0.20: a
+second `WriteScl` to the same program was refused, "the backup of the previous state is incomplete",
+because the `Main` the first one had generated was not compiled yet and refused `ExportAsDocuments`
+with "SIMATIC SD export failed due to project modifications made with a TIA Portal version earlier
+than V20 Update 4". Compiling first unblocked it; nothing was written in the meantime, as the backup
+rule intends.
+
+The backup now saves anything that does not compile and has a text form (SCL, DB, STL blocks and
+PLC data types) as its source first (`GenerateSource`: `.scl`, `.db`, `.awl`, `.udt`), which
+`WriteScl` reads back, and falls back to a document when the source is refused; a LAD or FBD block
+has only the document. When neither works, the refusal says to compile first instead of passing on
+the SIMATIC SD message. Measured the same day: `GenerateSource` wrote an inconsistent SCL function
+block of a class project. The language-to-extension table the snapshot already had is now shared
+(`SourceFileExtension`), and source file names go through `SnapshotFileName` as the snapshot's do.
+
+`/code-review high`: eight findings, all addressed — only SCL was covered, while a DB or UDT the same
+`WriteScl` declares stays uncompiled too; a refused source had no fallback; the table was a second
+copy of the snapshot's; names were not made file-safe; the source group was read on every write;
+the new test asserted no precondition. One stays as written: the test project does not refuse
+document export, so the tests (`WriteScl_AnSclBlockNotYetCompiled_BacksItUpAsSource`,
+`WriteScl_ATypeNotYetCompiled_BacksItUpAsSource`) fail before the fix only because they expect a
+source where a document was written, not by reproducing the refusal. Governance 689/691 (2 skipped);
+the Openness suite is for tonight, with TIA Portal closed.
+
+Also from the exercise, not fixed here: a watch table can only get rows by importing an exported
+one, and no exported table with rows was at hand to start from.
+
+**Next:** the user's commit; the Openness suite; then the leftover TIA Portal after a killed server.
 
 ### Working with the user's TIA Portal open (A4) — 2026-10-27, branch `work/tia-open`
 
