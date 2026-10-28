@@ -15,6 +15,9 @@ namespace TiaMcpServer.UnifiedScreens
     {
         private const string FormattedStart = "<body>";
 
+        /// <summary>The formatted text TIA Portal holds for a text nobody has written, e.g. a new alarm's info text.</summary>
+        public const string Empty = "<body><p/></body>";
+
         private static readonly Regex OnePlainParagraph = new Regex(@"^<body><p>([^<]*)</p></body>$", RegexOptions.CultureInvariant);
 
         /// <summary>The formatted text to store.</summary>

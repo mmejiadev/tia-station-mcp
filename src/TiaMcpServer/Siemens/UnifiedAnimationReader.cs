@@ -114,12 +114,22 @@ namespace TiaMcpServer.Siemens
         }
 
         /// <remarks>The automatic trigger is TIA Portal's own default, so it is left out, as a description leaves it.</remarks>
+        /// <summary>A script dynamization's global definitions, or null when they are empty or TIA Portal's default text.</summary>
+        /// <param name="script">The script dynamization.</param>
+        /// <returns>The definitions, or null.</returns>
+        public static string? GlobalsOf(ScriptDynamization script)
+        {
+            var globals = script.GlobalDefinitionAreaScriptCode ?? string.Empty;
+
+            return globals.Trim().Length > 0 && !string.Equals(globals.Trim(), DefaultGlobalDefinitions, StringComparison.Ordinal) ? globals : null;
+        }
+
         private static JsonObject ReadScript(ScriptDynamization script, string path)
         {
             var read = new JsonObject { ["property"] = path, ["script"] = script.ScriptCode };
 
-            var globals = script.GlobalDefinitionAreaScriptCode ?? string.Empty;
-            if (globals.Trim().Length > 0 && !string.Equals(globals.Trim(), DefaultGlobalDefinitions, StringComparison.Ordinal))
+            var globals = GlobalsOf(script);
+            if (globals != null)
             {
                 read["globalDefinitions"] = globals;
             }

@@ -1,4 +1,5 @@
-﻿using Siemens.Engineering.HmiUnified.HmiTags;
+﻿using Siemens.Engineering;
+using Siemens.Engineering.HmiUnified.HmiTags;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -31,10 +32,11 @@ namespace TiaMcpServer.Siemens
             return null;
         }
 
-        /// <summary>Reads the connections and every tag, table by table.</summary>
+        /// <summary>Reads the connections, every tag table by table, and the system tags.</summary>
         /// <param name="hmi">The WinCC Unified software.</param>
-        /// <returns><c>{ connections: [...], tags: [...] }</c>.</returns>
-        public static JsonObject Read(UnifiedHmiSoftware hmi)
+        /// <param name="language">The project's editing language, the one comments are read in.</param>
+        /// <returns><c>{ connections: [...], tableGroups: [...], tags: [...], systemTags: [...] }</c>; a group by its path, e.g. <c>Plant/Area_1</c>.</returns>
+        public static JsonObject Read(UnifiedHmiSoftware hmi, Language language)
         {
             var connections = hmi.Connections.Select(connection => (JsonNode)new JsonObject
             {
@@ -45,26 +47,39 @@ namespace TiaMcpServer.Siemens
                 ["integrated"] = !string.IsNullOrEmpty(connection.Partner)
             }).ToArray();
 
-            var tags = Tables(hmi).SelectMany(entry => entry.Table.Tags.Select(tag => (JsonNode)Describe(tag, entry.Path))).ToArray();
+            var tags = Tables(hmi).SelectMany(entry => entry.Table.Tags.Select(tag => (JsonNode)Describe(tag, entry.Path, language))).ToArray();
+            var systemTags = hmi.SystemTags.Select(tag => (JsonNode)new JsonObject { ["name"] = tag.Name, ["dataType"] = tag.DataType }).ToArray();
 
-            return new JsonObject { ["connections"] = new JsonArray(connections), ["tags"] = new JsonArray(tags) };
+            var groups = GroupPaths(hmi.TagTableGroups, string.Empty).Select(path => (JsonNode)JsonValue.Create(path)!).ToArray();
+
+            return new JsonObject
+            {
+                ["connections"] = new JsonArray(connections),
+                ["tableGroups"] = new JsonArray(groups),
+                ["tags"] = new JsonArray(tags),
+                ["systemTags"] = new JsonArray(systemTags)
+            };
         }
 
         /// <summary>Describes one tag.</summary>
         /// <param name="tag">The tag.</param>
         /// <param name="table">The path of its table.</param>
-        /// <returns>Its name, table, data type and, when linked, connection, PLC, PLC tag and address.</returns>
-        public static JsonObject Describe(HmiTag tag, string table)
+        /// <param name="language">The project's editing language, the one its comment is read in.</param>
+        /// <returns>Its name, table, data type, when linked its connection, PLC, PLC tag and address, and the settings that differ from TIA Portal's defaults.</returns>
+        public static JsonObject Describe(HmiTag tag, string table, Language language)
         {
             var described = new JsonObject { ["name"] = tag.Name, ["table"] = table, ["dataType"] = tag.DataType };
+            var isLinked = !IsInternal(tag.Connection);
 
-            if (!IsInternal(tag.Connection))
+            if (isLinked)
             {
                 described["connection"] = tag.Connection;
                 described["plcName"] = tag.PlcName;
                 described["plcTag"] = tag.PlcTag;
                 described["address"] = tag.Address;
             }
+
+            new UnifiedTagSettingsDescriber(language).Describe(tag, described, isLinked);
 
             return described;
         }
@@ -91,6 +106,21 @@ namespace TiaMcpServer.Siemens
         private static IEnumerable<(string Path, HmiTagTable Table)> Tables(UnifiedHmiSoftware hmi)
         {
             return hmi.TagTables.Select(table => (table.Name, table)).Concat(InGroups(hmi.TagTableGroups, string.Empty));
+        }
+
+        /// <remarks>Listed apart from the tables because an empty group holds no tag, and would not show otherwise.</remarks>
+        private static IEnumerable<string> GroupPaths(HmiTagTableGroupComposition groups, string prefix)
+        {
+            foreach (var group in groups)
+            {
+                var path = prefix + group.Name;
+                yield return path;
+
+                foreach (var nested in GroupPaths(group.Groups, path + "/"))
+                {
+                    yield return nested;
+                }
+            }
         }
 
         private static IEnumerable<(string Path, HmiTagTable Table)> InGroups(HmiTagTableGroupComposition groups, string prefix)

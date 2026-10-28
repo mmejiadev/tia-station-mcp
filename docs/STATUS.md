@@ -1,9 +1,197 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-10-21**
+> Last updated: **2026-10-27**
 
 ## ▶ RESUME HERE
+
+### Working with the user's TIA Portal open (A4) — 2026-10-27, branch `work/tia-open`
+
+`Connect` no longer attaches to whichever process Openness lists first. It takes, in order, the
+process holding the project the caller names (new optional `projectPath`), one with a window, and only
+then a headless one, preferring one with a project; it says which and why (`processId`,
+`hasUserInterface`, `ownsProcess`, `reason`). A requested project open nowhere leaves no project
+current and says so, rather than taking whichever the portal holds. The choice is
+`PortalProcessSelector` in `TiaMcpServer.Portable`, tested without TIA Portal.
+
+**A project in a TIA Portal the server did not start is never closed by it.** Before, the `OpenProject`
+tool began by closing whatever was open (in the user's window, her project, unsaved changes
+included), and `CreateProject`, `RetrieveProject` and opening a `.als` session did the same. Now
+`ProjectOpeningRule` decides: a project already open is used where it is; one held by another TIA
+Portal makes the server move to that one (it is locked there, the 2026-10-15 failure); the server's
+own TIA Portal may have its project replaced; anyone else's refuses with the reason. Projects are
+compared by full path, not by name, so two `Tolva` projects in two folders are no longer one.
+`GetState` no longer picks a project either; it only lets go of one the user closed by hand. A second
+`Connect` detaches from a portal it attached to, and keeps one the server started (reason
+`KeptOwnPortal`): releasing that one would close its project unsaved.
+
+**Measured on V20: `TiaPortalProcess.Dispose()` closes that TIA Portal.** A window listed by
+`GetProcesses()` and left alone was alive fifteen seconds later; listed and disposed, it was gone.
+The first version of this branch disposed the processes it did not choose and closed the user's
+window twice during the measurement. No process descriptor is disposed now, against CLAUDE.md's
+"dispose every TIA object", and the code says why. Detaching (`TiaPortal.Dispose()` on an attached
+portal) leaves the window running, measured across five server sessions. Also measured: TIA Portal
+refuses a project path over 143 characters, and each rebuilt server executable triggers Openness's
+permission prompt in the user's window again: twice, the first `Connect` of a rebuilt executable
+failed with "Security error ... The operation has timed out" after six to eight minutes, and the next
+one, seconds later, attached. The extra `Siemens.Automation.Portal.exe` that appears beside a
+window with a project open is its own `SearchReplaceBackgroundProcess`, a child, not a leftover.
+
+Measured through the MCP over stdio against a TIA Portal V20 window opened by hand, on a retrieved
+copy of `TestProject1`: attached to the window with a headless leftover running beside it; attached
+by `projectPath` to the holder; a read, a guarded `CreateTagTable` and a compile 0/0 in that window;
+opening another project refused with the window's project still open; the same project reused;
+`CreateProject` refused; a malformed `projectPath` a validation error that keeps the connection; no
+process left behind after any session.
+
+`/code-review high`: ten findings, all fixed — a second `Connect` leaked an owned portal; `CreateProject`
+and `RetrieveProject` still closed the user's project; opening a session still closed hers; a
+requested project open nowhere silently became the window's project; the refusal said a project the
+server opened was "not the server's"; switching to the holder let go of the current portal before
+finding it; a malformed path was an operation failure; `GetState` read the name of a project the user
+had closed; a session open beside the requested project stood in for it; `OpenProject` was over
+the method limit and listed every process even when the project was open where it was. Measuring the
+fixes found one more: `GetState` re-picked a project right after `Connect` said none was current.
+A second round, since this guards the user's work: ten findings, all fixed — that second `Connect` now
+closed an owned portal's project unsaved (now kept); a session still opened beside a project in the
+user's window (now `ProjectOpeningRule` decides for sessions too, and `OpenSession` has the single
+decoration point instead of `catch (Exception) { return false; }`); session names stood in for paths
+within the user's portal (now anything open there refuses); `SaveAsProject` left the remembered path
+behind, so `GetState` would have let go of the project; the "not open" warning was judged by the reason
+a process was chosen rather than by the project made current; moving to the holder released the
+current portal before attaching to the holder; one process that could not describe itself failed the
+whole `Connect`; a `TiaPortal.Dispose()` that threw left the server holding a dead portal.
+
+Tests: Governance 651/653 (2 skipped), `PortalProcessSelectorTests`, `ProjectOpeningRuleTests` and
+`ProjectFilePathTests` new, the refusal test failing when the rule is removed. Not run yet: the
+Openness suite (it refuses to start while a TIA Portal is open), and no test of it covers A4 yet.
+Not measured: moving to a holder (`AttachToHolder`), a project closed by hand before `GetState`, a
+second `Connect` keeping the server's own portal, and `SaveAsProject` keeping the project current.
+Still open in A4: a TIA Portal the server started is left running when the server is killed rather
+than stopped.
+
+**Next:** the user's commit; then the Openness suite with TIA Portal closed, and the leftover after a
+killed server.
+
+### Unified script checker — 2026-10-25, branch `work/unified-alarms`
+
+`CheckUnifiedScripts` (one new tool, read only): the scripts of a WinCC Unified screen, or of every
+screen of the HMI, screen groups included, checked for faults TIA Portal draws and compiles without a
+word. The screen's own events, each item's events and script animations are read, nothing else, and
+each script is checked knowing its global definitions. Rules, each from a fault of the 0968 final project
+or from TIA Portal's own definitions: `assignment-in-condition` (`if (man = true)`), `local-variable-write`
+(`let p = Tags("X"); p = true;` leaves the tag as it was), `bit-function` (`SetBitInTag` sets a bit to 1
+and takes no value, so `SetBitInTag(tag, 0)` switches nothing off; a warning on a Bool, an error for a bit
+past the tag's width), `not-javascript` (`not(...)`, `and`, `or`), `missing-tag`.
+
+**Security**: a script is project content, so data from outside. It is read one character at a time by
+a lexer of our own, never run and never matched with a regular expression; past 100 000 characters it is
+not read and says so. The test that guards this caught a quadratic rule (100 000 characters of `if (`
+took 18 s) before it shipped; the rule is now one pass with a stack. Measured 2026-10-25: TIA Portal V20
+ships no readable list of the Unified system functions (`Data\Hmi\Scripting\Utah-Functions.en.xml` is
+classic WinCC's, with no `SetTagValue`; the Unified model is an undocumented binary), so function names
+are not checked rather than checked against the wrong list, and the bit-function rule cites that classic
+definition for what it is.
+
+`/code-review high`: ten findings, all fixed — a comment-only script made the whole check fail; a
+screen's own events were not read; global definitions were checked apart from their script (false
+errors, a missed local write); a computed template tag name was called missing; the local-write rule
+flagged a read-modify-write and missed `HMIRuntime.Tags`; the double-bracket idiom and functions passed in
+a condition were errors; a regular expression holding a quote swallowed the rest of the script; every
+property of every item was read to find the scripts; the main method broke the size rules; this entry.
+
+Tests: Governance 636/636; `Test52UnifiedScriptCheck` 5/5 against TIA Portal V20 (the four faults of the
+0968 project drawn and found with screen, item, event and line; a clean screen with none; every screen;
+a missing screen); `Test44`, `Test46`–`Test48` with the shared screen lookup, 31/31 together. Not run yet on the 0968
+copy itself: the rebuilt server could not connect to TIA Portal, most likely waiting on its Openness
+permission prompt for the new executable.
+
+### Unified alarms — 2026-10-25, branch `work/unified-alarms`
+
+`CreateUnifiedAlarms` and `GetUnifiedAlarms` (two new tools): alarm classes with priority, state machine
+and the colours of their four states; discrete alarms raised by a bit of an HMI tag on a rising or
+falling edge; analog alarms comparing a number tag with a value; text, info text, origin, area, class
+and priority on each. All or nothing, like `CreateUnifiedTags`, and read back in the shape it takes.
+HMI-COVERAGE row R1.
+
+Measured on V20 by three probes on a copy of the 0968 final project (never saved): the 18 system
+classes can be neither renamed nor deleted, a class name is unique in any case, priorities run from 0
+to 16. **A discrete alarm takes only a bit string (Bool, Byte, Word, DWord, LWord), an analog alarm only
+a number (any integer type, Real, LReal)**: every other pairing, a PLC-linked Int under a discrete
+alarm included, compiled as "The data type of the tag is not permitted for this type of alarm". A bit
+past its tag's width is refused by Openness; a tag and bit raising two alarms, a missing trigger tag, a
+missing class and an analog value outside its tag's type are taken by Openness and refused only by the
+compile, so the tool refuses them first. Texts must be formatted text (a plain one is "an invalid
+format"). Deleting a class that alarms use succeeds and leaves them naming a class that is gone, so the
+tool never deletes one. The class project itself turned out to hold 24 discrete alarms the 2026-10-17
+survey had counted as none, since it could not read Unified alarms then.
+
+`/code-review high`: ten findings, all fixed — a part of a list TIA Portal refused came back as an
+operation failure naming no alarm (now a bad request naming it); the checker read the HMI's alarms once
+per alarm (now once); the undo was a copy of the tag writer's (now one `UnifiedRollback` for both); a
+colour that is not opaque lost its alpha; the plan line left out state colours, info, origin and area,
+though it is the only record; an LInt value past 2^53 would be rounded by the double TIA Portal keeps
+it in (now refused); a value check used an exception for control flow (now `UnifiedTagValues.Problem`);
+the empty formatted text was a magic string; the shared tag-and-bit refusal read as garbled; an unknown
+trigger mode would have read as a rising edge.
+
+Tests: Governance 588/588 (the type rules caught that a Byte, Word, DWord or LWord counts as a number
+for limits but not for an analog alarm); `Test51UnifiedAlarms` 15/15 against TIA Portal V20 (classes
+and alarms read back, an alarm control drawn and compiled with only the known messages, seven refusals
+of what the compile would refuse, a bit raising another alarm, a system class name, the undo of a class
+and alarms when TIA Portal refuses one); `Test16` with the new refusal; with `Test45`, `Test48` and `Test50` (the tag writer moved onto the shared undo), 89/89. On the 0968 copy through the MCP
+over stdio: its 24 alarms read, a class, two discrete alarms on PLC Bools and an analog one on a PLC Int
+created, two refusals, and the station compiled 0/0. To confirm on V21.
+
+**Next:** the user's commit; then a checker for Unified scripts (the four defects found in the 0968 final
+project), then working with TIA Portal open (A4). Still open in R1: alarm groups, alarm parameters,
+acknowledgement tags; R2 (PLC alarms on the HMI).
+
+### Unified tag settings, arrays, groups and system tags — 2026-10-25, branch `work/unified-tags-complete`
+
+`CreateUnifiedTags` takes per tag a comment, a start value, retention, a WString's length, limits
+(constant or held by another tag), and for a linked tag its acquisition, linear scaling and substitute
+value; internal arrays (`Array [0..n] of T`); and new tables as `Group/Subgroup/Table` paths, creating
+the missing groups. `GetUnifiedTags` reads all of it back in the same shape, plus `tableGroups` and the
+HMI's `systemTags`. HMI-COVERAGE rows T4–T9.
+
+Measured on V20 by six probes (outside the repository), the linked half on a copy of the 0968 final
+project, the one class project at hand with an integrated connection (Openness cannot create one, so
+no test project has it). **Thresholds cannot be created** ("New thresholds are not supported", internal
+and linked). **An acquisition cycle is a named object**: Openness takes any name and only `T100ms`,
+`T250ms`, `T500ms`, `T1s`, `T2s`, `T5s`, `T10s` compile, of 24 tried; cyclic continuous compiles as
+invalid on an S7-1200 connection, so only cyclic on use and on demand (no cycle) are offered.
+Acquisition, scaling and the substitute value are disabled fields on an internal tag, retention on a
+linked one, limits on Bool and text tags. Openness takes, and only the compile refuses: crossed limits,
+a value outside the type, `true` for a Bool (0 or 1 only), `1,5` for a Real, a limit tag that does not
+exist or is of another data type, a flat scaling range, a cycle that does not exist. Each is refused by
+the tool before anything is written (the limit tag's type once every tag exists, since TIA Portal fills
+in a linked tag's type; a mismatch undoes the call). Table names are unique on the whole HMI, groups or
+not; deleting a group deletes its tables and tags; a user tag named like a system tag is created
+without a word, so the tool refuses it. Internal arrays are one-dimensional from 0; PLC arrays, UDTs,
+one element and one member link by `plcTag` path.
+
+`/code-review high`: ten findings, nine fixed — a tag whose table path was not the table's own landed
+in the default table without a word (a table is now found by its name, unique on the HMI, and a path
+written with it must match); an array bound too long or in non-ASCII digits threw a raw exception; a
+failing delete of a half-made tag replaced the refusal and went unnamed; a WString start value that
+looked numeric read back as a number and an LReal limit beyond a decimal as a tag name (values now read
+back by the tag's type); LInt and ULInt limits compared as doubles; a default acquisition was written for
+every linked tag; scaling was not refused on a linked non-numeric tag; the read tool promised a shape
+`tagType` and thresholds are not part of; the limit-tag walk was written twice. The tenth, STATUS not
+updated, was this entry, written while the review ran.
+
+Tests: Governance 518/518; `Test50UnifiedTagSettings` 13/13 against TIA Portal V20 (settings read back,
+Real/Bool/text values, an array, compiled with only the known messages, nested groups and their undo, a
+group reused, a table path that is not the table's, a table name taken in another group, system tags
+read and their names refused, a missing limit tag, a limit tag of another type); `Test16`, `Test45`,
+`Test48` unchanged, 73/73 together. The linked half verified through the MCP over stdio on the 0968
+copy, never saved: six linked tags with every setting read back, five refusals (a substitute that does
+not fit, crossed limits, limits on a UDT, a limit tag of another type, scaling on a Bool), and the
+station compiled 0/0. To confirm on V21.
+
+**Next:** the user's commit; then Unified alarms (rows R1, R2), then a checker for Unified scripts (the
+four defects found in the 0968 final project), then working with TIA Portal open (A4).
 
 ### Unified text lists — 2026-10-25, branch `work/unified-text-lists`
 
