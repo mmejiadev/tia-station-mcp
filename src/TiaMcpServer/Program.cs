@@ -44,7 +44,13 @@ namespace TiaMcpServer
 
             var options = CliOptions.ParseArgs(args);
 
-            Engineering.TiaMajorVersion = options.TiaMajorVersion ?? 20;
+            Engineering.TiaMajorVersion = options.TiaMajorVersion ?? Openness.BuiltForTiaMajorVersion;
+
+            if (Openness.BuiltForTiaMajorVersion >= 21 && Engineering.TiaMajorVersion < 21)
+            {
+                RefuseVersionBeforeV21();
+                return;
+            }
 
             if (Engineering.TiaMajorVersion < 20)
             {
@@ -84,6 +90,22 @@ namespace TiaMcpServer
                 "requires. Add it with: net localgroup \"Siemens TIA Openness\" \"%USERNAME%\" /add " +
                 "(as an administrator), then sign out of Windows and back in — the group is only " +
                 "granted to a new sign-in, so this will keep failing until you do.");
+
+            Environment.ExitCode = 1;
+        }
+
+        /// <summary>Says why a V21 build will not start for an earlier TIA Portal.</summary>
+        /// <remarks>
+        /// V21 split Siemens.Engineering.dll into modules and broke compatibility with every earlier
+        /// API, so a V21 build pointed at V20 would fail on the first Openness type with a missing
+        /// assembly that names no version. Written to stderr for the same reason as the group refusal.
+        /// </remarks>
+        private static void RefuseVersionBeforeV21()
+        {
+            Console.Error.WriteLine(
+                $"This server was built for TIA Portal V{Openness.BuiltForTiaMajorVersion} and cannot " +
+                $"drive V{Engineering.TiaMajorVersion}: V21 changed the Openness API incompatibly. " +
+                "Use the V20 build for TIA Portal V20.");
 
             Environment.ExitCode = 1;
         }
