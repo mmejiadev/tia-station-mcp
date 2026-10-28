@@ -16,8 +16,11 @@
     questions again in TypeScript. One implementation, two readers: a second copy would drift, and
     the copy that drifts is the one telling somebody their machine is ready when it is not.
 
+.PARAMETER TiaVersion
+    The TIA Portal version the server was built for: 20 (default) or 21.
+
 .PARAMETER TiaPortalLocation
-    Where TIA Portal V20 is installed. Defaults to the standard location.
+    Where that TIA Portal is installed. Defaults to the standard location for the version.
 
 .PARAMETER Json
     Emit the result as JSON instead of as text for a person.
@@ -33,12 +36,24 @@
 #>
 [CmdletBinding()]
 param(
-    [string] $TiaPortalLocation = 'C:\Program Files\Siemens\Automation\Portal V20',
+    [ValidateSet('20', '21')] [string] $TiaVersion = '20',
+    [string] $TiaPortalLocation,
     [switch] $Json
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+if (-not $TiaPortalLocation) {
+    $TiaPortalLocation = "C:\Program Files\Siemens\Automation\Portal V$TiaVersion"
+}
+
+# The assembly that proves Openness is installed. V21 split Siemens.Engineering.dll into modules
+# under net48, and Base is the one every other module needs.
+$OpennessAssembly = @{
+    '20' = 'PublicAPI\V20\Siemens.Engineering.dll'
+    '21' = 'PublicAPI\V21\net48\Siemens.Engineering.Base.dll'
+}
 
 # The group Openness requires. Windows grants its token at sign-in, which is why every message
 # about it has to mention signing out - being added is not the same as having it.
@@ -67,17 +82,19 @@ function New-Check {
 }
 
 function Test-TiaPortal {
-    $openness = Join-Path $TiaPortalLocation 'PublicAPI\V20\Siemens.Engineering.dll'
+    $relative = $OpennessAssembly[$TiaVersion]
+    $openness = Join-Path $TiaPortalLocation $relative
+    $name = "TIA Portal V$TiaVersion with Openness"
 
     if (Test-Path -LiteralPath $openness) {
-        return New-Check -Name 'TIA Portal V20 with Openness' -Met $true -Required $true -Found $TiaPortalLocation
+        return New-Check -Name $name -Met $true -Required $true -Found $TiaPortalLocation
     }
 
-    New-Check -Name 'TIA Portal V20 with Openness' -Met $false -Required $true `
-        -Found "no Siemens.Engineering.dll under $TiaPortalLocation" `
-        -Fix ("Install TIA Portal V20 including the Openness option, or point this check at the " +
-              "installation with -TiaPortalLocation. V21 will not do: this server targets V20 and " +
-              "the API is versioned.")
+    New-Check -Name $name -Met $false -Required $true `
+        -Found "no $relative under $TiaPortalLocation" `
+        -Fix ("Install TIA Portal V$TiaVersion including the Openness option, or point this check at " +
+              "the installation with -TiaPortalLocation. A server built for one TIA Portal version " +
+              "does not run on another: pass -TiaVersion to match the artefact.")
 }
 
 function Test-OpennessGroup {
