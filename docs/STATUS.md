@@ -5,6 +5,28 @@
 
 ## ▶ RESUME HERE
 
+### A4 closed: a killed server's TIA Portal is left running, on purpose — 2026-10-28, branch `work/a4-close`
+
+The last open part of A4 was a TIA Portal the server starts itself and leaves running with no
+window when the server is killed. A fix was written and not kept: a Windows job object with "kill
+on job close", so that the operating system ends that TIA Portal when the server's process ends.
+`/code-review high` found what decided against it, and the user chose to drop it:
+
+- A server killed in the middle of a save or an import would have TIA Portal killed in the middle
+  of the write: unsaved work lost, and the `.ap20` possibly left locked or damaged. Left running,
+  that TIA Portal keeps the work, and the next `Connect` attaches to it, since it holds the project
+  (PR #55). A leftover process is recoverable; a broken project is not.
+- A TIA Portal started with a window would have been bound too, and killed with the user working
+  in it. The rest followed from the same design: helper processes TIA Portal starts outside the
+  job, a release blocking up to 60 s without a cancellation token, a failed bind swallowed.
+
+So the leftover stays, and it is the cheaper failure. What the user does with one: `Connect` to
+it, save, and `Disconnect`; or close it in Task Manager when nothing in it matters.
+
+**Next:** the user's commit; tonight the Openness suite; then WinCC Unified logging (row R3: data
+logs, alarm logs and logging tags, all exposed by Openness V20 as `HmiDataLog`, `HmiAlarmLog` and
+`HmiLoggingTag`; scheduled tasks, row E8, are not exposed at all).
+
 ### TIA Portal V21 build — 2026-10-28, branch `work/v21`
 
 The server builds for V20 (default) or V21 with `dotnet build -p:TiaVersion=21`; any other value
