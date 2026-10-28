@@ -1,9 +1,77 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-10-21**
+> Last updated: **2026-10-27**
 
 ## ▶ RESUME HERE
+
+### Working with the user's TIA Portal open (A4) — 2026-10-27, branch `work/tia-open`
+
+`Connect` no longer attaches to whichever process Openness lists first. It takes, in order, the
+process holding the project the caller names (new optional `projectPath`), one with a window, and only
+then a headless one, preferring one with a project; it says which and why (`processId`,
+`hasUserInterface`, `ownsProcess`, `reason`). A requested project open nowhere leaves no project
+current and says so, rather than taking whichever the portal holds. The choice is
+`PortalProcessSelector` in `TiaMcpServer.Portable`, tested without TIA Portal.
+
+**A project in a TIA Portal the server did not start is never closed by it.** Before, the `OpenProject`
+tool began by closing whatever was open (in the user's window, her project, unsaved changes
+included), and `CreateProject`, `RetrieveProject` and opening a `.als` session did the same. Now
+`ProjectOpeningRule` decides: a project already open is used where it is; one held by another TIA
+Portal makes the server move to that one (it is locked there, the 2026-10-15 failure); the server's
+own TIA Portal may have its project replaced; anyone else's refuses with the reason. Projects are
+compared by full path, not by name, so two `Tolva` projects in two folders are no longer one.
+`GetState` no longer picks a project either; it only lets go of one the user closed by hand. A second
+`Connect` detaches from a portal it attached to, and keeps one the server started (reason
+`KeptOwnPortal`): releasing that one would close its project unsaved.
+
+**Measured on V20: `TiaPortalProcess.Dispose()` closes that TIA Portal.** A window listed by
+`GetProcesses()` and left alone was alive fifteen seconds later; listed and disposed, it was gone.
+The first version of this branch disposed the processes it did not choose and closed the user's
+window twice during the measurement. No process descriptor is disposed now, against CLAUDE.md's
+"dispose every TIA object", and the code says why. Detaching (`TiaPortal.Dispose()` on an attached
+portal) leaves the window running, measured across five server sessions. Also measured: TIA Portal
+refuses a project path over 143 characters, and each rebuilt server executable triggers Openness's
+permission prompt in the user's window again: twice, the first `Connect` of a rebuilt executable
+failed with "Security error ... The operation has timed out" after six to eight minutes, and the next
+one, seconds later, attached. The extra `Siemens.Automation.Portal.exe` that appears beside a
+window with a project open is its own `SearchReplaceBackgroundProcess`, a child, not a leftover.
+
+Measured through the MCP over stdio against a TIA Portal V20 window opened by hand, on a retrieved
+copy of `TestProject1`: attached to the window with a headless leftover running beside it; attached
+by `projectPath` to the holder; a read, a guarded `CreateTagTable` and a compile 0/0 in that window;
+opening another project refused with the window's project still open; the same project reused;
+`CreateProject` refused; a malformed `projectPath` a validation error that keeps the connection; no
+process left behind after any session.
+
+`/code-review high`: ten findings, all fixed — a second `Connect` leaked an owned portal; `CreateProject`
+and `RetrieveProject` still closed the user's project; opening a session still closed hers; a
+requested project open nowhere silently became the window's project; the refusal said a project the
+server opened was "not the server's"; switching to the holder let go of the current portal before
+finding it; a malformed path was an operation failure; `GetState` read the name of a project the user
+had closed; a session open beside the requested project stood in for it; `OpenProject` was over
+the method limit and listed every process even when the project was open where it was. Measuring the
+fixes found one more: `GetState` re-picked a project right after `Connect` said none was current.
+A second round, since this guards the user's work: ten findings, all fixed — that second `Connect` now
+closed an owned portal's project unsaved (now kept); a session still opened beside a project in the
+user's window (now `ProjectOpeningRule` decides for sessions too, and `OpenSession` has the single
+decoration point instead of `catch (Exception) { return false; }`); session names stood in for paths
+within the user's portal (now anything open there refuses); `SaveAsProject` left the remembered path
+behind, so `GetState` would have let go of the project; the "not open" warning was judged by the reason
+a process was chosen rather than by the project made current; moving to the holder released the
+current portal before attaching to the holder; one process that could not describe itself failed the
+whole `Connect`; a `TiaPortal.Dispose()` that threw left the server holding a dead portal.
+
+Tests: Governance 651/653 (2 skipped), `PortalProcessSelectorTests`, `ProjectOpeningRuleTests` and
+`ProjectFilePathTests` new, the refusal test failing when the rule is removed. Not run yet: the
+Openness suite (it refuses to start while a TIA Portal is open), and no test of it covers A4 yet.
+Not measured: moving to a holder (`AttachToHolder`), a project closed by hand before `GetState`, a
+second `Connect` keeping the server's own portal, and `SaveAsProject` keeping the project current.
+Still open in A4: a TIA Portal the server started is left running when the server is killed rather
+than stopped.
+
+**Next:** the user's commit; then the Openness suite with TIA Portal closed, and the leftover after a
+killed server.
 
 ### Unified script checker — 2026-10-25, branch `work/unified-alarms`
 

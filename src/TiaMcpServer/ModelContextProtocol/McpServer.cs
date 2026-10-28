@@ -238,8 +238,12 @@ namespace TiaMcpServer.ModelContextProtocol
 
         #region portal
 
-        [McpServerTool(Name = "Connect"), Description("Connect to TIA-Portal")]
-        public static ResponseConnect Connect()
+        [McpServerTool(Name = "Connect"), Description(
+            "Connect to TIA-Portal. When TIA Portal is already running, attaches to the instance holding " +
+            "projectPath if given, else to one with a window (the user's), and says which; a project open " +
+            "in an instance the server did not start is never closed by it. Starts a new one when none runs.")]
+        public static ResponseConnect Connect(
+            [Description("projectPath: the .apXX project you mean to work on, to attach to the TIA Portal holding it. Omit to choose by window.")] string projectPath = "")
         {
             // One Openness call at a time. See OpennessGate: two of them really do interleave.
             using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
@@ -248,27 +252,62 @@ namespace TiaMcpServer.ModelContextProtocol
 
             try
             {
-                if (Portal.ConnectPortal())
+                Portal.ConnectPortal(projectPath: projectPath);
+
+                return new ResponseConnect
                 {
-                    return new ResponseConnect
+                    Message = DescribeConnection() + DescribeRequestedProject(projectPath),
+                    Meta = new JsonObject
                     {
-                        Message = "Connected to TIA-Portal",
-                        Meta = new JsonObject
-                        {
-                            ["timestamp"] = DateTime.Now,
-                            ["success"] = true
-                        }
-                    };
-                }
-                else
-                {
-                    throw new McpException("Failed to connect to TIA-Portal", McpErrorCode.InternalError);
-                }
+                        ["timestamp"] = DateTime.Now,
+                        ["success"] = true,
+                        ["processId"] = Portal.AttachedProcess?.Id,
+                        ["hasUserInterface"] = Portal.AttachedProcess?.HasUserInterface,
+                        ["ownsProcess"] = Portal.OwnsPortalProcess,
+                        ["reason"] = Portal.AttachedProcessReason.ToString()
+                    }
+                };
+            }
+            catch (TiaMcpServer.Siemens.PortalException pex)
+            {
+                throw ToMcpException(pex, "Failed to connect to TIA-Portal");
             }
             catch (Exception ex) when (ex is not McpException)
             {
                 throw new McpException($"Unexpected error connecting to TIA-Portal: {ex.Message}", ex, McpErrorCode.InternalError);
             }
+        }
+
+        private static string DescribeConnection()
+        {
+            var process = Portal.AttachedProcess;
+
+            return Portal.AttachedProcessReason switch
+            {
+                PortalProcessChoiceReason.NoneRunning => $"No TIA Portal was running; started {process}",
+                PortalProcessChoiceReason.HoldsRequestedProject => $"Attached to {process}, which holds the requested project",
+                PortalProcessChoiceReason.HasUserInterface => $"Attached to {process}, the one with a window",
+                PortalProcessChoiceReason.WithoutUserInterface => $"Attached to {process}; no TIA Portal with a window was running",
+                PortalProcessChoiceReason.KeptOwnPortal => $"Still connected to {process}, which the server started; it is kept so its project is not closed unsaved",
+                _ =>throw new McpException($"Unrecognised reason for choosing a TIA Portal: {Portal.AttachedProcessReason}", McpErrorCode.InternalError)
+            };
+        }
+
+        /// <remarks>
+        /// A requested project that did not become current leaves none current, and the caller must
+        /// hear it: otherwise the next write looks for a project and the error names the wrong cause.
+        /// Judged by the project that is current, not by why the process was chosen: a process can
+        /// report the project as its own while its project list does not hold it.
+        /// </remarks>
+        private static string DescribeRequestedProject(string projectPath)
+        {
+            if (string.IsNullOrWhiteSpace(projectPath)
+                || ProjectFilePath.AreSame(Portal.OpenProjectPath, TiaMcpServer.Siemens.Portal.FullProjectPath(projectPath)))
+            {
+                return string.Empty;
+            }
+
+            return $". '{projectPath}' is not open in that TIA Portal, so no project is current: call OpenProject to open it.";
         }
 
         [McpServerTool(Name = "Disconnect"), Description("Disconnect from TIA-Portal")]

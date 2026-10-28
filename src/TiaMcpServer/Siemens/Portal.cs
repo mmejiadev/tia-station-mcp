@@ -2,7 +2,6 @@
 using Siemens.Engineering;
 using Siemens.Engineering.Multiuser;
 using System;
-using System.Linq;
 using System.Text.RegularExpressions;
 
 namespace TiaMcpServer.Siemens
@@ -66,11 +65,15 @@ namespace TiaMcpServer.Siemens
         public string OpenProjectPath { get; private set; } = string.Empty;
         private LocalSession? _session;
 
-        // True only when this instance started the TIA Portal process. It decides whether we may
-        // close the open project on the way out: a portal we merely attached to belongs to the
-        // user, and closing their project would be destructive. A portal we started is ours, and
-        // closing the project is what actually releases the file handles on its directory.
-        private bool _ownsPortalProcess;
+        /// <summary>Whether the server started the attached TIA Portal itself, and so may close it.</summary>
+        /// <remarks>
+        /// It decides whether we may close the open project, on the way out or to open another: a
+        /// portal we merely attached to belongs to the user, and closing their project would be
+        /// destructive. A portal we started is ours, and closing the project is what actually
+        /// releases the file handles on its directory.
+        /// </remarks>
+        public bool OwnsPortalProcess { get; private set; }
+
         private bool _isDisposed;
         private readonly ILogger<Portal>? _logger;
 
@@ -195,7 +198,7 @@ namespace TiaMcpServer.Siemens
             }
 
             _portal = null;
-            _ownsPortalProcess = false;
+            OwnsPortalProcess = false;
             _isDisposed = true;
         }
 
@@ -211,7 +214,7 @@ namespace TiaMcpServer.Siemens
         /// </remarks>
         private void ReleaseProjectIfOwned()
         {
-            if (!_ownsPortalProcess)
+            if (!OwnsPortalProcess)
             {
                 CurrentProject = null;
                 _session = null;
@@ -238,44 +241,49 @@ namespace TiaMcpServer.Siemens
         #region portal
 
         /// <summary>
-        /// Connects to TIA Portal: attaches to a running instance if there is one, otherwise
-        /// starts a new one.
+        /// Connects to TIA Portal: attaches to the running instance <see cref="PortalProcessSelector"/>
+        /// chooses, or starts a new one when none runs. <see cref="AttachedProcess"/> says which.
         /// </summary>
         /// <param name="withUserInterface">
         /// Whether a newly started TIA Portal shows its user interface. Defaults to false, which
         /// starts much faster and does not steal the focus — the right default for a server
         /// running in the background. Ignored when attaching to an already running instance.
         /// </param>
+        /// <param name="projectPath">
+        /// The project the caller means to work on, or empty. A running TIA Portal holding it is
+        /// preferred over any other, since TIA Portal locks an open project to its holder.
+        /// </param>
         /// <returns>Always true; failures are reported by throwing.</returns>
         /// <exception cref="PortalException">The connection could not be established.</exception>
-        public bool ConnectPortal(bool withUserInterface = false)
+        public bool ConnectPortal(bool withUserInterface = false, string projectPath = "")
         {
             _logger?.LogInformation("Connecting to TIA Portal (withUserInterface={WithUserInterface})...", withUserInterface);
 
             try
             {
-                CurrentProject = null;
-                _session = null;
-                _portal = null;
-                _ownsPortalProcess = false;
+                // Read before anything is let go, so a malformed path leaves the connection as it was.
+                var requestedProjectPath = FullProjectPath(projectPath);
+
+                if (KeepOwnPortal(requestedProjectPath))
+                {
+                    return true;
+                }
+
+                // A second Connect used to drop the first portal without releasing it, and a portal
+                // the server had started then ran on with nothing holding it. Only an attached one
+                // reaches here, and releasing that one merely detaches.
+                ReleasePortal();
 
                 // Attaching does not take ownership of the process: Dispose() will only detach
                 // from it, leaving TIA Portal running for whoever started it.
-                var processes = TiaPortal.GetProcesses();
-                if (processes.Any())
+                if (AttachToChosenProcess(requestedProjectPath))
                 {
-                    _portal = processes.First().Attach();
-                    AttachToFirstOpenProject();
+                    AttachToOpenProject(requestedProjectPath);
 
                     return true;
                 }
 
-                var mode = withUserInterface ? TiaPortalMode.WithUserInterface : TiaPortalMode.WithoutUserInterface;
-
-                // We started it, so this instance owns the process: whoever holds this Portal
-                // must Dispose() it or TIA Portal is left running and holding the licence.
-                _portal = new TiaPortal(mode);
-                _ownsPortalProcess = true;
+                StartOwnPortal(withUserInterface);
 
                 return true;
             }
@@ -284,29 +292,10 @@ namespace TiaMcpServer.Siemens
                 var pex = ex as PortalException ?? new PortalException(PortalErrorCode.ConnectFailed, $"Failed to connect to TIA Portal: {ex.Message}", null, ex);
 
                 pex.Data["withUserInterface"] = withUserInterface;
+                pex.Data["projectPath"] = projectPath;
 
-                _logger?.LogError(pex, "ConnectPortal failed (withUserInterface={WithUserInterface})", withUserInterface);
+                _logger?.LogError(pex, "ConnectPortal failed (withUserInterface={WithUserInterface}, projectPath={ProjectPath})", withUserInterface, projectPath);
                 throw pex;
-            }
-        }
-
-        private void AttachToFirstOpenProject()
-        {
-            if (_portal == null)
-            {
-                return;
-            }
-
-            if (_portal.LocalSessions.Any())
-            {
-                _session = _portal.LocalSessions.First();
-                CurrentProject = _session.Project;
-                return;
-            }
-
-            if (_portal.Projects.Any())
-            {
-                CurrentProject = _portal.Projects.First();
             }
         }
 
@@ -327,11 +316,7 @@ namespace TiaMcpServer.Siemens
 
             try
             {
-                ReleaseProjectIfOwned();
-
-                _portal?.Dispose();
-                _portal = null;
-                _ownsPortalProcess = false;
+                ReleasePortal();
 
                 return true;
             }
@@ -348,22 +333,23 @@ namespace TiaMcpServer.Siemens
 
         #region status
 
+        /// <summary>Reports the connection and the project the server works on.</summary>
+        /// <returns>The state; <c>-</c> for a project or session when there is none.</returns>
+        /// <remarks>
+        /// A read, so it never picks a project: it used to take whichever one the portal listed
+        /// first, which undid a Connect that had just said the requested project was open nowhere,
+        /// and moved the next write into another project. It only lets go of a project the user
+        /// closed by hand, since reading the name of one TIA Portal has disposed throws.
+        /// Connect or OpenProject choose a project.
+        /// </remarks>
         public State GetState()
         {
             _logger?.LogInformation("Getting TIA Portal state...");
-            if (_portal != null)
+
+            if (CurrentProject != null && !IsCurrentProjectStillOpen())
             {
-                // check for existing local sessions
-                if (_portal.LocalSessions.Any())
-                {
-                    _session = _portal.LocalSessions.First();
-                    CurrentProject = _session.Project;
-                }
-                // checks for existing projects
-                else if (_portal.Projects.Any())
-                {
-                    CurrentProject = _portal.Projects.First();
-                }
+                CurrentProject = null;
+                _session = null;
             }
 
             return new State
