@@ -8,13 +8,14 @@ namespace TiaMcpServer.UnifiedScreens
 {
     /// <summary>Reads an item's <c>animations</c>: one entry per animated property.</summary>
     /// <remarks>
-    /// Three kinds, told apart by the field each one alone has:
+    /// Four kinds, told apart by the field each one alone has:
     /// <code>
     /// "animations": [
     ///   { "property": "BackColor", "tag": "Motor", "ranges": [ { "from": 0, "value": "red" }, { "from": 1, "value": "green" } ] },
     ///   { "property": "BackColor", "tag": "Alarm", "ranges": [ { "from": 1, "value": "red", "flashing": { "rate": "fast", "alternate": "white" } } ] },
     ///   { "property": "BorderColor", "flashing": { "color": "red", "alternate": "gray", "rate": "fast", "condition": "always" } },
-    ///   { "property": "BackColor", "script": "return Tags(\"Motor\").Read() ? 0xFF00C800 : 0xFFFF0000;", "trigger": ["Motor"] } ]
+    ///   { "property": "BackColor", "script": "return Tags(\"Motor\").Read() ? 0xFF00C800 : 0xFFFF0000;", "trigger": ["Motor"] },
+    ///   { "property": "Text", "tag": "State", "list": "States" } ]
     /// </code>
     /// A field that belongs to another kind is refused rather than ignored, and so is a property animated
     /// twice. Whether the item's type has the property, and what it takes, is checked when it is drawn.
@@ -24,12 +25,14 @@ namespace TiaMcpServer.UnifiedScreens
         private const string RangesField = "ranges";
         private const string FlashingField = "flashing";
         private const string ScriptField = "script";
+        private const string ListField = "list";
 
         private static readonly Dictionary<string, string[]> FieldsOfKind = new Dictionary<string, string[]>(StringComparer.Ordinal)
         {
             [RangesField] = new[] { "property", "tag", RangesField },
             [FlashingField] = new[] { "property", FlashingField },
-            [ScriptField] = new[] { "property", ScriptField, "globalDefinitions", "trigger" }
+            [ScriptField] = new[] { "property", ScriptField, "globalDefinitions", "trigger" },
+            [ListField] = new[] { "property", "tag", ListField }
         };
 
         private static readonly string[] FlashingFields = { "color", "alternate", "rate", "condition" };
@@ -71,7 +74,7 @@ namespace TiaMcpServer.UnifiedScreens
             var kinds = FieldsOfKind.Keys.Where(kind => entry.TryGetProperty(kind, out _)).ToList();
             if (kinds.Count != 1)
             {
-                throw new PortalException(PortalErrorCode.InvalidParams, $"{what} needs exactly one of 'ranges' (with 'tag'), 'flashing' or 'script'");
+                throw new PortalException(PortalErrorCode.InvalidParams, $"{what} needs exactly one of 'ranges' (with 'tag'), 'flashing', 'script' or 'list' (with 'tag')");
             }
 
             var kind = kinds[0];
@@ -83,6 +86,7 @@ namespace TiaMcpServer.UnifiedScreens
                 RangesField => new UnifiedRangeAnimation(path, RequireText(entry, "tag", what).Trim(), UnifiedRangeListReader.Read(entry.GetProperty(RangesField), what)),
                 FlashingField => ReadFlashing(path, entry.GetProperty(FlashingField), what),
                 ScriptField => ReadScript(path, entry, what),
+                ListField => new UnifiedListAnimation(path, RequireText(entry, "tag", what).Trim(), RequireText(entry, ListField, what).Trim()),
                 _ => throw new PortalException(PortalErrorCode.InvalidState, $"Unrecognised animation kind: {kind}")
             };
         }

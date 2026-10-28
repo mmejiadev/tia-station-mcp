@@ -36,6 +36,7 @@ namespace TiaMcpServer.Siemens
                 TagDynamization link => ReadRanges(link, path),
                 FlashingDynamization flashing => ReadFlashing(flashing, path),
                 ScriptDynamization script => ReadScript(script, path),
+                ResourceListDynamization list => new JsonObject { ["property"] = path, ["tag"] = list.Tag, ["list"] = list.ResourceList },
                 _ => null
             };
         }

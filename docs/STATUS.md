@@ -193,6 +193,46 @@ station compiled 0/0. To confirm on V21.
 **Next:** the user's commit; then Unified alarms (rows R1, R2), then a checker for Unified scripts (the
 four defects found in the 0968 final project), then working with TIA Portal open (A4).
 
+### Unified text lists — 2026-10-25, branch `work/unified-text-lists`
+
+`CreateUnifiedTextList` and `GetUnifiedTextLists` (two new tools) and a `list` animation on
+`DrawUnifiedScreen`: HMI-COVERAGE rows T10 and A9 (text). A symbolic IO field shows a list through its
+own `ResourceList` property; a text through `{"property": "Text", "tag": ..., "list": ...}`.
+
+Measured on V20 by three probes (outside the repository), the third on a copy of the class project
+0967-unified-01: **a Unified text list has no `Create` and no entries in Openness V20**; the composition
+only exports and imports YAML files, two per list (`<name>.hmi.yml` with the entries, and
+`<name>.TextLibrary.hmi.yml` with the texts per language). The texts of every list live in one library,
+`MyTextLibrary`, which TIA Portal renumbers on import, and exporting any list writes every list. An
+entry needs `FromValue` and `ToValue` (with `Value` alone it is imported with no value and compiles as
+"The type of the entry is invalid"); a value of 0 is exported with no value fields at all. **A list
+holding a range of values is imported as a list with no entries, and `Import` still answers `true`**,
+so ranges are not offered, and every write is exported again and compared with what was asked: when
+TIA Portal kept something else, a new list is deleted and a replaced one imported back from the backup
+taken first (both undos run against TIA Portal in `Test49`). A symbolic IO field's `ResourceList` and a
+resource-list dynamization take a list that does not exist without a word, so drawing refuses one.
+There are no graphic lists for Unified in Openness V20 at all. The exported YAML is read with
+YamlDotNet 18.1.0 (new dependency of `TiaMcpServer.Portable`, its latest stable), never by hand.
+
+`/code-review high`: ten findings, all fixed — the undo of a replacement imports every list again,
+so a replacement is refused when another list holds a range (TIA Portal would empty it), and the
+restore is read back list by list; a failure between the import and the comparison undoes too; the
+comparison goes by value, not by position; a `list` animation missing its tag or list counts as lost;
+row A8 corrected; a scratch directory that cannot be deleted is logged, not thrown; a failing undo is
+reported with where the backup is; a parameter object; a list spelt otherwise than an existing one is
+refused; YAML null and boolean words are refused as names. Not run against TIA Portal: the refusal of
+a replacement next to a list holding a range, since such a list can only be made in the editor (an
+import empties it). Texts TIA Portal adds to the shared library stay there after an undo: Openness V20
+cannot delete them.
+
+Tests: Governance 473/473; `Test49UnifiedTextLists` 10/10 against TIA Portal V20 (read back, a second
+list leaving the first alone, entries in descending order, replacement with its backup, another
+spelling refused, both undos, field and text drawn, read back, redrawn and compiled with only the known
+messages, a missing list refused); `Test16`, `Test44`–`Test48` unchanged and passing. To confirm on V21.
+
+**Next:** the user's commit; then row T (thresholds and scaling, tag groups, system tags) and the
+classic atlas.
+
 ### Unified process displays — 2026-10-25, branch `work/unified-consolidation`
 
 No new drawing code: HMI-COVERAGE rows A3 (horizontal and vertical movement: `Left`/`Top` linked),

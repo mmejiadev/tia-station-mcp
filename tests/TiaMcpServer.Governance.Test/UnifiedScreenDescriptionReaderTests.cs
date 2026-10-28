@@ -63,6 +63,17 @@ namespace TiaMcpServer.Governance.Tests
             CollectionAssert.AreEqual(new[] { "Border", "Motor", "Level" }, screen.LinkedTags.ToArray());
         }
 
+        [TestMethod]
+        public void Parse_ListsShown_AreLinkedTextLists()
+        {
+            var screen = UnifiedScreenDescriptionReader.Parse(@"{ ""name"": ""S"", ""items"": [
+                { ""type"": ""symbolicIOField"", ""properties"": { ""ResourceList"": ""States"" }, ""tags"": { ""ProcessValue"": ""State"" } },
+                { ""type"": ""text"", ""animations"": [ { ""property"": ""Text"", ""tag"": ""State"", ""list"": ""Modes"" } ] },
+                { ""type"": ""symbolicIOField"", ""properties"": { ""resourceList"": ""states"" } } ] }");
+
+            CollectionAssert.AreEqual(new[] { "States", "Modes" }, screen.LinkedTextLists.ToArray());
+        }
+
         /// <remarks>A tag link and an animation are both dynamizations; TIA Portal replaces one with the other without a word.</remarks>
         [TestMethod]
         public void Parse_PropertyLinkedAndAnimated_ThrowsInvalidParams()

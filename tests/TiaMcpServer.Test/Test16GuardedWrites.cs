@@ -512,6 +512,14 @@ namespace TiaMcpServer.Test
         }
 
         [TestMethod]
+        public void CreateUnifiedTextList_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.CreateUnifiedTextList("HMI_MTP700/HMI_RT_1", @"{ ""name"": ""Refused"", ""entries"": [ { ""value"": 0, ""text"": ""Stopped"" } ] }");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
         public void CreateUnifiedAlarms_WithNoPolicy_IsRefused()
         {
             var response = McpServer.CreateUnifiedAlarms("HMI_MTP700/HMI_RT_1", @"{ ""discrete"": [ { ""name"": ""Refused"", ""tag"": ""Run"", ""text"": ""Refused"" } ] }");
