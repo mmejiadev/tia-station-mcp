@@ -1,9 +1,33 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-10-27**
+> Last updated: **2026-10-28**
 
 ## ▶ RESUME HERE
+
+### TIA Portal V21 build — 2026-10-28, branch `work/v21`
+
+The server builds for V20 (default) or V21 with `dotnet build -p:TiaVersion=21`; any other value
+fails the build. One binary cannot serve both: V21 split `Siemens.Engineering.dll` into modules
+(`Siemens.Engineering.Base`, `.Step7`, `.WinCC`, `.WinCCUnified`, ...), Siemens states that an
+application built against an earlier version is not compatible with V21, and the Openness resolver
+2.x is V21-only while 1.x is pre-V21-only. So the V21 build references resolver 2.0 and the V21
+Openness package, defines `TIA_V21`, and `Openness.BuiltForTiaMajorVersion` is 21. A V21 build asked
+to drive an earlier TIA Portal refuses at start with the reason, on stderr, instead of failing on the
+first Openness type with a missing assembly that names no version. On a machine without V21,
+`SiemensEngineeringDirectory` or `OPENNESS_V21_PATH` points at a copy of `PublicAPI\V21\net48`.
+
+`New-Release.ps1 -TiaVersion 21` packs a separate artefact named with a `-v21` suffix, building with
+`--no-incremental` since both versions build into the same folder and a leftover of the other would
+ship a binary bound to the wrong API. `Test-Preconditions.ps1 -TiaVersion 21` looks for
+`PublicAPI\V21\net48\Siemens.Engineering.Base.dll` under `Portal V21`.
+
+Run by the user on TIA Portal V21 in a virtual machine on 2026-10-27, with her HMI changes, and
+reported as working well. Which tools and which test classes ran there is not recorded yet; the V21
+column of the HMI rows marked "to confirm on V21" stays open until it is. The V20 build is unchanged
+and compiles without warnings.
+
+**Next:** record what ran on V21; the Openness suite on V20 with TIA Portal closed.
 
 ### Working with the user's TIA Portal open (A4) — 2026-10-27, branch `work/tia-open`
 
