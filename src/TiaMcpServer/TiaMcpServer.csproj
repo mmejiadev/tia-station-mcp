@@ -57,9 +57,44 @@
     <PackageReference Include="Microsoft.Bcl.Memory" Version="10.0.11" />
     <PackageReference Include="ModelContextProtocol" Version="0.3.0-preview.4" />
     <PackageReference Include="Siemens.Collaboration.Net.OperatingSystem.Windows" Version="3.0.1725521661" />
+  </ItemGroup>
+
+  <!--
+    TIA Portal version the server is built for: 20 (default) or 21.
+
+    One binary cannot serve both. V21 split Siemens.Engineering.dll into modules
+    (Siemens.Engineering.Base, .Step7, .WinCC, .WinCCUnified, ...) and Siemens states that an
+    application built against an earlier version is not compatible with V21; resolver 2.x is
+    V21-only and 1.x is pre-V21-only. Build the V21 server with:
+
+        dotnet build -p:TiaVersion=21
+
+    On a machine without TIA Portal V21, point SiemensEngineeringDirectory (or the
+    OPENNESS_V21_PATH environment variable) at a copy of PublicAPI\V21\net48. Without either,
+    the Openness package looks for the installation itself.
+  -->
+  <PropertyGroup>
+    <TiaVersion Condition="'$(TiaVersion)' == ''">20</TiaVersion>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(TiaVersion)' == '20'">
     <PackageReference Include="Siemens.Collaboration.Net.TiaPortal.Openness.Resolver" Version="1.1.1725480302" />
     <PackageReference Include="Siemens.Collaboration.Net.TiaPortal.Packages.Openness" Version="20.0.1744190253" />
   </ItemGroup>
+
+  <ItemGroup Condition="'$(TiaVersion)' == '21'">
+    <PackageReference Include="Siemens.Collaboration.Net.TiaPortal.Openness.Resolver" Version="2.0.1765367256" />
+    <PackageReference Include="Siemens.Collaboration.Net.TiaPortal.Packages.Openness" Version="21.0.1765349347" />
+  </ItemGroup>
+
+  <PropertyGroup Condition="'$(TiaVersion)' == '21'">
+    <SiemensEngineeringDirectory Condition="'$(SiemensEngineeringDirectory)' == ''">$(OPENNESS_V21_PATH)</SiemensEngineeringDirectory>
+    <DefineConstants>$(DefineConstants);TIA_V21</DefineConstants>
+  </PropertyGroup>
+
+  <Target Name="RefuseUnknownTiaVersion" BeforeTargets="BeforeBuild" Condition="'$(TiaVersion)' != '20' AND '$(TiaVersion)' != '21'">
+    <Error Text="TiaVersion must be 20 or 21, not '$(TiaVersion)'." />
+  </Target>
 
   <ItemGroup>
     <!-- Resolved from the targeting pack. Upstream pinned an absolute HintPath into

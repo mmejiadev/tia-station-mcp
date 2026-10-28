@@ -5,36 +5,29 @@
 
 ## ▶ RESUME HERE
 
-### Backup of an uncompiled SCL block — 2026-10-28, branch `work/backup-uncompiled-scl`
+### TIA Portal V21 build — 2026-10-28, branch `work/v21`
 
-Found on a class exercise (0965, a vertical warehouse in SCL) through the installed MCP 0.0.20: a
-second `WriteScl` to the same program was refused, "the backup of the previous state is incomplete",
-because the `Main` the first one had generated was not compiled yet and refused `ExportAsDocuments`
-with "SIMATIC SD export failed due to project modifications made with a TIA Portal version earlier
-than V20 Update 4". Compiling first unblocked it; nothing was written in the meantime, as the backup
-rule intends.
+The server builds for V20 (default) or V21 with `dotnet build -p:TiaVersion=21`; any other value
+fails the build. One binary cannot serve both: V21 split `Siemens.Engineering.dll` into modules
+(`Siemens.Engineering.Base`, `.Step7`, `.WinCC`, `.WinCCUnified`, ...), Siemens states that an
+application built against an earlier version is not compatible with V21, and the Openness resolver
+2.x is V21-only while 1.x is pre-V21-only. So the V21 build references resolver 2.0 and the V21
+Openness package, defines `TIA_V21`, and `Openness.BuiltForTiaMajorVersion` is 21. A V21 build asked
+to drive an earlier TIA Portal refuses at start with the reason, on stderr, instead of failing on the
+first Openness type with a missing assembly that names no version. On a machine without V21,
+`SiemensEngineeringDirectory` or `OPENNESS_V21_PATH` points at a copy of `PublicAPI\V21\net48`.
 
-The backup now saves anything that does not compile and has a text form (SCL, DB, STL blocks and
-PLC data types) as its source first (`GenerateSource`: `.scl`, `.db`, `.awl`, `.udt`), which
-`WriteScl` reads back, and falls back to a document when the source is refused; a LAD or FBD block
-has only the document. When neither works, the refusal says to compile first instead of passing on
-the SIMATIC SD message. Measured the same day: `GenerateSource` wrote an inconsistent SCL function
-block of a class project. The language-to-extension table the snapshot already had is now shared
-(`SourceFileExtension`), and source file names go through `SnapshotFileName` as the snapshot's do.
+`New-Release.ps1 -TiaVersion 21` packs a separate artefact named with a `-v21` suffix, building with
+`--no-incremental` since both versions build into the same folder and a leftover of the other would
+ship a binary bound to the wrong API. `Test-Preconditions.ps1 -TiaVersion 21` looks for
+`PublicAPI\V21\net48\Siemens.Engineering.Base.dll` under `Portal V21`.
 
-`/code-review high`: eight findings, all addressed — only SCL was covered, while a DB or UDT the same
-`WriteScl` declares stays uncompiled too; a refused source had no fallback; the table was a second
-copy of the snapshot's; names were not made file-safe; the source group was read on every write;
-the new test asserted no precondition. One stays as written: the test project does not refuse
-document export, so the tests (`WriteScl_AnSclBlockNotYetCompiled_BacksItUpAsSource`,
-`WriteScl_ATypeNotYetCompiled_BacksItUpAsSource`) fail before the fix only because they expect a
-source where a document was written, not by reproducing the refusal. Governance 689/691 (2 skipped);
-the Openness suite is for tonight, with TIA Portal closed.
+Run by the user on TIA Portal V21 in a virtual machine on 2026-10-27, with her HMI changes, and
+reported as working well. Which tools and which test classes ran there is not recorded yet; the V21
+column of the HMI rows marked "to confirm on V21" stays open until it is. The V20 build is unchanged
+and compiles without warnings.
 
-Also from the exercise, not fixed here: a watch table can only get rows by importing an exported
-one, and no exported table with rows was at hand to start from.
-
-**Next:** the user's commit; the Openness suite; then the leftover TIA Portal after a killed server.
+**Next:** record what ran on V21; the Openness suite on V20 with TIA Portal closed.
 
 ### Working with the user's TIA Portal open (A4) — 2026-10-27, branch `work/tia-open`
 
