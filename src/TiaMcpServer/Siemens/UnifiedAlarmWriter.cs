@@ -66,18 +66,18 @@ namespace TiaMcpServer.Siemens
             {
                 foreach (var found in list.Classes)
                 {
-                    Refusing($"alarm class '{found.Name}'", made, () => _hmi.AlarmClasses.Create(found.Name), created => created.Delete, created => WriteClass(created, found));
+                    UnifiedRollback.Create($"alarm class '{found.Name}'", made, () => _hmi.AlarmClasses.Create(found.Name), (created => created.Delete, created => WriteClass(created, found)));
                     _classNames[found.Name] = found.Name;
                 }
 
                 foreach (var alarm in list.Discrete)
                 {
-                    Refusing($"discrete alarm '{alarm.Common.Name}'", made, () => _hmi.DiscreteAlarms.Create(alarm.Common.Name), created => created.Delete, created => WriteDiscrete(created, alarm));
+                    UnifiedRollback.Create($"discrete alarm '{alarm.Common.Name}'", made, () => _hmi.DiscreteAlarms.Create(alarm.Common.Name), (created => created.Delete, created => WriteDiscrete(created, alarm)));
                 }
 
                 foreach (var alarm in list.Analog)
                 {
-                    Refusing($"analog alarm '{alarm.Common.Name}'", made, () => _hmi.AnalogAlarms.Create(alarm.Common.Name), created => created.Delete, created => WriteAnalog(created, alarm));
+                    UnifiedRollback.Create($"analog alarm '{alarm.Common.Name}'", made, () => _hmi.AnalogAlarms.Create(alarm.Common.Name), (created => created.Delete, created => WriteAnalog(created, alarm)));
                 }
 
                 return (list.Classes.Select(found => found.Name).ToList(), list.Discrete.Select(alarm => alarm.Common.Name).ToList(), list.Analog.Select(alarm => alarm.Common.Name).ToList());
@@ -85,25 +85,6 @@ namespace TiaMcpServer.Siemens
             catch (Exception failure) when (!UnifiedRollback.IsSessionEnded(failure))
             {
                 throw UnifiedRollback.Undo(made, failure, "classes and alarms");
-            }
-        }
-
-        /// <remarks>
-        /// Creates one object and writes it; what TIA Portal refuses is a bad request, reported with the
-        /// object it was about, so a long list says which entry to fix. The object goes in the undo list as
-        /// soon as it exists, so a refused write removes it too.
-        /// </remarks>
-        private static void Refusing<T>(string what, List<(string Name, Action Delete)> made, Func<T> create, Func<T, Action> delete, Action<T> write)
-        {
-            try
-            {
-                var created = create();
-                made.Add((what, delete(created)));
-                write(created);
-            }
-            catch (Exception failure) when (!(failure is PortalException) && !UnifiedRollback.IsSessionEnded(failure))
-            {
-                throw new PortalException(PortalErrorCode.InvalidState, $"TIA Portal refused {what}: {failure.Message.Trim()}", null, failure);
             }
         }
 

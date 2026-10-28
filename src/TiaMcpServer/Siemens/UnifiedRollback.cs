@@ -32,9 +32,32 @@ namespace TiaMcpServer.Siemens
             var code = (failure as PortalException)?.Code ?? PortalErrorCode.WriteFailed;
             var outcome = left.Count == 0
                 ? $"Nothing was created: the {kinds} made before it were removed again."
-                : $"Removing what was made before it failed for {string.Join(", ", left)}; delete those in TIA Portal before trying again.";
+                : $"Removing what was made before it failed for {string.Join(", ", left)}; undo those by hand in TIA Portal before trying again.";
 
             return new PortalException(code, $"{failure.Message.Trim()} {outcome}", null, failure);
+        }
+
+        /// <summary>Creates one object and writes it, putting it in the undo list as soon as it exists.</summary>
+        /// <param name="what">The object, as the refusal names it, e.g. <c>alarm class 'Tolva'</c>.</param>
+        /// <param name="made">The undo list.</param>
+        /// <param name="create">Creates it.</param>
+        /// <param name="steps">Its delete, for the undo, and the write of its settings.</param>
+        /// <remarks>
+        /// What TIA Portal refuses is a bad request naming the object, so a long list says which entry to
+        /// fix; a refused write removes the object with the rest. Shared by the all-or-nothing writers.
+        /// </remarks>
+        public static void Create<T>(string what, List<(string Name, Action Delete)> made, Func<T> create, (Func<T, Action> Delete, Action<T> Write) steps)
+        {
+            try
+            {
+                var created = create();
+                made.Add((what, steps.Delete(created)));
+                steps.Write(created);
+            }
+            catch (Exception failure) when (!(failure is PortalException) && !IsSessionEnded(failure))
+            {
+                throw new PortalException(PortalErrorCode.InvalidState, $"TIA Portal refused {what}: {failure.Message.Trim()}", null, failure);
+            }
         }
 
         /// <summary>Deletes one object, reporting rather than throwing when TIA Portal refuses.</summary>
