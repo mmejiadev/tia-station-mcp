@@ -94,6 +94,37 @@ namespace TiaMcpServer.Governance.Tests
         }
 
         [TestMethod]
+        public void Parse_ACycleFactor_IsRead()
+        {
+            var list = UnifiedLoggingListReader.Parse(@"{ ""loggingTags"": [ { ""tag"": ""A"", ""name"": ""L"", ""dataLog"": ""Log"", ""mode"": ""cyclic"", ""cycle"": ""T1s"", ""cycleFactor"": 5 } ] }");
+
+            Assert.AreEqual(5u, list.LoggingTags.Single().CycleFactor);
+        }
+
+        [TestMethod]
+        [DataRow("0", DisplayName = "zero")]
+        [DataRow("-1", DisplayName = "negative")]
+        [DataRow("1.5", DisplayName = "not whole")]
+        [DataRow(@"""5""", DisplayName = "a string")]
+        public void Parse_ACycleFactorThatIsNotAWholeNumberFromOne_IsRefused(string factor)
+        {
+            AssertRefused($@"{{ ""loggingTags"": [ {{ ""tag"": ""A"", ""name"": ""L"", ""dataLog"": ""Log"", ""mode"": ""cyclic"", ""cycle"": ""T1s"", ""cycleFactor"": {factor} }} ] }}", "'cycleFactor' must be a whole number from 1");
+        }
+
+        [TestMethod]
+        public void Parse_ACycleFactorOnALoggingTagThatIsNotCyclic_IsRefused()
+        {
+            AssertRefused(@"{ ""loggingTags"": [ { ""tag"": ""A"", ""name"": ""L"", ""dataLog"": ""Log"", ""cycleFactor"": 5 } ] }", "only for");
+        }
+
+        /// <remarks>Measured on TIA Portal V20: data logs and alarm logs share one set of names, in any case.</remarks>
+        [TestMethod]
+        public void Parse_ADataLogAndAnAlarmLogOfOneName_IsRefused()
+        {
+            AssertRefused(@"{ ""dataLogs"": [ { ""name"": ""Same"" } ], ""alarmLogs"": [ { ""name"": ""same"", ""classes"": [ ""Alarm"" ] } ] }", "share one set of names");
+        }
+
+        [TestMethod]
         public void Parse_AnEmptyList_IsRefused()
         {
             AssertRefused("{ }", "at least one");

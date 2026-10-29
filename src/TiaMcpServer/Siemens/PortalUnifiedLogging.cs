@@ -9,7 +9,7 @@ namespace TiaMcpServer.Siemens
 {
     /// <remarks>
     /// WinCC Unified data logs, alarm logs and logging tags: reading them, and creating new ones. See
-    /// <see cref="UnifiedLoggingChecker"/> and <see cref="UnifiedLoggingWriter"/> for what was measured.
+    /// <see cref="UnifiedLoggingRules"/> and <see cref="UnifiedLoggingWriter"/> for what was measured.
     /// </remarks>
     public partial class Portal
     {
@@ -50,10 +50,10 @@ namespace TiaMcpServer.Siemens
             {
                 var requested = list ?? throw new PortalException(PortalErrorCode.InvalidParams, "A logging list is required");
                 var hmi = RequireUnifiedSoftware(hmiPath);
-                var writer = new UnifiedLoggingWriter(hmi);
+                var writer = new UnifiedLoggingWriter(hmi, requested);
 
-                writer.Check(requested);
-                writer.Create(requested, backupDirectory);
+                writer.Check();
+                writer.Create(backupDirectory);
 
                 return OnlyCreated(hmi, requested);
             }

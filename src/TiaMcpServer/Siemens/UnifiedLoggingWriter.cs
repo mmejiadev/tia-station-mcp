@@ -1,5 +1,4 @@
-﻿using Siemens.Engineering.HmiUnified.HmiAlarm;
-using Siemens.Engineering.HmiUnified.LoggingTags;
+﻿using Siemens.Engineering.HmiUnified.LoggingTags;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -25,27 +24,34 @@ namespace TiaMcpServer.Siemens
         private const string ClassLogsFile = "alarm-class-logs.json";
 
         private readonly UnifiedHmiSoftware _hmi;
-        // Set by Check, which reads the classes once; Create uses them so they are not read again per class.
-        private IReadOnlyDictionary<string, HmiAlarmClass> _classes = new Dictionary<string, HmiAlarmClass>();
+        private readonly UnifiedLoggingList _list;
+        private readonly UnifiedLoggingSnapshot _snapshot;
+        private readonly Dictionary<string, string> _dataLogNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-        /// <summary>Creates a writer for one HMI.</summary>
+        /// <summary>Creates a writer for one list on one HMI, reading what the list touches once.</summary>
         /// <param name="hmi">The WinCC Unified software.</param>
-        public UnifiedLoggingWriter(UnifiedHmiSoftware hmi)
+        /// <param name="list">The logs and logging tags.</param>
+        public UnifiedLoggingWriter(UnifiedHmiSoftware hmi, UnifiedLoggingList list)
         {
             _hmi = hmi;
+            _list = list;
+            _snapshot = new UnifiedLoggingSnapshot(hmi, list);
+
+            // A logging tag names its data log by string; it is given the log's own spelling, as TIA Portal holds it.
+            foreach (var name in _snapshot.DataLogs.Concat(list.DataLogs))
+            {
+                _dataLogNames[name] = name;
+            }
         }
 
         /// <summary>Refuses a list that cannot be created as it stands, before anything is changed.</summary>
-        /// <param name="list">The logs and logging tags.</param>
         /// <exception cref="PortalException">
         /// <see cref="PortalErrorCode.InvalidParams"/> when a tag, data log or class does not exist;
         /// <see cref="PortalErrorCode.InvalidState"/> when a name is taken or a class is logged elsewhere.
         /// </exception>
-        public void Check(UnifiedLoggingList list)
+        public void Check()
         {
-            var checker = new UnifiedLoggingChecker(_hmi);
-            var (missing, conflicts) = checker.Problems(list);
-            _classes = checker.Classes;
+            var (missing, conflicts) = new UnifiedLoggingRules(_snapshot.State).Problems(_list);
 
             if (missing.Count + conflicts.Count == 0)
             {
@@ -57,29 +63,29 @@ namespace TiaMcpServer.Siemens
         }
 
         /// <summary>Creates the data logs, the alarm logs with their classes, then the logging tags; undoes all of it when one fails.</summary>
-        /// <param name="list">The logs and logging tags, already passed through <see cref="Check"/>.</param>
+        /// <remarks>Call it once <see cref="Check"/> has passed: the check is what makes every name below exist.</remarks>
         /// <param name="backupDirectory">Where the classes' logs are saved before any is changed.</param>
-        public void Create(UnifiedLoggingList list, string backupDirectory)
+        public void Create(string backupDirectory)
         {
-            SaveClassLogs(list, backupDirectory);
+            SaveClassLogs(backupDirectory);
             var made = new List<(string Name, Action Delete)>();
 
             try
             {
-                foreach (var name in list.DataLogs)
+                foreach (var name in _list.DataLogs)
                 {
                     UnifiedRollback.Create($"data log '{name}'", made, () => _hmi.DataLogs.Create(name), (created => created.Delete, _ => { }));
                 }
 
-                foreach (var log in list.AlarmLogs)
+                foreach (var log in _list.AlarmLogs)
                 {
                     UnifiedRollback.Create($"alarm log '{log.Name}'", made, () => _hmi.AlarmLogs.Create(log.Name), (created => created.Delete, _ => { }));
                     LogClasses(log, made);
                 }
 
-                foreach (var logged in list.LoggingTags)
+                foreach (var logged in _list.LoggingTags)
                 {
-                    UnifiedRollback.Create($"logging tag '{logged.Name}' of '{logged.Tag}'", made, () => _hmi.Tags.Find(logged.Tag).LoggingTags.Create(logged.Name), (created => created.Delete, created => WriteLoggingTag(created, logged)));
+                    UnifiedRollback.Create($"logging tag '{logged.Name}' of '{logged.Tag}'", made, () => _snapshot.Tags[logged.Tag].LoggingTags.Create(logged.Name), (created => created.Delete, created => WriteLoggingTag(created, logged)));
                 }
             }
             catch (Exception failure) when (!UnifiedRollback.IsSessionEnded(failure))
@@ -93,9 +99,9 @@ namespace TiaMcpServer.Siemens
         /// previous log is saved first, as every write saves what it overwrites; the check has made sure it is
         /// empty, so the file says so for each class named.
         /// </remarks>
-        private void SaveClassLogs(UnifiedLoggingList list, string backupDirectory)
+        private void SaveClassLogs(string backupDirectory)
         {
-            var classes = list.AlarmLogs.SelectMany(log => log.Classes).ToList();
+            var classes = _list.AlarmLogs.SelectMany(log => log.Classes).Select(name => _snapshot.Classes[name]).ToList();
             if (classes.Count == 0)
             {
                 return;
@@ -106,7 +112,7 @@ namespace TiaMcpServer.Siemens
                 throw new PortalException(PortalErrorCode.InvalidParams, "backupDirectory is required: this write changes alarm classes");
             }
 
-            var saved = new JsonArray(classes.Select(name => (JsonNode)new JsonObject { ["class"] = _classes[name].Name, ["log"] = _classes[name].Log ?? string.Empty }).ToArray());
+            var saved = new JsonArray(classes.Select(found => (JsonNode)new JsonObject { ["class"] = found.Name, ["log"] = found.Log ?? string.Empty }).ToArray());
             Directory.CreateDirectory(backupDirectory);
             File.WriteAllText(Path.Combine(backupDirectory, ClassLogsFile), saved.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
         }
@@ -119,7 +125,7 @@ namespace TiaMcpServer.Siemens
         {
             foreach (var name in log.Classes)
             {
-                var found = _classes[name];
+                var found = _snapshot.Classes[name];
 
                 try
                 {
@@ -136,7 +142,7 @@ namespace TiaMcpServer.Siemens
 
         private void WriteLoggingTag(HmiLoggingTag target, UnifiedLoggingTag logged)
         {
-            target.DataLog = _hmi.DataLogs.First(log => string.Equals(log.Name, logged.DataLog, StringComparison.OrdinalIgnoreCase)).Name;
+            target.DataLog = _dataLogNames[logged.DataLog];
             target.LoggingMode = logged.Mode switch
             {
                 UnifiedLoggingMode.OnChange => HmiLoggingMode.OnChange,
@@ -148,6 +154,11 @@ namespace TiaMcpServer.Siemens
             if (logged.Cycle != null)
             {
                 target.Cycle = logged.Cycle;
+            }
+
+            if (logged.CycleFactor != null)
+            {
+                target.CycleFactor = logged.CycleFactor.Value;
             }
         }
     }

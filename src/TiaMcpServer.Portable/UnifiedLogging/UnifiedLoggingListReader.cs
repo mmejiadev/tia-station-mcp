@@ -14,7 +14,7 @@ namespace TiaMcpServer.UnifiedLogging
     /// <code>
     /// { "dataLogs": [ { "name": "Log_Tolva" } ],
     ///   "alarmLogs": [ { "name": "Alarmes", "classes": [ "Alarm", "Warning" ] } ],
-    ///   "loggingTags": [ { "tag": "Nivell", "name": "Nivell_log", "dataLog": "Log_Tolva", "mode": "cyclic", "cycle": "T1s" } ] }
+    ///   "loggingTags": [ { "tag": "Nivell", "name": "Nivell_log", "dataLog": "Log_Tolva", "mode": "cyclic", "cycle": "T1s", "cycleFactor": 5 } ] }
     /// </code>
     /// What TIA Portal V20 takes and only the compile refuses is refused here (measured 2026-10-28): a
     /// logging tag with no data log ("does not have a valid configuration in the log", and TIA Portal
@@ -31,7 +31,7 @@ namespace TiaMcpServer.UnifiedLogging
 
         private static readonly string[] AlarmLogFields = { "name", "classes" };
 
-        private static readonly string[] LoggingTagFields = { "tag", "name", "dataLog", "mode", "cycle" };
+        private static readonly string[] LoggingTagFields = { "tag", "name", "dataLog", "mode", "cycle", "cycleFactor" };
 
         private static readonly JsonDocumentOptions Options = new JsonDocumentOptions
         {
@@ -61,6 +61,7 @@ namespace TiaMcpServer.UnifiedLogging
 
             RequireUnique(list.DataLogs, "Data log");
             RequireUnique(list.AlarmLogs.Select(log => log.Name), "Alarm log");
+            RequireNoSharedLogName(list);
             RequireUnique(list.LoggingTags.Select(logged => $"{logged.Name}' of tag '{logged.Tag}"), "Logging tag");
             RequireUnique(list.AlarmLogs.SelectMany(log => log.Classes), "Alarm class logged to more than one alarm log; class");
 
@@ -140,22 +141,46 @@ namespace TiaMcpServer.UnifiedLogging
             return new UnifiedLoggingTag(tag, name, dataLog, ReadTiming(owner, what));
         }
 
-        private static (UnifiedLoggingMode Mode, string? Cycle) ReadTiming(JsonElement owner, string what)
+        private static (UnifiedLoggingMode Mode, string? Cycle, uint? CycleFactor) ReadTiming(JsonElement owner, string what)
         {
             var mode = UnifiedAlarmJson.OptionalEnum<UnifiedLoggingMode>(owner, "mode", what) ?? UnifiedLoggingMode.OnChange;
             var cycle = UnifiedTagJson.OptionalString(owner, "cycle")?.Trim();
+            var factor = OptionalCycleFactor(owner, what);
 
             if (mode == UnifiedLoggingMode.Cyclic && string.IsNullOrEmpty(cycle))
             {
                 throw new PortalException(PortalErrorCode.InvalidParams, $"{what} is cyclic and needs a 'cycle', e.g. \"T1s\": the compile refuses a cyclic logging tag without one");
             }
 
-            if (mode != UnifiedLoggingMode.Cyclic && !string.IsNullOrEmpty(cycle))
+            if (mode != UnifiedLoggingMode.Cyclic && (!string.IsNullOrEmpty(cycle) || factor != null))
             {
-                throw new PortalException(PortalErrorCode.InvalidParams, $"{what} has a 'cycle' but logs {UnifiedAlarmJson.Camel(mode.ToString())}; a cycle is only for \"mode\": \"cyclic\"");
+                throw new PortalException(PortalErrorCode.InvalidParams, $"{what} has a 'cycle' or 'cycleFactor' but logs {UnifiedAlarmJson.Camel(mode.ToString())}; they are only for \"mode\": \"cyclic\"");
             }
 
-            return (mode, string.IsNullOrEmpty(cycle) ? null : cycle);
+            return (mode, string.IsNullOrEmpty(cycle) ? null : cycle, factor);
+        }
+
+        private static uint? OptionalCycleFactor(JsonElement owner, string what)
+        {
+            if (!owner.TryGetProperty("cycleFactor", out var value) || value.ValueKind == JsonValueKind.Null)
+            {
+                return null;
+            }
+
+            return value.ValueKind == JsonValueKind.Number && value.TryGetUInt32(out var factor) && factor > 0
+                ? factor
+                : throw new PortalException(PortalErrorCode.InvalidParams, $"{what}: 'cycleFactor' must be a whole number from 1, the cycles between two writes; got {value.GetRawText()}");
+        }
+
+        /// <remarks>Measured 2026-10-28 on TIA Portal V20: data logs and alarm logs share one set of names, in any case.</remarks>
+        private static void RequireNoSharedLogName(UnifiedLoggingList list)
+        {
+            var shared = list.DataLogs.Intersect(list.AlarmLogs.Select(log => log.Name), StringComparer.OrdinalIgnoreCase).ToList();
+
+            if (shared.Count > 0)
+            {
+                throw new PortalException(PortalErrorCode.InvalidParams, $"'{string.Join("', '", shared)}' is asked for as a data log and as an alarm log; the two share one set of names");
+            }
         }
 
         private static string RequireText(JsonElement owner, string field, string what, string meaning)

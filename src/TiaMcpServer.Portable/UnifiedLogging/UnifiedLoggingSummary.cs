@@ -6,7 +6,10 @@ using TiaMcpServer.UnifiedAlarms;
 namespace TiaMcpServer.UnifiedLogging
 {
     /// <summary>The change plan's line for a logging list: every log and logging tag, with what it logs.</summary>
-    /// <remarks>Creating logs takes no backup, so the plan is the only record of what was asked for.</remarks>
+    /// <remarks>
+    /// The backup holds only the alarm classes' previous log; what was created is recorded nowhere else, so
+    /// the plan names every log and logging tag.
+    /// </remarks>
     public static class UnifiedLoggingSummary
     {
         /// <summary>Describes a list.</summary>
@@ -29,7 +32,12 @@ namespace TiaMcpServer.UnifiedLogging
 
         private static string Describe(UnifiedLoggingTag logged)
         {
-            var timing = logged.Cycle == null ? UnifiedAlarmJson.Camel(logged.Mode.ToString()) : $"{UnifiedAlarmJson.Camel(logged.Mode.ToString())} {logged.Cycle}";
+            var mode = UnifiedAlarmJson.Camel(logged.Mode.ToString());
+            var timing = logged.Cycle == null ? mode : $"{mode} {logged.Cycle}";
+            if (logged.CycleFactor != null)
+            {
+                timing += $" x{logged.CycleFactor}";
+            }
 
             return $"logging tag {logged.Name} ({logged.Tag} to {logged.DataLog}, {timing})";
         }

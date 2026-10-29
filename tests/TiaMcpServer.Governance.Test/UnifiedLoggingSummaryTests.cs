@@ -2,7 +2,7 @@
 
 namespace TiaMcpServer.Governance.Tests
 {
-    /// <remarks>Creating logs takes no backup, so the plan's line is the only record of what was asked for.</remarks>
+    /// <remarks>The backup holds only the classes' previous log, so the plan's line is the only record of what was created.</remarks>
     [TestClass]
     public sealed class UnifiedLoggingSummaryTests
     {
@@ -16,6 +16,16 @@ namespace TiaMcpServer.Governance.Tests
             var summary = UnifiedLoggingSummary.Of(list);
 
             Assert.AreEqual("data log Log_Tolva; alarm log Alarmes (Alarm); logging tag Nivell_log (Nivell to Log_Tolva, cyclic T1s)", summary);
+        }
+
+        [TestMethod]
+        public void Of_ACycleFactor_IsNamedWithTheCycle()
+        {
+            var list = UnifiedLoggingListReader.Parse(@"{ ""loggingTags"": [ { ""tag"": ""Nivell"", ""name"": ""L"", ""dataLog"": ""Log"", ""mode"": ""cyclic"", ""cycle"": ""T1s"", ""cycleFactor"": 5 } ] }");
+
+            var summary = UnifiedLoggingSummary.Of(list);
+
+            Assert.AreEqual("logging tag L (Nivell to Log, cyclic T1s x5)", summary);
         }
     }
 }

@@ -34,6 +34,8 @@ namespace TiaMcpServer.Test
 
         private static readonly string[] LoggedClasses = { "Alarm", "Warning" };
 
+        private static readonly string[] OnlyWarning = { "Warning" };
+
         private string _testDirectory = string.Empty;
 
         [TestInitialize]
@@ -86,7 +88,6 @@ namespace TiaMcpServer.Test
         [DataRow(@"{ ""loggingTags"": [ { ""tag"": ""No_Such_Tag"", ""name"": ""L"", ""dataLog"": ""Log_Tolva"" } ], ""dataLogs"": [ { ""name"": ""Log_Tolva"" } ] }", "does not exist", PortalErrorCode.InvalidParams, DisplayName = "a tag that does not exist")]
         [DataRow(@"{ ""loggingTags"": [ { ""tag"": ""Level"", ""name"": ""L"", ""dataLog"": ""No_Such_Log"" } ] }", "No_Such_Log", PortalErrorCode.InvalidParams, DisplayName = "a data log that does not exist")]
         [DataRow(@"{ ""alarmLogs"": [ { ""name"": ""A"", ""classes"": [ ""No_Such_Class"" ] } ] }", "No_Such_Class", PortalErrorCode.InvalidParams, DisplayName = "a class that does not exist")]
-        [DataRow(@"{ ""dataLogs"": [ { ""name"": ""Same"" } ], ""alarmLogs"": [ { ""name"": ""same"", ""classes"": [ ""Alarm"" ] } ] }", "share one set of names", PortalErrorCode.InvalidState, DisplayName = "a data log and an alarm log of one name")]
         public void CreateUnifiedLogging_WhatCannotBeCreated_IsRefusedAndCreatesNothing(string json, string named, PortalErrorCode code)
         {
             var failure = Assert.ThrowsException<PortalException>(() => Create(json));
@@ -123,6 +124,35 @@ namespace TiaMcpServer.Test
             StringAssert.Contains(failure.Message, "TIA Portal refused logging tag 'Fast'", System.StringComparison.Ordinal);
             StringAssert.Contains(failure.Message, "removed again", System.StringComparison.Ordinal);
             AssertNothingCreated(failure.Message);
+        }
+
+        /// <remarks>
+        /// A class left naming the deleted Alarmes would be refused as naming a deleted log; logging it to
+        /// another log is what shows the undo emptied it.
+        /// </remarks>
+        [TestMethod]
+        public void CreateUnifiedLogging_TiaPortalRefusesACycle_EmptiesTheClassAgain()
+        {
+            Assert.ThrowsException<PortalException>(() => Create(@"{
+                ""dataLogs"": [ { ""name"": ""Log_Tolva"" } ],
+                ""alarmLogs"": [ { ""name"": ""Alarmes"", ""classes"": [ ""Warning"" ] } ],
+                ""loggingTags"": [ { ""tag"": ""Level"", ""name"": ""Fast"", ""dataLog"": ""Log_Tolva"", ""mode"": ""cyclic"", ""cycle"": ""T100ms"" } ] }"));
+
+            var created = Create(@"{ ""alarmLogs"": [ { ""name"": ""Other"", ""classes"": [ ""Warning"" ] } ] }");
+
+            CollectionAssert.AreEqual(OnlyWarning, created["alarmLogs"]!.AsArray().Single()!["classes"]!.AsArray().Select(found => found!.GetValue<string>()).ToArray());
+        }
+
+        /// <remarks>Without the factor, a logging tag at T1s x5 would read back as logging every second.</remarks>
+        [TestMethod]
+        public void CreateUnifiedLogging_ACycleFactor_ReadsBackWithTheCycle()
+        {
+            var created = Create(@"{ ""dataLogs"": [ { ""name"": ""Log_Tolva"" } ],
+                ""loggingTags"": [ { ""tag"": ""Level"", ""name"": ""Slow"", ""dataLog"": ""Log_Tolva"", ""mode"": ""cyclic"", ""cycle"": ""T1s"", ""cycleFactor"": 5 } ] }");
+
+            var slow = created["loggingTags"]!.AsArray().Single()!;
+            Assert.AreEqual("T1s", slow["cycle"]!.GetValue<string>());
+            Assert.AreEqual(5u, slow["cycleFactor"]!.GetValue<uint>());
         }
 
         /// <remarks>The one existing thing the tool changes is a class's log; what it was is saved before it changes.</remarks>

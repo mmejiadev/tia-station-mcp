@@ -18,7 +18,9 @@ namespace TiaMcpServer.Siemens
         /// <remarks>
         /// An alarm log's classes are the classes whose <c>Log</c> names it: the link lives on the class.
         /// A logging tag whose data log is gone still names it, as TIA Portal keeps the name, so a reader
-        /// can see what the compile will refuse.
+        /// can see what the compile will refuse. A mode of <c>undefined</c> is read as it is, though
+        /// CreateUnifiedLogging makes none. Reading the logging tags is a call into TIA Portal per HMI tag
+        /// while the Openness gate is held, so on an HMI with thousands of tags it takes a while.
         /// </remarks>
         public static JsonObject Read(UnifiedHmiSoftware hmi, bool includeLoggingTags = true)
         {
@@ -68,10 +70,12 @@ namespace TiaMcpServer.Siemens
                 ["mode"] = UnifiedAlarmJson.Camel(logged.LoggingMode.ToString())
             };
 
-            // Only a cyclic logging tag gives its cycle, as CreateUnifiedLogging takes one only there.
+            // Only a cyclic logging tag gives its cycle, as CreateUnifiedLogging takes one only there. The factor
+            // goes with it: T1s with a factor of 5 writes every 5 s, and the cycle alone would say every second.
             if (logged.LoggingMode == HmiLoggingMode.Cyclic && !string.IsNullOrEmpty(logged.Cycle))
             {
                 entry["cycle"] = logged.Cycle;
+                entry["cycleFactor"] = logged.CycleFactor;
             }
 
             return entry;
