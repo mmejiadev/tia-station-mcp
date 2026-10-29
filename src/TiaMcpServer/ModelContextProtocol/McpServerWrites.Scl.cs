@@ -14,7 +14,7 @@ namespace TiaMcpServer.ModelContextProtocol
     /// </remarks>
     public static partial class McpServer
     {
-        [McpServerTool(Name = "WriteScl"), Description("Write SCL source into a PLC program, generating the blocks it declares. The existing blocks are exported to the backup registry first, because generation overwrites blocks of the same name; call ListBackups to find that copy. Compile afterwards to find out whether the code is valid.")]
+        [McpServerTool(Name = "WriteScl"), Description("Write SCL source into a PLC program, generating the blocks and PLC data types (TYPE) it declares, reported apart. The existing blocks are exported to the backup registry first, because generation overwrites blocks of the same name; call ListBackups to find that copy. Compile afterwards to find out whether the code is valid.")]
         public static ResponseWriteScl WriteScl(
             [Description("softwarePath: full path in the project structure to the plc software, e.g. 'Group1/PLC_1'")] string softwarePath,
             [Description("sclCode: the SCL source text; it may declare more than one block")] string sclCode)
@@ -36,9 +36,9 @@ namespace TiaMcpServer.ModelContextProtocol
                     {
                         var generated = Portal.WriteScl(softwarePath, sclCode, backupDirectory);
 
-                        return new ResponseWriteScl(generated)
+                        return new ResponseWriteScl(generated.Blocks, generated.Types)
                         {
-                            Message = $"Generated {generated.Count} block(s): {string.Join(", ", generated)}. Compile the software to check them.",
+                            Message = $"Generated {generated.Blocks.Count} block(s): {string.Join(", ", generated.Blocks)}; {generated.Types.Count} type(s): {string.Join(", ", generated.Types)}. Compile the software to check them.",
                             Meta = new JsonObject
                             {
                                 ["timestamp"] = DateTime.Now,
@@ -46,7 +46,7 @@ namespace TiaMcpServer.ModelContextProtocol
                             }
                         };
                     },
-                    () => new ResponseWriteScl(Array.Empty<string>()));
+                    () => new ResponseWriteScl(Array.Empty<string>(), Array.Empty<string>()));
             }
             catch (TiaMcpServer.Siemens.PortalException pex)
             {

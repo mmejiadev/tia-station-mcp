@@ -7,9 +7,11 @@ namespace TiaMcpServer.ModelContextProtocol
     {
         /// <summary>Creates the response.</summary>
         /// <param name="generatedBlocks">Names of the blocks the source produced.</param>
-        public ResponseWriteScl(IReadOnlyList<string> generatedBlocks)
+        /// <param name="generatedTypes">Names of the PLC data types the source produced.</param>
+        public ResponseWriteScl(IReadOnlyList<string> generatedBlocks, IReadOnlyList<string> generatedTypes)
         {
             GeneratedBlocks = generatedBlocks;
+            GeneratedTypes = generatedTypes;
         }
 
         /// <summary>
@@ -17,5 +19,11 @@ namespace TiaMcpServer.ModelContextProtocol
         /// call CompileSoftware to find that out.
         /// </summary>
         public IReadOnlyList<string> GeneratedBlocks { get; }
+
+        /// <summary>
+        /// Names of the PLC data types the source produced. Types are looked up with the type tools
+        /// (GetTypeInfo, ExportType), not the block ones.
+        /// </summary>
+        public IReadOnlyList<string> GeneratedTypes { get; }
     }
 }

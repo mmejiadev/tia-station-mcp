@@ -3,6 +3,7 @@ using Siemens.Engineering;
 using Siemens.Engineering.SW;
 using Siemens.Engineering.SW.Blocks;
 using Siemens.Engineering.SW.ExternalSources;
+using Siemens.Engineering.SW.Types;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -43,13 +44,13 @@ namespace TiaMcpServer.Siemens
         /// <summary>
         /// Generates blocks from SCL source text.
         /// </summary>
-        /// <param name="sclCode">The SCL source. May declare more than one block.</param>
-        /// <returns>The names of the blocks that were generated.</returns>
+        /// <param name="sclCode">The SCL source. May declare more than one block or type.</param>
+        /// <returns>The names of the blocks and of the PLC data types that were generated.</returns>
         /// <exception cref="PortalException">
         /// The source is empty, or TIA Portal accepted the source but generated nothing, which is
         /// how it reports that the SCL does not parse.
         /// </exception>
-        public IReadOnlyList<string> Generate(string sclCode)
+        public SclGeneration Generate(string sclCode)
         {
             if (string.IsNullOrWhiteSpace(sclCode))
             {
@@ -68,7 +69,7 @@ namespace TiaMcpServer.Siemens
             }
         }
 
-        private List<string> GenerateFrom(string sourceFile)
+        private SclGeneration GenerateFrom(string sourceFile)
         {
             var sourceName = SourceNamePrefix + DateTime.Now.Ticks.ToString(CultureInfo.InvariantCulture);
 
@@ -80,18 +81,18 @@ namespace TiaMcpServer.Siemens
                 // compile, instead of half-replacing a working program with a broken one.
                 var generated = externalSource.GenerateBlocksFromSource(GenerateBlockOption.KeepOnError);
 
-                var names = ToNames(generated);
+                var result = Sort(generated);
 
-                if (names.Count == 0)
+                if (result.Blocks.Count + result.Types.Count == 0)
                 {
                     throw new PortalException(
                         PortalErrorCode.InvalidParams,
-                        "TIA Portal generated no blocks from the source. The SCL is most likely invalid; compile the software to see why.");
+                        "TIA Portal generated no blocks or types from the source. The SCL is most likely invalid; compile the software to see why.");
                 }
 
-                _logger?.LogInformation("Generated {Count} block(s) from SCL: {Names}", names.Count, string.Join(", ", names));
+                _logger?.LogInformation("Generated from SCL: blocks {Blocks}; types {Types}", string.Join(", ", result.Blocks), string.Join(", ", result.Types));
 
-                return names;
+                return result;
             }
             finally
             {
@@ -101,19 +102,29 @@ namespace TiaMcpServer.Siemens
             }
         }
 
-        private static List<string> ToNames(IList<IEngineeringObject> generated)
+        /// <remarks>
+        /// A source that declares only a TYPE generates a PlcType and no block. Counting blocks alone
+        /// refused it as invalid SCL after TIA Portal had already created the type.
+        /// </remarks>
+        private static SclGeneration Sort(IList<IEngineeringObject> generated)
         {
-            var names = new List<string>();
+            var blocks = new List<string>();
+            var types = new List<string>();
 
             foreach (var item in generated)
             {
                 if (item is PlcBlock block)
                 {
-                    names.Add(block.Name);
+                    blocks.Add(block.Name);
+                }
+
+                if (item is PlcType type)
+                {
+                    types.Add(type.Name);
                 }
             }
 
-            return names;
+            return new SclGeneration(blocks, types);
         }
 
         private static string WriteToTemporaryFile(string sclCode)

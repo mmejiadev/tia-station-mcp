@@ -1,6 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
 using System;
-using System.Collections.Generic;
 using System.Threading;
 
 namespace TiaMcpServer.Siemens
@@ -71,12 +70,12 @@ namespace TiaMcpServer.Siemens
         /// operation overwrites blocks that already carry the same names, and the repository rule
         /// is that every write is preceded by an export of the previous state.
         /// </param>
-        /// <returns>The names of the blocks that were generated.</returns>
+        /// <returns>The names of the blocks and of the PLC data types that were generated, apart.</returns>
         /// <exception cref="PortalException">
         /// The arguments are invalid, no project is open, the software path does not resolve, the
-        /// backup could not be taken, or the SCL produced no blocks.
+        /// backup could not be taken, or the SCL produced neither blocks nor types.
         /// </exception>
-        public IReadOnlyList<string> WriteScl(string softwarePath, string sclCode, string backupDirectory)
+        public SclGeneration WriteScl(string softwarePath, string sclCode, string backupDirectory)
         {
             _logger?.LogInformation("Writing SCL into {SoftwarePath}...", softwarePath);
 
