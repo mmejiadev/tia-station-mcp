@@ -536,6 +536,30 @@ namespace TiaMcpServer.Test
         }
 
         [TestMethod]
+        public void CopyLibraryTypes_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.CopyLibraryTypes(@"C:\Refused\Refused.al20", RefusedTypes);
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void ReleaseLibraryType_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.ReleaseLibraryType("Refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void PlaceUnifiedFaceplates_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.PlaceUnifiedFaceplates("HMI_MTP700/HMI_RT_1", @"{ ""screen"": ""Refused"", ""faceplates"": [ { ""name"": ""Refused"", ""type"": ""Refused"", ""left"": 0, ""top"": 0 } ] }");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
         public void GenerateHmiTextList_WithNoPolicy_IsRefused()
         {
             const string List = @"{ ""name"": ""Refused"", ""entries"": [ { ""value"": 0, ""text"": ""STOPPED"" } ] }";
@@ -589,6 +613,8 @@ namespace TiaMcpServer.Test
         private const string UnlistedEndpoint = "opc.tcp://192.0.2.1:4840";
 
         private static readonly string[] SomeNode = { "ns=3;s=\"DB_Cell\".\"Running\"" };
+
+        private static readonly string[] RefusedTypes = { "Refused" };
 
         [TestMethod]
         public async Task ReadOpcUaValues_WithNoPolicy_IsRefusedAndReadsNothing()
