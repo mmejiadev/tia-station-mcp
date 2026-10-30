@@ -1,9 +1,89 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-10-28**
+> Last updated: **2026-10-29**
 
 ## ▶ RESUME HERE
+
+### The Openness suite, two review rounds, and WriteScl with a TYPE — 2026-10-29, branch `work/unified-logging`
+
+The full Openness suite on V20, with TIA Portal closed, on the branch as committed: 482 passed, 4
+skipped, 1 failed. The failure was not logging: `Test36ProgramBackup.WriteScl_ATypeNotYetCompiled_BacksItUpAsSource`
+(PR #57) failed on its *first* write. `SclBlockGenerator` counted only `PlcBlock`, so an SCL source
+declaring only a `TYPE` was refused as "most likely invalid" after TIA Portal had already created the
+type. The test had never run against TIA Portal before today. Now `WriteScl` returns `SclGeneration`,
+blocks and PLC data types apart, and the tool answers `GeneratedBlocks` and `GeneratedTypes`: a type
+name passed to a block tool is not found, so mixing them would mislead. Refused only when neither was
+generated. Still open, and older than this: a source whose blocks generate in part is reported by what
+was generated, with no word on what was not.
+
+`/code-review high` over `work/a4-close` and `work/unified-logging` against `main`: ten findings. Fixed:
+creating a data log a logging tag still names after the log was deleted would log it there silently
+(now refused, like the classes); `GetUnifiedLogging` left out `CycleFactor`, so T1s x5 read as every
+second (now read, and `CreateUnifiedLogging` takes an optional `cycleFactor`, a whole number from 1;
+measured: 5 is taken and reads back); `undefined` as a mode is read as it is and the description says
+`CreateUnifiedLogging` does not take it; the fixes of the first round had no tests; the writer held
+state only `Check` set; the shared-name rule was checked only against TIA Portal; repeated Openness
+lookups; the cost of reading every tag's logging tags was unstated; a remark said no backup was taken.
+Not done: `ParseDocument`, `ReadEach` and `RequireUnique` are copied in six readers already on `main`,
+and unifying two of them would leave the job half done. That is a refactor of its own.
+
+The rules are now `UnifiedLoggingRules` in `TiaMcpServer.Portable`, over a `UnifiedLoggingState` of
+names and links only, read by `UnifiedLoggingSnapshot`; `UnifiedLoggingChecker` is gone. So every
+logging rule is tested without TIA Portal (`UnifiedLoggingRulesTests`, 11), the stray logging tag
+rule checked by removing it and watching its test fail. A second round over the fixes: ten findings;
+fixed the types reported as blocks, the state reusing the creation DTOs with an invented mode, the
+shared-name rule missing from the rules, two linear scans; documented the full tag read when a data
+log is created and that an HMI tag is found as TIA Portal spells it (as before this branch); left the
+few extra `Find` calls.
+
+Tests after both rounds: build 0 warnings; Governance 721/723 (2 skipped), Spec 133/133, OpcUa 33/33;
+against TIA Portal V20, `Test53`, `Test36`, `Test9`, `Test16`, `Test17`, `Test19`, `Test31` and
+`Test39`: 103/103, with the new `Test53` cycle factor and class-emptied tests and `Test9` type test.
+
+**Next:** the user's commits; then the PRs, `work/a4-close` first; log settings and a trend control.
+
+### Unified logging — 2026-10-28, branch `work/unified-logging`
+
+`CreateUnifiedLogging` and `GetUnifiedLogging` (two new tools): data logs, alarm logs with the alarm
+classes logged to them, and logging tags that log an HMI tag into a data log on change, cyclically
+(with a cycle) or on demand. All or nothing, like `CreateUnifiedAlarms`, and read back in the shape it
+takes. HMI-COVERAGE row R3.
+
+Measured on V20 by four probes on copies of `UnifiedProject` in the server's own headless TIA Portal
+(the user's window untouched, nothing saved). A logging tag names its data log, and an alarm class
+its alarm log, **by string**: Openness refuses a name that is not a log. Data logs and alarm logs share
+one set of names, unique in any case; a logging tag's name is unique among the logging tags of its HMI
+tag only. With one data log a new logging tag is given it; with two it is left empty. Openness takes,
+and only the compile refuses: a logging tag with no data log, a cyclic one with no cycle, an alarm log
+no class is logged to. Each is refused by the tool first. Deleting a data log or an alarm log that is
+still named succeeds and leaves the name pointing at nothing, so the undo deletes logging tags and
+empties classes before it deletes logs, and the tool never deletes a log. An alarm class's log is set
+back to empty with `''` (null is refused), which is why the tool only sets a class's log from empty
+and refuses one already logged elsewhere: undoing it is then exact. Cycles T500ms, T1s, T2s, T5s and
+T10s are taken; T100ms and T250ms are refused on an internal tag ("LoggingCycleConsistency check
+failed") and named minutes or hours do not exist. Scheduled tasks (row E8) are not exposed by
+Openness V20 at all.
+
+The create-and-undo step the alarm writer had is now shared (`UnifiedRollback.Create`) rather than
+copied, and an undo that cannot finish asks to undo the rest by hand rather than to delete it.
+
+`/code-review high`: ten findings, all fixed — an alarm class's log changed with no saved previous
+state (now `alarm-class-logs.json` in the backup registry, before any class changes); a class still
+naming a deleted log would have been logged to a new log of that name without the plan saying so (now
+refused, asking to empty its log); a missing tag, log or class came back as invalid state rather than
+invalid parameters; an existing logging tag was found by exact name only; a cycle read back on a logging
+tag that is not cyclic would not go back in; a refused class was reported as its log; a class twice in
+one log was reported as one in two logs; reading back read every tag's logging tags; the shared
+create step took five parameters; an undo that could not empty a class said to delete it.
+
+Tests: Governance 702/704 (2 skipped; `UnifiedLoggingListReaderTests` 12, `UnifiedLoggingSummaryTests`
+1). For tonight, against TIA Portal: `Test53UnifiedLogging` (read back, compile with only the known
+messages, four refusals, a class already logged, a refused cycle undone, the classes' logs saved first) and `Test16` with the new
+refusal; `Test51` again, for the shared undo step.
+
+**Next:** the user's commit; tonight the Openness suite; then log settings (size, duration, storage)
+and a trend control on a screen to show a data log.
 
 ### A4 closed: a killed server's TIA Portal is left running, on purpose — 2026-10-28, branch `work/a4-close`
 
@@ -45,11 +125,12 @@ ship a binary bound to the wrong API. `Test-Preconditions.ps1 -TiaVersion 21` lo
 `PublicAPI\V21\net48\Siemens.Engineering.Base.dll` under `Portal V21`.
 
 Run by the user on TIA Portal V21 in a virtual machine on 2026-10-27, with her HMI changes, and
-reported as working well. Which tools and which test classes ran there is not recorded yet; the V21
-column of the HMI rows marked "to confirm on V21" stays open until it is. The V20 build is unchanged
-and compiles without warnings.
+reported as working well. What ran there, as she reported it on 2026-10-29: generating an HMI screen,
+which came out well laid out and with its components animated. No test class ran on V21, so the V21
+column of the HMI rows marked "to confirm on V21" stays open except for screen generation. The V20
+build is unchanged and compiles without warnings.
 
-**Next:** record what ran on V21; the Openness suite on V20 with TIA Portal closed.
+**Next:** the Openness suite on V21; the other HMI rows on V21.
 
 ### Working with the user's TIA Portal open (A4) — 2026-10-27, branch `work/tia-open`
 

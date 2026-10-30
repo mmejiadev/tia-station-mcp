@@ -25,6 +25,16 @@ BEGIN
 END_FUNCTION
 ";
 
+        private const string TypeScl = @"TYPE ""UDT_GeneratedByTest""
+VERSION : 0.1
+   STRUCT
+      Done : Bool;
+   END_STRUCT;
+END_TYPE
+";
+
+        private static readonly string[] GeneratedTypes = { "UDT_GeneratedByTest" };
+
         private string _backupDirectory = string.Empty;
 
         [TestInitialize]
@@ -45,7 +55,17 @@ END_FUNCTION
         {
             var generated = AssemblyHooks.SharedPortal.WriteScl(Settings.Project1PlcSoftwarePath0, ValidScl, _backupDirectory);
 
-            CollectionAssert.Contains(generated.ToList(), "FC_GeneratedByTest");
+            CollectionAssert.Contains(generated.Blocks.ToList(), "FC_GeneratedByTest");
+        }
+
+        /// <remarks>A TYPE alone generates no block; it was refused as invalid SCL after TIA Portal had made the type.</remarks>
+        [TestMethod]
+        public void WriteScl_OnlyAType_ReportsItAsAType()
+        {
+            var generated = AssemblyHooks.SharedPortal.WriteScl(Settings.Project1PlcSoftwarePath0, TypeScl, _backupDirectory);
+
+            CollectionAssert.AreEqual(GeneratedTypes, generated.Types.ToList());
+            Assert.AreEqual(0, generated.Blocks.Count);
         }
 
         [TestMethod]
