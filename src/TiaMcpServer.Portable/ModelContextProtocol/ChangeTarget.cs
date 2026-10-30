@@ -10,13 +10,14 @@
     /// and an unmatched target is refused, so the mistake would show up as an inexplicable refusal
     /// rather than as a typo.
     ///
-    /// Five families, and nothing else:
+    /// Six families, and nothing else:
     /// <list type="bullet">
     /// <item><description><c>PLC_0/Blocks/FB_Station</c> — a place in the project tree.</description></item>
     /// <item><description><c>simulation/Station_1</c> — a virtual controller, which is not in the project.</description></item>
     /// <item><description><c>simulation-runtime</c> — the PLCSIM Advanced runtime itself, machine-wide.</description></item>
     /// <item><description><c>project</c> — the project as a whole: saving it, closing it, copying it.</description></item>
     /// <item><description><c>opcua/192.168.0.1:4840</c> — an OPC UA server on the network, which a session may read from.</description></item>
+    /// <item><description><c>library</c> and <c>library/FP_Motor</c> — the project library, and one type in it.</description></item>
     /// </list>
     /// </remarks>
     public static class ChangeTarget
@@ -47,7 +48,18 @@
         /// </remarks>
         public const string SimulationRuntime = "simulation-runtime";
 
+        /// <summary>
+        /// The project library as a whole: types copied into it from a global library.
+        /// </summary>
+        /// <remarks>
+        /// Not a place under a PLC or an HMI: a type in the project library belongs to no device, and
+        /// one instance of it can sit on every HMI of the project. A policy that allows <c>library</c>
+        /// lets a session add types; releasing one is <see cref="LibraryType"/>, a rule of its own.
+        /// </remarks>
+        public const string ProjectLibrary = "library";
+
         private const string SimulationPrefix = "simulation/";
+        private const string LibraryPrefix = ProjectLibrary + "/";
         private const string OpcUaPrefix = "opcua/";
 
         /// <summary>A place in the project tree.</summary>
@@ -73,6 +85,21 @@
         public static string Simulation(string instanceName)
         {
             return SimulationPrefix + (instanceName ?? string.Empty).Trim('/');
+        }
+
+        /// <summary>One type in the project library.</summary>
+        /// <param name="typeName">The type's name, e.g. <c>FP_Motor</c>.</param>
+        /// <returns>The target name, for example <c>library/FP_Motor</c>.</returns>
+        /// <remarks>
+        /// Releasing a type changes what every new instance of it shows, on every HMI, so it is named
+        /// by the type rather than by a screen. The prefix keeps a rule about a PLC that happens to be
+        /// called like a type from governing the type. It does not keep apart a device literally named
+        /// <c>library</c>, whose program targets would share the prefix; <c>simulation/</c> and
+        /// <c>opcua/</c> live with the same limit, as no character is measured to be refused in a device name.
+        /// </remarks>
+        public static string LibraryType(string typeName)
+        {
+            return LibraryPrefix + (typeName ?? string.Empty).Trim('/');
         }
 
         /// <summary>An OPC UA server, by host and port.</summary>
