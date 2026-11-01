@@ -699,7 +699,7 @@ installation were all false leads; so were the files under `AdditionalFiles\Vali
 | U5 | Dynamizations and events: tag, script and resource-list dynamizations, button events | A lamp changes colour and a button sets a PLC bit, both generated | U4 |
 | U6 | Runtime settings: start screen, encrypted transfer, users and roles — **a password never reaches a log, the audit trail or a backup in clear** | A new device is made compilable through the MCP; a test fails if the password appears in any written file | U1 |
 | U7 | Alarms, tag and alarm logging, the audit viewer, and which of them need an option or a licence | One of each configured and compiled; the licence needs written down from the documentation | U4 |
-| U8 | Faceplates, library types and screen templates | A faceplate created, used twice and compiled | U4 |
+| U8 | Faceplates, library types and screen templates — instances, release and copy from a global library built 2026-10-30 on `work/unified-faceplates`; the type itself is drawn by hand, as Openness V20 cannot create one; screen templates open | A faceplate created, used twice and compiled | U4 |
 | U9 | Download to the simulated runtime and report the result, reading the runtime's own log when TIA Portal says only "Action canceled" | The simulation starts through the MCP and `WebRH` shows the screen | U1, U6 |
 | U10 | The simulated Unified panel against PLCSIM, so a press reaches the PLC | A button on the simulated panel sets a tag in PLCSIM | U5, U9 |
 | U11 | Documentation read and cited: WinCC Unified system manual and the Openness Unified chapter | Each fact the generators rely on carries its source | |
@@ -742,7 +742,7 @@ installation were all false leads; so were the files under `AdditionalFiles\Vali
 | H3 | FBD and STL imported as documents; S7-GRAPH on S7-1500 | One block in each compiles |
 | H4 | Alarms (program alarms, ProDiag) and text lists | An alarm raised in PLCSIM appears on the panel |
 | H5 | Technology objects (axis, PID) | One of each configured and compiled |
-| H6 | Libraries, types and master copies | A type is created, versioned and instantiated |
+| H6 | Libraries, types and master copies — reading a project or global library, copying types from a global library and releasing a version in work built 2026-10-30 (`GetLibraryTypes`, `CopyLibraryTypes`, `ReleaseLibraryType`); a new version in work (`Edit`), master copies and updating instances open | A type is created, versioned and instantiated |
 | H7 | Project compare and archive (`.zap`). An `ArchiveProject` tool over `Project.Archive` is wanted first: on 2026-10-20 the hopper exercise had to be handed in as a `.zap20` and the archive was made by hand in TIA Portal, because the MCP can only retrieve one (`RetrieveProject`) | Two versions compared; a project archived through the MCP and the archive retrieved back |
 | H8 | ~~WinCC Unified~~ — moved to its own wave, U, on 2026-10-17 | See wave U |
 | H9 | SINAMICS Startdrive | A drive added and parameterised |

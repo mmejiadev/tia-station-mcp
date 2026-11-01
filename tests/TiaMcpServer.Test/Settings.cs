@@ -32,6 +32,21 @@ namespace TiaMcpServer.Test
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "assets", "UnifiedProject.zap20");
 
         /// <summary>
+        /// The class project 0967_1, archived without restorable data: an S7-1500, a WinCC Unified PC RT
+        /// with HMI tags M1 to M7 of the PLC data type UDT_MOTOR_V1, and two faceplate types in its library,
+        /// FACEPLATE_MOTOR_V1 and Faceplate_BOTO_MOTOR_V1, each with version 0.0.1 still in work.
+        /// </summary>
+        public static string FaceplateArchivePath =>
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "assets", "FaceplateProject.zap20");
+
+        /// <summary>
+        /// A global library folder, zipped: FACEPLATE_MOTOR_V1 and Faceplate_BOTO_MOTOR_V1 released as 0.0.1,
+        /// and UDT_MOTOR_V1 that the first depends on. Made from the class project 0967_1 on 2026-10-30.
+        /// </summary>
+        public static string FaceplateLibraryZipPath =>
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "assets", "FaceplateLibrary.zip");
+
+        /// <summary>
         /// The write policy the suite runs under, resolved the same way as the archive.
         /// </summary>
         /// <remarks>

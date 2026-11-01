@@ -1,9 +1,86 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-10-29**
+> Last updated: **2026-10-30**
 
 ## ▶ RESUME HERE
+
+### Faceplates and library types — 2026-10-30, branch `work/unified-faceplates`
+
+Stacked on `work/unified-logging` (PR #59), itself on `work/a4-close` (PR #58). Asked for by the
+user to do the class activity 0967 "HMI UNIFIED 1" (flour mill motors: a UDT, an FB, a monitoring
+faceplate and a control faceplate) from nothing through the MCP.
+
+**What Openness V20 cannot do, measured:** create or draw a WinCC Unified faceplate type. In the
+library it is a plain `LibraryType`: no export format (`GetSupportedExportFormats` is empty),
+`CreateFromDocuments` answers "required products are missing", and nothing of its content is
+reachable; reflection over `PublicAPI\V20\Siemens.Engineering.dll` finds no Unified faceplate type
+class at all. So a faceplate is drawn once by hand in TIA Portal and kept in a global library;
+everything after that is the MCP's. The integrated HMI connection (H10) is likewise made by hand.
+
+**Five new tools.** `GetLibraryTypes` (project library, or a global library file opened
+read-only), `CopyLibraryTypes` (global → project, with the types each depends on),
+`ReleaseLibraryType` (the one version in work), `GetUnifiedFaceplates` and `PlaceUnifiedFaceplates`
+(instances on an existing screen, interface given tags as `{"tag": "M1"}` or texts, all or
+nothing). New policy targets: `library` for copies, `library/<type>` for releases.
+
+Measured on V20 by probes outside the repository, on copies of the class project 0967_1 (its two
+faceplate types were left in work), never saved:
+
+- An instance is `ScreenItems.Create<HmiFaceplateContainer>(name, "V0.0.1\TYPE")`; the type name
+  alone, `V 0.0.1\...` and a version in work are refused. It comes at the type's own size.
+- An interface property is given its value as a string: a tag's name, or plain text that TIA
+  Portal wraps as a `ProjectText` document. A tag dynamization is "not supported". Any name is
+  taken; only the compile says "does not exist", also for a tag of the wrong type. The property
+  does not expose its type, so the tool checks that tags exist, and the compile checks the rest.
+- `Release` takes a repeated number and keeps two versions under it (two `0.0.1`): refused first.
+- Copying a type the project library already holds renumbers its version in work (`0.0.1` in work
+  became `0.0.2` in work) without a word: refused. The UDT a faceplate depends on comes with it.
+- A global library opened read-only is enough to copy from; `GlobalLibraries.Create` is generic.
+- `DrawUnifiedScreen` already refuses to redraw a screen holding a faceplate, as its backup cannot
+  draw one back: draw the screen first, place the faceplates last.
+
+Measured on the same day by another session, on the user's own project (memory
+`udt-tipo-libreria-openness`): `Release` with `AutomaticallyCreateOrReleaseDependenciesIfRequired`
+gave the FB using a released UDT a new version in work. So `ReleaseLibraryType` uses
+`DoNotAutomaticallyCreateOrReleaseDependencies`, and refuses a type whose dependencies are still in
+work: a faceplate whose UDT is released was released alike in both modes (probe, two copies). Not
+reproduced here: the dependent case, as `Edit` on a PLC data type needs a test instance.
+
+`/code-review high`, two rounds (governance is touched), ten findings each, all fixed. First:
+a dependency the project already held was merged silently (the copy now checks every type it
+would bring, transitively); two definitions of "in work" (one exhaustive switch now, an unknown
+state refused); the copy's undo deleted in walk order and left folders (now passes until nothing
+more goes, see `RepeatedRemoval`, then empty new folders deepest first); no backup on copy or
+release (both write the library before); case handled three ways (aside everywhere, written as
+TIA Portal spells it); a dead branch; repeated walks; `Close` masking the real failure; the
+`GetUnifiedFaceplates` description claiming the input's shape; the `library` prefix claiming more
+than it keeps apart (a device literally named `library` shares it, as with `simulation/`).
+Second: a close failing after a successful copy reported the copy as failed (now a `warning`
+beside the result); versions compared by `System.Version` equality, which counts parts (all in
+three parts now); the dependency rule and the undo order untested (both portable and tested now);
+an interface property given twice silently overwritten (refused); a failed copy classed as bad
+input (now `WriteFailed`); `ReleaseLibraryType` not trimming the name before the policy; a second
+copy of the screen-group walk; the "already open" path compared verbatim (now normalised, folder or
+file); the project library walked four times on a copy (once).
+
+Tests: build 0 warnings; Governance 769/771 (2 skipped, as before), 44 new; the release-number,
+already-in-project and pass-order rules each caught by its test when removed. Against TIA Portal
+V20, `Test54` (8), `Test55` (7) and `Test16` (with 3 new refusals): 71/71 after the first round.
+**Not yet run against TIA Portal after the second round**: the user had TIA Portal open on her own
+project, and the suite refuses to start beside another session. Run `Test54|Test55|Test16` first.
+New assets: `FaceplateProject.zap20` (4.0 MB, the class project 0967_1 archived without
+restorable data) and `FaceplateLibrary.zip` (2.7 MB, a global library made from it).
+
+**Next:** the TIA run above; the user's commits; then log settings and the trend control; then an
+`Edit` (new version in work) and an update of instances to a new version, measured on the class
+project.
+
+Log settings and the trend control were measured too, for the next branch: defaults 1000 MB and
+7 days per log, segments 100 MB and 1 day; a segment larger than its log, more than 24 h, 60 min
+or 60 s are refused on write; only `Default` and `Local` storage on a PC, and `StorageFolder` is
+read-only, so `Local` cannot be completed; an empty backup path and an alarm log with no class
+are refused only by the compile. A trend's source is `Tag:LoggingTag`, and nothing checks it.
 
 ### The Openness suite, two review rounds, and WriteScl with a TYPE — 2026-10-29, branch `work/unified-logging`
 
