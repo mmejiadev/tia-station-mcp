@@ -1,4 +1,5 @@
-﻿using Siemens.Engineering.HmiUnified.UI.Screens;
+﻿using Siemens.Engineering.HmiUnified.UI.Controls;
+using Siemens.Engineering.HmiUnified.UI.Screens;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Nodes;
@@ -61,6 +62,11 @@ namespace TiaMcpServer.Siemens
                 if (!UnifiedItemTypes.IsDrawable(item.GetType().FullName!))
                 {
                     lost.Add($"'{item.Name}' is a {item.GetType().Name}, which this tool does not draw back");
+                }
+
+                if (item is HmiTrendControl trends && trends.TrendAreas.SelectMany(area => area.Trends).Any(trend => !string.IsNullOrEmpty(trend.DataSourceY.Source)))
+                {
+                    lost.Add($"'{item.Name}' shows trends, which its backup does not keep: a list of parts is not a property the coverage check can see");
                 }
 
                 lost.AddRange(UnifiedBackupCoverage.Lost(item, $"'{item.Name}'", eventsKept: true));
