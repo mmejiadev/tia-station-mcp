@@ -5,6 +5,48 @@
 
 ## ▶ RESUME HERE
 
+### Log settings and trend controls — 2026-10-30, branch `work/unified-log-settings`
+
+Stacked on `work/unified-faceplates`. Four new tools: `SetUnifiedLogSettings`, `GetUnifiedTrends`,
+`SetUnifiedTrends`, and `GetUnifiedLogging` now gives each log's settings.
+
+**Log settings.** Size, period, segments and backup of existing data logs and alarm logs; only what is
+given changes. Measured on V20 (probes on new projects, nothing saved): a new log holds 1000 and 7
+days, segments 100 and 1 day, no backup; hours above 23, minutes or seconds above 59 are refused; up
+to 100000 days were taken and 2147483647 refused, so 99999 is the most asked for. **Every single
+write that leaves a segment larger or longer than its log is refused**, even when the writes after
+it would end valid, so `UnifiedLogSettingsPlan` orders them: the log is widened past both segments
+(size, and days plus one), the segment written, then the log narrowed, seconds first and days last.
+A log growing from 1d 3h 59m to 1d 4h would otherwise pass 1d 3h 0m; found reviewing the plan, and
+its test fails with the fix removed. The plan is checked against a fake log that refuses what TIA
+Portal refuses, over 500 seeded random changes. **The backup path is read-only while the backup is
+off**, found by `Test56` against TIA Portal: the backup is switched on before its path is written,
+and the switch and the path are kept apart, as TIA Portal keeps a path while off. `StorageFolder` is
+read-only, so storage stays `Default`. All or nothing: each log touched is put back by the same plan.
+
+**Trend controls.** `SetUnifiedTrends` fills a trend control that shows no trend yet, as
+`DrawUnifiedScreen` draws one (`trendControl`): trends in the first area, each a tag's live values
+(`Level`) or a logging tag's (`Level:Level_log`), with legend name, colour and mode, and the time
+axis range. Measured: a new control has one area with one empty trend, a bottom time axis of 1
+minute; `Tag:LoggingTag` with an unknown tag is refused by Openness, a bare unknown name was taken,
+so both are checked first; the range factor runs 1 to 32767; trends are deleted with `Delete`, which
+the undo uses. A control already showing a trend is refused rather than overwritten.
+
+`/code-review high` on log settings, one round, ten findings, all fixed: the backup folded into one
+string lost a path stored while off and missed a backup on with no path (now a switch and a path,
+`DescribeExactly` in the backup); the unmeasured day limit (measured, above); `CreateUnifiedLogging`'s
+read back paying for every log's settings (`isFullRead`); a segment of no time; the start parsed
+loosely (now `yyyy-MM-ddTHH:mm:ss`, no zone); a backup path of spaces turning the backup off; an empty
+request reported as a change; a restore swallowing its reason (`TryRestore`); these docs.
+
+Tests: build 0 warnings; Governance 802/804 (2 skipped, as before). Against TIA Portal V20 on this
+branch, `Test53`, `Test56` (6), `Test57` (4) and `Test16` (with 2 new refusals): 78/78; and earlier
+the same day `Test54`, `Test55` and `Test16` of the faceplate branch after its second review round,
+all passing.
+
+**Next:** `/code-review high` on the trend code, the user's commits; then `Edit` (a new version in
+work) and updating instances to a new version.
+
 ### Faceplates and library types — 2026-10-30, branch `work/unified-faceplates`
 
 Stacked on `work/unified-logging` (PR #59), itself on `work/a4-close` (PR #58). Asked for by the
