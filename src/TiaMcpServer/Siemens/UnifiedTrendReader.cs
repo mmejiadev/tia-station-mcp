@@ -1,4 +1,5 @@
-﻿using Siemens.Engineering.HmiUnified.UI.Controls;
+﻿using Siemens.Engineering;
+using Siemens.Engineering.HmiUnified.UI.Controls;
 using Siemens.Engineering.HmiUnified.UI.Parts;
 using Siemens.Engineering.HmiUnified.UI.Screens;
 using System.Collections.Generic;
@@ -13,12 +14,13 @@ namespace TiaMcpServer.Siemens
     {
         /// <summary>Every trend control on the screens given.</summary>
         /// <param name="screens">The screens, screen groups included, as the portal walks them.</param>
+        /// <param name="language">The project's editing language, which a trend's name is read in.</param>
         /// <returns>One object per trend control, with its screen.</returns>
-        public static JsonArray Read(IEnumerable<HmiScreen> screens)
+        public static JsonArray Read(IEnumerable<HmiScreen> screens, Language language)
         {
             return new JsonArray(screens.SelectMany(screen => screen.ScreenItems.OfType<HmiTrendControl>().Select(control =>
             {
-                var described = Describe(control);
+                var described = Describe(control, language);
                 described["screen"] = screen.Name;
                 return (JsonNode)described;
             })).ToArray());
@@ -26,17 +28,18 @@ namespace TiaMcpServer.Siemens
 
         /// <summary>Describes one trend control.</summary>
         /// <param name="control">The control.</param>
+        /// <param name="language">The project's editing language, which a trend's name is read in.</param>
         /// <returns><c>{ control, areas: [ { name, trends: [ { source, name, color, mode } ], timeRange } ] }</c>.</returns>
-        public static JsonObject Describe(HmiTrendControl control)
+        public static JsonObject Describe(HmiTrendControl control, Language language)
         {
             return new JsonObject
             {
                 ["control"] = control.Name,
-                ["areas"] = new JsonArray(control.TrendAreas.Select(area => (JsonNode)DescribeArea(area)).ToArray())
+                ["areas"] = new JsonArray(control.TrendAreas.Select(area => (JsonNode)DescribeArea(area, language)).ToArray())
             };
         }
 
-        private static JsonObject DescribeArea(HmiTrendAreaPart area)
+        private static JsonObject DescribeArea(HmiTrendAreaPart area, Language language)
         {
             var described = new JsonObject
             {
@@ -44,8 +47,8 @@ namespace TiaMcpServer.Siemens
                 ["trends"] = new JsonArray(area.Trends.Select(trend => (JsonNode)new JsonObject
                 {
                     ["source"] = trend.DataSourceY.Source ?? string.Empty,
-                    ["name"] = UnifiedRichText.Read(trend.DisplayName.Items.Select(item => item.Text).FirstOrDefault() ?? string.Empty),
-                    ["color"] = $"#{trend.LineColor.R:X2}{trend.LineColor.G:X2}{trend.LineColor.B:X2}",
+                    ["name"] = UnifiedRichText.Read(trend.DisplayName.Items.Find(language)?.Text ?? string.Empty),
+                    ["color"] = UnifiedPropertyConverter.Describe(trend.LineColor)!.Value.GetString(),
                     ["mode"] = trend.TrendMode.ToString()
                 }).ToArray())
             };

@@ -18,7 +18,7 @@ namespace TiaMcpServer.UnifiedTrends
         private readonly Dictionary<string, IReadOnlyList<string>> _loggingTags;
 
         /// <summary>Creates the rules over what TIA Portal holds.</summary>
-        /// <param name="loggingTags">Each HMI tag's logging tags, by tag name as TIA Portal spells it.</param>
+        /// <param name="loggingTags">The logging tags of each HMI tag the list names and TIA Portal holds, by tag name as TIA Portal spells it.</param>
         public UnifiedTrendRules(IReadOnlyDictionary<string, IReadOnlyList<string>> loggingTags)
         {
             if (loggingTags == null)
@@ -29,24 +29,33 @@ namespace TiaMcpServer.UnifiedTrends
             _loggingTags = loggingTags.ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.OrdinalIgnoreCase);
         }
 
-        /// <summary>Throws unless every trend can be written as described.</summary>
-        /// <param name="list">The trends.</param>
-        /// <param name="existingSources">The sources of the trends the control's first area holds now.</param>
-        /// <exception cref="PortalException">
-        /// <see cref="PortalErrorCode.InvalidParams"/> when a tag or logging tag does not exist;
-        /// <see cref="PortalErrorCode.InvalidState"/> when the control already shows a trend.
-        /// </exception>
-        public void Check(UnifiedTrendList list, IReadOnlyCollection<string> existingSources)
+        /// <summary>Throws when the control already shows a trend, in any of its areas.</summary>
+        /// <param name="control">The control, named in the refusal.</param>
+        /// <param name="existingSources">The sources of every trend in every area of the control.</param>
+        /// <exception cref="PortalException"><see cref="PortalErrorCode.InvalidState"/> naming what it shows.</exception>
+        /// <remarks>Asked before any tag is read: on an HMI with thousands of tags, a refusal must not pay for them.</remarks>
+        public static void RequireNoTrendSet(string control, IReadOnlyCollection<string> existingSources)
         {
-            if (list == null || existingSources == null)
+            if (existingSources == null)
             {
-                throw new ArgumentNullException(list == null ? nameof(list) : nameof(existingSources));
+                throw new ArgumentNullException(nameof(existingSources));
             }
 
             var set = existingSources.Where(source => !string.IsNullOrEmpty(source)).ToList();
             if (set.Count > 0)
             {
-                throw new PortalException(PortalErrorCode.InvalidState, $"Nothing was written: '{list.Control}' already shows {string.Join(", ", set)}. This tool only fills a trend control with no trend set yet, such as one DrawUnifiedScreen has just drawn.");
+                throw new PortalException(PortalErrorCode.InvalidState, $"Nothing was written: '{control}' already shows {string.Join(", ", set)}. This tool only fills a trend control with no trend set yet, such as one DrawUnifiedScreen has just drawn.");
+            }
+        }
+
+        /// <summary>Throws unless every trend's tag and logging tag exist.</summary>
+        /// <param name="list">The trends.</param>
+        /// <exception cref="PortalException"><see cref="PortalErrorCode.InvalidParams"/> when a tag or logging tag does not exist.</exception>
+        public void Check(UnifiedTrendList list)
+        {
+            if (list == null)
+            {
+                throw new ArgumentNullException(nameof(list));
             }
 
             var missing = list.Trends.Select(Problem).Where(problem => problem != null).ToList();

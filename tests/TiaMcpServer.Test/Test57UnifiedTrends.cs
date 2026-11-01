@@ -18,7 +18,7 @@ namespace TiaMcpServer.Test
         private const string HmiPath = "PC-System_1/HMI_RT_1";
 
         private const string Trends = @"{ ""screen"": ""Start"", ""control"": ""Trend_1"",
-            ""trends"": [ { ""tag"": ""Level"", ""loggingTag"": ""Level_log"", ""name"": ""Nivell"", ""color"": ""#FF0000"", ""mode"": ""stepped"" }, { ""tag"": ""Pressure"" } ],
+            ""trends"": [ { ""tag"": ""Level"", ""loggingTag"": ""Level_log"", ""name"": ""Nivell"", ""color"": ""#FF0000"", ""mode"": ""stepped"" }, { ""tag"": ""Pressure"", ""name"": ""Pressio"" } ],
             ""timeRange"": { ""factor"": 10, ""base"": ""minute"" } }";
 
         private string _testDirectory = string.Empty;
@@ -52,9 +52,10 @@ namespace TiaMcpServer.Test
             var trends = area["trends"]!.AsArray();
             Assert.AreEqual("Level:Level_log", trends[0]!["source"]!.GetValue<string>());
             Assert.AreEqual("Nivell", trends[0]!["name"]!.GetValue<string>());
-            Assert.AreEqual("#FF0000", trends[0]!["color"]!.GetValue<string>());
+            Assert.AreEqual("255, 0, 0", trends[0]!["color"]!.GetValue<string>());
             Assert.AreEqual("Stepped", trends[0]!["mode"]!.GetValue<string>());
             Assert.AreEqual("Pressure", trends[1]!["source"]!.GetValue<string>());
+            Assert.AreEqual("Pressio", trends[1]!["name"]!.GetValue<string>());
             Assert.AreEqual(10, area["timeRange"]!["factor"]!.GetValue<int>());
             Assert.AreEqual("Minute", area["timeRange"]!["base"]!.GetValue<string>());
         }
@@ -91,6 +92,37 @@ namespace TiaMcpServer.Test
 
             StringAssert.Contains(failure.Message, "it has: Level_log", System.StringComparison.Ordinal);
             Assert.AreEqual(string.Empty, Read()["areas"]![0]!["trends"]![0]!["source"]!.GetValue<string>());
+        }
+
+        /// <remarks>
+        /// The review of 2026-11-01: nothing stopped a redraw, which deletes the control and draws it back with an
+        /// empty trend, its backup keeping none of it. A list of parts is not a property the coverage check sees.
+        /// </remarks>
+        [TestMethod]
+        public void DrawUnifiedScreen_AControlShowingTrends_IsRefusedAndKeepsThem()
+        {
+            Set(Trends);
+
+            var failure = Assert.ThrowsException<PortalException>(() => AssemblyHooks.SharedPortal.DrawUnifiedScreen(HmiPath, UnifiedScreenDescriptionReader.Parse(@"{ ""name"": ""Start"", ""items"": [ { ""type"": ""rectangle"", ""name"": ""Box"" } ] }"), Path.Combine(_testDirectory, "redraw")));
+
+            StringAssert.Contains(failure.Message, "'Trend_1' shows trends", System.StringComparison.Ordinal);
+            Assert.AreEqual(2, Read()["areas"]![0]!["trends"]!.AsArray().Count);
+        }
+
+        /// <remarks>
+        /// A formatted text TIA Portal refuses, on the second trend: the undo at work, as the first is filled and the
+        /// second created before it. The first trend's empty source going back is what this measures.
+        /// </remarks>
+        [TestMethod]
+        public void SetUnifiedTrends_TiaPortalRefusesAName_PutsTheControlBack()
+        {
+            var failure = Assert.ThrowsException<PortalException>(() => Set(Trends.Replace("Pressio", "<body><broken")));
+
+            StringAssert.Contains(failure.Message, "removed again", System.StringComparison.Ordinal);
+            var area = Read()["areas"]![0]!;
+            Assert.AreEqual(1, area["trends"]!.AsArray().Count);
+            Assert.AreEqual(string.Empty, area["trends"]![0]!["source"]!.GetValue<string>());
+            Assert.AreEqual("Interpolated", area["trends"]![0]!["mode"]!.GetValue<string>());
         }
 
         private JsonObject Set(string json)

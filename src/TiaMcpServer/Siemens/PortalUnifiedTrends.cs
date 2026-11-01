@@ -25,7 +25,7 @@ namespace TiaMcpServer.Siemens
         {
             try
             {
-                return new JsonObject { ["trendControls"] = UnifiedTrendReader.Read(AllScreens(RequireUnifiedSoftware(hmiPath))) };
+                return new JsonObject { ["trendControls"] = UnifiedTrendReader.Read(AllScreens(RequireUnifiedSoftware(hmiPath)), CurrentProject!.LanguageSettings.EditingLanguage) };
             }
             catch (Exception ex)
             {
@@ -51,10 +51,10 @@ namespace TiaMcpServer.Siemens
                 var requested = list ?? throw new PortalException(PortalErrorCode.InvalidParams, "A trend list is required");
                 var hmi = RequireUnifiedSoftware(hmiPath);
                 var control = RequireTrendControl(FindUnifiedScreen(hmi, hmiPath, requested.Screen), requested);
-                var writer = new UnifiedTrendWriter(hmi, control, requested);
+                var language = CurrentProject!.LanguageSettings.EditingLanguage;
+                var writer = new UnifiedTrendWriter(hmi, control, requested, language);
 
-                writer.Check();
-                SaveTrendBackup(backupDirectory, UnifiedTrendReader.Describe(control));
+                SaveTrendBackup(backupDirectory, UnifiedTrendReader.Describe(control, language));
 
                 return writer.Write();
             }

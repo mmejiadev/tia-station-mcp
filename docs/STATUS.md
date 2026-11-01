@@ -44,8 +44,24 @@ branch, `Test53`, `Test56` (6), `Test57` (4) and `Test16` (with 2 new refusals):
 the same day `Test54`, `Test55` and `Test16` of the faceplate branch after its second review round,
 all passing.
 
-**Next:** `/code-review high` on the trend code, the user's commits; then `Edit` (a new version in
-work) and updating instances to a new version.
+`/code-review high` on the trend code, 2026-11-01, one round, ten findings, all fixed. The serious one:
+`DrawUnifiedScreen` would have deleted a control's trends without a word, as a list of parts is not a
+property the coverage check sees and the backup keeps none of it; `UnifiedBackupCheck` now refuses,
+and its test fails with the rule removed. The same blind spot remains for other lists of parts
+(function trend areas, alarm control columns), set by hand. The rest: the undo put back only the
+first trend; a `timeRange` dropped when no bottom axis takes it; names in the first language rather
+than the editing one; colours losing their alpha; the "already shows" check on the first area only
+and after reading every tag (now every area, first, and only the tags named).
+
+`Test57` provoking a real refusal found what no probe had: **a trend's source cannot be emptied**,
+`""` and null both being refused ("Empty string is an invalid PropertyValue"). A trend deleted and
+created anew has an empty source and the same defaults, so that is the undo.
+
+Tests after the review: Governance 803/805; against TIA Portal V20, `Test57` 6/6 with the final
+undo, `Test44` and `Test16` passing (74 of 75, the other being that undo, before its fix).
+
+**Next:** the user's commit of these fixes, on PR #61; then `Edit` (a new version in work) and
+updating instances to a new version.
 
 ### Faceplates and library types — 2026-10-30, branch `work/unified-faceplates`
 

@@ -50,7 +50,7 @@ namespace TiaMcpServer.Governance.Tests
         [TestMethod]
         public void Check_ATagThatDoesNotExist_IsRefused()
         {
-            var refusal = Assert.ThrowsException<PortalException>(() => Rules().Check(UnifiedTrendListReader.Parse(Two.Replace("\"Pressure\"", "\"No_Such\"")), NoTrendSet));
+            var refusal = Assert.ThrowsException<PortalException>(() => Rules().Check(UnifiedTrendListReader.Parse(Two.Replace("\"Pressure\"", "\"No_Such\""))));
 
             Assert.AreEqual(PortalErrorCode.InvalidParams, refusal.Code);
             StringAssert.Contains(refusal.Message, "'No_Such' does not exist", StringComparison.Ordinal);
@@ -59,7 +59,7 @@ namespace TiaMcpServer.Governance.Tests
         [TestMethod]
         public void Check_ALoggingTagTheTagLacks_IsRefusedNamingWhatItHas()
         {
-            var refusal = Assert.ThrowsException<PortalException>(() => Rules().Check(UnifiedTrendListReader.Parse(Two.Replace("Level_log", "Other_log")), NoTrendSet));
+            var refusal = Assert.ThrowsException<PortalException>(() => Rules().Check(UnifiedTrendListReader.Parse(Two.Replace("Level_log", "Other_log"))));
 
             StringAssert.Contains(refusal.Message, "it has: Level_log", StringComparison.Ordinal);
         }
@@ -67,7 +67,7 @@ namespace TiaMcpServer.Governance.Tests
         [TestMethod]
         public void Check_AControlAlreadyShowingATrend_IsRefusedAsInvalidState()
         {
-            var refusal = Assert.ThrowsException<PortalException>(() => Rules().Check(UnifiedTrendListReader.Parse(Two), new[] { "Level" }));
+            var refusal = Assert.ThrowsException<PortalException>(() => UnifiedTrendRules.RequireNoTrendSet("Trend_1", new[] { string.Empty, "Level" }));
 
             Assert.AreEqual(PortalErrorCode.InvalidState, refusal.Code);
             StringAssert.Contains(refusal.Message, "already shows Level", StringComparison.Ordinal);
@@ -81,7 +81,11 @@ namespace TiaMcpServer.Governance.Tests
             Assert.AreEqual("Level:Level_log", Rules().SourceOf(trend));
         }
 
-        private static IReadOnlyCollection<string> NoTrendSet => new[] { string.Empty };
+        [TestMethod]
+        public void RequireNoTrendSet_OnlyEmptySources_PassesSilently()
+        {
+            UnifiedTrendRules.RequireNoTrendSet("Trend_1", new[] { string.Empty, string.Empty });
+        }
 
         private static UnifiedTrendRules Rules()
         {

@@ -8,7 +8,7 @@ using UnifiedHmiSoftware = Siemens.Engineering.HmiUnified.HmiSoftware;
 
 namespace TiaMcpServer.Siemens
 {
-    /// <summary>Reads a WinCC Unified HMI's data logs, alarm logs and logging tags, in the shape CreateUnifiedLogging takes them, each log with its settings in the shape SetUnifiedLogSettings takes.</summary>
+    /// <summary>Reads a WinCC Unified HMI's data logs, alarm logs and logging tags, with the fields CreateUnifiedLogging takes, and each log's settings under <c>settings</c>, in the shape SetUnifiedLogSettings takes and CreateUnifiedLogging does not.</summary>
     internal static class UnifiedLoggingReader
     {
         /// <summary>Reads the logs and logging tags.</summary>
