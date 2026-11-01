@@ -536,6 +536,22 @@ namespace TiaMcpServer.Test
         }
 
         [TestMethod]
+        public void SetUnifiedTrends_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.SetUnifiedTrends("HMI_MTP700/HMI_RT_1", @"{ ""screen"": ""Refused"", ""control"": ""Refused"", ""trends"": [ { ""tag"": ""Refused"" } ] }");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void SetUnifiedLogSettings_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.SetUnifiedLogSettings("HMI_MTP700/HMI_RT_1", @"{ ""logs"": [ { ""name"": ""Refused"", ""maxSize"": 500 } ] }");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
         public void CopyLibraryTypes_WithNoPolicy_IsRefused()
         {
             var response = McpServer.CopyLibraryTypes(@"C:\Refused\Refused.al20", RefusedTypes);
