@@ -8,12 +8,12 @@ using UnifiedHmiSoftware = Siemens.Engineering.HmiUnified.HmiSoftware;
 
 namespace TiaMcpServer.Siemens
 {
-    /// <summary>Reads a WinCC Unified HMI's data logs, alarm logs and logging tags, in the shape CreateUnifiedLogging takes them.</summary>
+    /// <summary>Reads a WinCC Unified HMI's data logs, alarm logs and logging tags, in the shape CreateUnifiedLogging takes them, each log with its settings in the shape SetUnifiedLogSettings takes.</summary>
     internal static class UnifiedLoggingReader
     {
         /// <summary>Reads the logs and logging tags.</summary>
         /// <param name="hmi">The WinCC Unified software.</param>
-        /// <param name="includeLoggingTags">False to leave the logging tags out, which are read tag by tag.</param>
+        /// <param name="isFullRead">False to leave out the logging tags, read tag by tag, and the logs' settings: for a read back that keeps a few logs of many.</param>
         /// <returns><c>{ dataLogs: [...], alarmLogs: [...], loggingTags: [...] }</c>.</returns>
         /// <remarks>
         /// An alarm log's classes are the classes whose <c>Log</c> names it: the link lives on the class.
@@ -22,19 +22,19 @@ namespace TiaMcpServer.Siemens
         /// CreateUnifiedLogging makes none. Reading the logging tags is a call into TIA Portal per HMI tag
         /// while the Openness gate is held, so on an HMI with thousands of tags it takes a while.
         /// </remarks>
-        public static JsonObject Read(UnifiedHmiSoftware hmi, bool includeLoggingTags = true)
+        public static JsonObject Read(UnifiedHmiSoftware hmi, bool isFullRead = true)
         {
             var classes = hmi.AlarmClasses.Select(found => (found.Name, Log: found.Log ?? string.Empty)).ToList();
 
             return new JsonObject
             {
-                ["dataLogs"] = new JsonArray(hmi.DataLogs.Select(log => (JsonNode)new JsonObject { ["name"] = log.Name }).ToArray()),
-                ["alarmLogs"] = new JsonArray(hmi.AlarmLogs.Select(log => (JsonNode)new JsonObject
+                ["dataLogs"] = new JsonArray(hmi.DataLogs.Select(log => (JsonNode)WithSettings(new JsonObject { ["name"] = log.Name }, log, isFullRead)).ToArray()),
+                ["alarmLogs"] = new JsonArray(hmi.AlarmLogs.Select(log => (JsonNode)WithSettings(new JsonObject
                 {
                     ["name"] = log.Name,
                     ["classes"] = new JsonArray(classes.Where(found => string.Equals(found.Log, log.Name, StringComparison.OrdinalIgnoreCase)).Select(found => (JsonNode)found.Name).ToArray())
-                }).ToArray()),
-                ["loggingTags"] = includeLoggingTags
+                }, log, isFullRead)).ToArray()),
+                ["loggingTags"] = isFullRead
                     ? new JsonArray(hmi.Tags.SelectMany(tag => tag.LoggingTags.Select(logged => (JsonNode)Describe(tag.Name, logged))).ToArray())
                     : new JsonArray()
             };
@@ -58,6 +58,16 @@ namespace TiaMcpServer.Siemens
                     .Select(logged => (JsonNode)Describe(entry.Tag.Name, logged)));
 
             return new JsonArray(found.ToArray());
+        }
+
+        private static JsonObject WithSettings(JsonObject entry, global::Siemens.Engineering.HmiUnified.HmiLogging.HmiLoggingCommon.LoggingBase log, bool isFullRead)
+        {
+            if (isFullRead)
+            {
+                entry["settings"] = UnifiedLogSettingsAccess.Describe(UnifiedLogSettingsAccess.Read(log));
+            }
+
+            return entry;
         }
 
         private static JsonObject Describe(string tag, HmiLoggingTag logged)

@@ -65,7 +65,7 @@ namespace TiaMcpServer.Siemens
 
         private static JsonObject OnlyCreated(UnifiedHmiSoftware hmi, UnifiedLoggingList requested)
         {
-            var logs = UnifiedLoggingReader.Read(hmi, includeLoggingTags: false);
+            var logs = UnifiedLoggingReader.Read(hmi, isFullRead: false);
 
             return new JsonObject
             {
