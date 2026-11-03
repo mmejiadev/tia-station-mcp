@@ -77,6 +77,35 @@ namespace TiaMcpServer.Siemens
             return names;
         }
 
+        /// <summary>A type and what its released versions depend on, transitively: what publishing it brings.</summary>
+        /// <param name="type">The type.</param>
+        /// <returns>The names, the type's own first.</returns>
+        /// <remarks>A version in work is not published (measured 2026-11-01), so what only it depends on is not brought.</remarks>
+        public static IReadOnlyList<string> WithReleasedDependencies(LibraryType type)
+        {
+            var names = new List<string> { type.Name };
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var pending = new Queue<LibraryTypeVersion>(type.Versions.Where(IsReleased));
+
+            while (pending.Count > 0)
+            {
+                foreach (var dependency in pending.Dequeue().Dependencies)
+                {
+                    if (seen.Add($"{dependency.TypeObject.Name} {dependency.VersionNumber}"))
+                    {
+                        pending.Enqueue(dependency);
+                    }
+
+                    if (!names.Contains(dependency.TypeObject.Name, StringComparer.OrdinalIgnoreCase))
+                    {
+                        names.Add(dependency.TypeObject.Name);
+                    }
+                }
+            }
+
+            return names;
+        }
+
         /// <summary>Describes every type in a library.</summary>
         /// <param name="root">The library's type folder.</param>
         /// <returns>One object per type.</returns>

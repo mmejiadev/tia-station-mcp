@@ -6,12 +6,12 @@ using System.Linq;
 
 namespace TiaMcpServer.Siemens
 {
-    /// <summary>Uses a global library opened read-only for one call, and closes it again unless it was already open.</summary>
+    /// <summary>Uses a global library for one call: read-only unless a tool means to change it, and closed again unless it was already open.</summary>
     /// <remarks>
-    /// Read-only, because nothing this server does writes to a global library: it is the user's file, often
-    /// shared with a class, and copying a type out of it was measured to work from a read-only one
-    /// (2026-10-30). A library TIA Portal already has open is used as it is and left open, since closing it
-    /// would close it for whoever opened it.
+    /// Read-only by default: it is the user's file, often shared with a class, and copying a type out of it
+    /// was measured to work from a read-only one (2026-10-30). A library TIA Portal already has open is used
+    /// as it is and left open, since closing it would close it for whoever opened it. The one way to write is
+    /// <see cref="UseForWriting{T}"/>, which refuses a library already open.
     /// </remarks>
     internal static class GlobalLibraryAccess
     {
@@ -43,11 +43,78 @@ namespace TiaMcpServer.Siemens
             }
 
             var opened = portal.GlobalLibraries.Open(file, OpenMode.ReadOnly);
-            T result;
+            var result = RunOrClose(opened, () => use(opened));
 
+            return (result, TryClose(opened));
+        }
+
+        /// <summary>Opens a global library to change it, archives it first, runs <paramref name="use"/>, then saves and closes it.</summary>
+        /// <typeparam name="T">What <paramref name="use"/> gives back.</typeparam>
+        /// <param name="portal">The TIA Portal instance.</param>
+        /// <param name="libraryPath">The library file.</param>
+        /// <param name="backupDirectory">Where the library is archived before it changes.</param>
+        /// <param name="use">What to do with the library.</param>
+        /// <returns>
+        /// What <paramref name="use"/> gave back, and a warning when the library could not be closed afterwards:
+        /// the file is saved by then, so a failed close is reported beside the result, not instead of it.
+        /// </returns>
+        /// <exception cref="PortalException">
+        /// <see cref="PortalErrorCode.InvalidParams"/> when no file is there or no backup directory is given;
+        /// <see cref="PortalErrorCode.InvalidState"/> when the library is already open.
+        /// </exception>
+        /// <remarks>
+        /// A library already open is refused: saving it would also save what whoever opened it has not chosen to save.
+        /// When <paramref name="use"/> fails the library is closed unsaved, so the file keeps what it had.
+        /// </remarks>
+        public static (T Result, string? Warning) UseForWriting<T>(TiaPortal portal, string libraryPath, string backupDirectory, Func<UserGlobalLibrary, T> use)
+        {
+            var file = RequireFile(libraryPath);
+
+            if (string.IsNullOrWhiteSpace(backupDirectory))
+            {
+                throw new PortalException(PortalErrorCode.InvalidParams, "backupDirectory is required: the global library is archived before it changes");
+            }
+
+            if (portal.GlobalLibraries.Any(library => IsTheFile(library, file)))
+            {
+                throw new PortalException(PortalErrorCode.InvalidState, $"The global library '{file.Name}' is open in TIA Portal; close it first, as saving it would save what is pending there too");
+            }
+
+            var opened = portal.GlobalLibraries.Open(file, OpenMode.ReadWrite);
+            var result = RunOrClose(opened, () =>
+            {
+                Archive(opened, file, backupDirectory);
+                var done = use(opened);
+                opened.Save();
+
+                return done;
+            });
+
+            return (result, TryClose(opened));
+        }
+
+        /// <summary>Closes a library, reporting rather than throwing when TIA Portal refuses.</summary>
+        /// <param name="opened">The library.</param>
+        /// <returns>Null when it closed; otherwise the warning to give beside what was already done.</returns>
+        public static string? TryClose(UserGlobalLibrary opened)
+        {
             try
             {
-                result = use(opened);
+                opened.Close();
+                return null;
+            }
+            catch (Exception closeFailure) when (!UnifiedRollback.IsSessionEnded(closeFailure))
+            {
+                // Not swallowed: given back to be reported beside the result.
+                return $"The global library '{opened.Name}' could not be closed afterwards ({closeFailure.Message.Trim()}); close it in TIA Portal.";
+            }
+        }
+
+        private static T RunOrClose<T>(UserGlobalLibrary opened, Func<T> run)
+        {
+            try
+            {
+                return run();
             }
             catch (Exception failure) when (!UnifiedRollback.IsSessionEnded(failure))
             {
@@ -59,8 +126,29 @@ namespace TiaMcpServer.Siemens
 
                 throw closeFailure;
             }
+        }
 
-            return (result, TryClose(opened));
+        /// <remarks>
+        /// Archived to a short folder and moved: TIA Portal refuses an archive path over 143 characters (measured
+        /// 2026-11-02), and a backup folder under the registry's default root is often longer than that on its own.
+        /// A full path, as Openness refuses a relative one (see CreateGlobalLibrary). A file already at the backup
+        /// fails the move, before anything is written to the library.
+        /// </remarks>
+        private static void Archive(UserGlobalLibrary opened, FileInfo file, string backupDirectory)
+        {
+            var directory = Path.GetFullPath(backupDirectory);
+            var scratch = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+
+            Directory.CreateDirectory(directory);
+            Directory.CreateDirectory(scratch);
+            opened.Archive(new DirectoryInfo(scratch), Path.GetFileNameWithoutExtension(file.Name), LibraryArchivationMode.Compressed);
+
+            foreach (var archive in Directory.GetFiles(scratch))
+            {
+                File.Move(archive, Path.Combine(directory, Path.GetFileName(archive)));
+            }
+
+            Directory.Delete(scratch, recursive: true);
         }
 
         /// <remarks>
@@ -79,20 +167,6 @@ namespace TiaMcpServer.Siemens
 
             return string.Equals(normalised, Path.GetFullPath(file.FullName), StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalised, Path.GetFullPath(file.DirectoryName!).TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static string? TryClose(UserGlobalLibrary opened)
-        {
-            try
-            {
-                opened.Close();
-                return null;
-            }
-            catch (Exception closeFailure) when (!UnifiedRollback.IsSessionEnded(closeFailure))
-            {
-                // Not swallowed: given back to be reported beside the result.
-                return $"The global library '{opened.Name}' could not be closed afterwards ({closeFailure.Message.Trim()}); close it in TIA Portal.";
-            }
         }
 
         private static FileInfo RequireFile(string libraryPath)
