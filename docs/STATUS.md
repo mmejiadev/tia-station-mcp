@@ -1,9 +1,79 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-10-30**
+> Last updated: **2026-11-01**
 
 ## ▶ RESUME HERE
+
+### Library versions and a global library of one's own — 2026-11-01, branch `work/library-versions`
+
+From `main` after PRs #60 and #61. Five new tools: `CreateGlobalLibrary`, `PublishLibraryTypes` (project
+to global), `EditLibraryType` (a new version in work), `UpdateUnifiedFaceplates` (instances to another
+released version) and `CreatePlcTypeFromLibrary`. New policy family: `global-library/<full folder>`, e.g.
+`global-library/C:/Libraries/Faceplates`, as a global library is a file outside the project, often shared,
+and a rule for one must not reach another of the same name.
+
+Measured on V20 by a probe on a copy of the class project 0967_1, never saved:
+
+- `UpdateProject` takes only `PlcSoftware` or `HmiTarget`, never a Unified HMI. Writing a container's
+  `ContainedType` moves it instead, keeps what its interface was given, and the HMI compiled with no
+  error. A version number that does not exist is refused.
+- `Edit` on a faceplate gives the next version in work; a second one is refused ("Parallel editing is
+  not supported"). `Discard` drops it. A version with instances cannot be deleted, one without can.
+  A PLC data type refuses `Edit` without a test instance, so the tool refuses it first.
+- Publishing a type only in work **copies nothing and says nothing**: refused first.
+- `CreateFrom` on a program already holding the PLC data type answers with it and no error: refused first.
+- A global library open read-write takes types and master copies. One already open is refused, as
+  saving it would save what is pending there; it is archived to the backup before it changes.
+- `Directory.CreateDirectory` returns a `DirectoryInfo` printing only the folder's name, which Openness
+  refuses as "cannot be a relative path": found by `Test58`, as the probe had used `new DirectoryInfo`.
+
+Measured and **not built**, for the next branch: master copies. A block and a tag table become one, and
+a Unified screen cannot (it is no `IMasterCopySource`). `CreateFrom` with its default mode renames without
+a word (`Main_1`, `Main_2`), so `ThrowIfExists` must be asked for. Also open: moving PLC instances to a new
+version with `UpdateProject`, block types from a library, and classic WinCC faceplates.
+
+First review round, 2026-11-02, ten findings, all fixed:
+
+- `PublishLibraryTypes` archived to the registry's relative default root, which Openness refuses: made full.
+  `Test58` then measured what the review could not: TIA Portal refuses an archive path over **143 characters**.
+  An archive also refuses a target already there; the registry gives each write its own folder.
+- A type already in the global library, named or depended on, is refused before anything is added, and what
+  was named is read back before saving. So types sharing a data type are published together, in one call.
+  **Not measured:** what publishing over a type a global library holds does; only the copy into a project
+  library was measured to renumber. Publishing a new version of a type to its library waits for that.
+- A failed close after a save is a warning beside the result, not a failure of what was done.
+- A move's reading back is inside its undo, which puts back what each interface held; the message says moved,
+  not placed, and the undo says changed, not created.
+- The policy target is the library's full folder, not its file's stem.
+- `CreatePlcTypeFromLibrary` looks in subgroups too, and `PublishLibraryTypes` reads only the types named.
+
+Second review round, 2026-11-02, ten findings, all fixed:
+
+- A library is archived to a short folder and the file moved, as a backup folder under the default root is already
+  over the 143 characters on its own: every publish would have failed on a normal install.
+- A move compares each interface before and after: a version dropping a property holding a value is refused and
+  undone (`UnifiedFaceplateMoveRules`). What TIA Portal itself does in that case is **not measured**, as Openness
+  cannot change a faceplate's interface to try it.
+- `CreatePlcTypeFromLibrary` refuses a dependency the program holds too. Publishing checks what released versions
+  depend on, not a version in work, and reads back all it brought; a type it never touches cannot stop it, as the
+  library is described only after the save.
+- A device path (`\\?\`, `\\.\`) and an administrative share (`\\host\C$`) are refused as targets. A junction, an 8.3 name
+  or an ordinary share of a local folder is not resolved: write the allow list narrowly, not a deny rule against those.
+- `C:Libs` is no full path; a move's failure is a write failure, not a bad request; a failed undo names the screen.
+
+Tests: build 0 warnings; Governance 832/834 (2 skipped, as before); against TIA Portal V20, `Test58` (20), `Test54`,
+`Test55` and `Test16`: 98/98. **Not exercised:** no tool makes a PLC type group, so `Test58` cannot reach the subgroup
+walk; a test cannot provoke a failed close, a refused or lossy move, or a failed undo, so those paths are read, not run.
+
+**Next:** the pull request, which the user opens and merges; master copies. **Later, at the user's request on
+2026-11-03: several template libraries, made together**, not one now from the class practice alone. Each is a global
+library drawn by hand once, with one tool building a cell from it and a behaviour check over PLCSIM, and the class
+activity 0967 from nothing as the proof; that still needs the HMI connection made by hand. Whether a class project
+may enter the repository as a template is the user's to decide. The practice's traps, measured 2026-11-02 by
+driving the TIA Portal window: a fill `Transparent` takes no click at runtime; `InvertBitInTag` with bit 0 toggles
+a Bool; style `Extended` greys pastel colours and `Bright` keeps them flat, and changing it needs a full download;
+a popup's script names `"PANELL CONTROL_V_0_0_6"`, type name with its space, and Openness cannot read that script.
 
 ### Log settings and trend controls — 2026-10-30, branch `work/unified-log-settings`
 
