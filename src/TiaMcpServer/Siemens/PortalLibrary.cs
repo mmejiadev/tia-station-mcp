@@ -113,7 +113,7 @@ namespace TiaMcpServer.Siemens
         private JsonObject CopyFrom(GlobalLibrary global, IReadOnlyList<string> typeNames, (LibraryTypeSystemFolder Project, string BackupDirectory) target)
         {
             var inGlobal = LibraryTypeReader.ByName(global.TypeFolder);
-            LibraryCopyRules.CheckRequested(typeNames, inGlobal.Keys);
+            LibraryCopyRules.CheckRequested(typeNames, inGlobal.Keys, LibraryCopyRules.GlobalLibrary);
 
             var selected = typeNames.Select(name => inGlobal[name].Type).ToList();
             var brought = selected.SelectMany(LibraryTypeReader.WithDependencies).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
@@ -121,7 +121,7 @@ namespace TiaMcpServer.Siemens
             // One walk of the project library for the names and the backup alike.
             var held = LibraryTypeReader.All(target.Project).ToList();
             var before = (Types: (IReadOnlyCollection<string>)held.Select(entry => entry.Type.Name).ToList(), Folders: (IReadOnlyCollection<string>)LibraryTypeReader.Folders(target.Project).Select(entry => entry.Path).ToList());
-            LibraryCopyRules.CheckNotPresent(brought, before.Types);
+            LibraryCopyRules.CheckNotPresent(brought, before.Types, LibraryCopyRules.ProjectLibrary);
 
             SaveLibraryBackup(target.BackupDirectory, ProjectLibraryBackupFile, new JsonArray(held.Select(entry => (JsonNode)LibraryTypeReader.Describe(entry.Folder, entry.Type)).ToArray()));
 
