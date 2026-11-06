@@ -552,6 +552,46 @@ namespace TiaMcpServer.Test
         }
 
         [TestMethod]
+        public void CreateGlobalLibrary_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.CreateGlobalLibrary(@"C:\Refused", "Refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void PublishLibraryTypes_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.PublishLibraryTypes(@"C:\Refused\Refused.al20", RefusedTypes);
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void EditLibraryType_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.EditLibraryType("Refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void CreatePlcTypeFromLibrary_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.CreatePlcTypeFromLibrary("Refused", "Refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void UpdateUnifiedFaceplates_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.UpdateUnifiedFaceplates("HMI_MTP700/HMI_RT_1", "Refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
         public void CopyLibraryTypes_WithNoPolicy_IsRefused()
         {
             var response = McpServer.CopyLibraryTypes(@"C:\Refused\Refused.al20", RefusedTypes);

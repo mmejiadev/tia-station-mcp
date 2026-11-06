@@ -5,7 +5,7 @@ using System.Linq;
 
 namespace TiaMcpServer.Siemens
 {
-    /// <summary>Removes what an all-or-nothing Unified write made before it failed, and says what is left.</summary>
+    /// <summary>Undoes what an all-or-nothing Unified write did before it failed, and says what is left.</summary>
     /// <remarks>
     /// A delete that fails must not hide the failure that explains what went wrong, and the caller must
     /// learn what is left, so a retry does not stumble on it: compare RemoveStationAfter. Once the session
@@ -28,11 +28,26 @@ namespace TiaMcpServer.Siemens
         /// <returns>The failure, its code kept, saying whether anything is left.</returns>
         public static PortalException Undo(IReadOnlyList<(string Name, Action Delete)> made, Exception failure, string kinds)
         {
-            var left = Enumerable.Reverse(made).Where(entry => !TryDelete(entry.Delete)).Select(entry => entry.Name).ToList();
+            return Report(made, failure, $"Nothing was created: the {kinds} made before it were removed again.", "Removing what was made before it");
+        }
+
+        /// <summary>Puts back what was changed, last first, and builds the failure to throw.</summary>
+        /// <param name="changed">What was changed, in order, each with its name and what puts it back.</param>
+        /// <param name="failure">The failure that stopped the write.</param>
+        /// <param name="kinds">What was done, as the message names it, e.g. <c>moves</c>.</param>
+        /// <returns>The failure, its code kept, saying whether anything is left changed.</returns>
+        public static PortalException UndoChanges(IReadOnlyList<(string Name, Action Delete)> changed, Exception failure, string kinds)
+        {
+            return Report(changed, failure, $"Nothing was changed: the {kinds} made before it were undone.", "Undoing what was done before it");
+        }
+
+        private static PortalException Report(IReadOnlyList<(string Name, Action Delete)> done, Exception failure, string allUndone, string undoing)
+        {
+            var left = Enumerable.Reverse(done).Where(entry => !TryDelete(entry.Delete)).Select(entry => entry.Name).ToList();
             var code = (failure as PortalException)?.Code ?? PortalErrorCode.WriteFailed;
             var outcome = left.Count == 0
-                ? $"Nothing was created: the {kinds} made before it were removed again."
-                : $"Removing what was made before it failed for {string.Join(", ", left)}; undo those by hand in TIA Portal before trying again.";
+                ? allUndone
+                : $"{undoing} failed for {string.Join(", ", left)}; undo those by hand in TIA Portal before trying again.";
 
             return new PortalException(code, $"{failure.Message.Trim()} {outcome}", null, failure);
         }
