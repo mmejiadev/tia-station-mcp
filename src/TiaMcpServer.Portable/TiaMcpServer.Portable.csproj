@@ -51,6 +51,8 @@
       and UnifiedPropertyConverter builds it here so the conversion is tested without TIA Portal.
     -->
     <Reference Include="System.Drawing" />
+    <!-- A framework assembly too: Windows DPAPI, which the secret store encrypts with. -->
+    <Reference Include="System.Security" />
   </ItemGroup>
 
   <ItemGroup>

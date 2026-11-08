@@ -42,6 +42,13 @@ namespace TiaMcpServer
         {
             RequireMultiThreadedApartment();
 
+            // Before anything that needs TIA Portal: a person setting a secret needs only a terminal.
+            if (Secrets.SecretCommand.IsFor(args))
+            {
+                Environment.ExitCode = new Secrets.SecretCommand(Secrets.DpapiSecretStore.ForCurrentUser(), new Secrets.SystemSecretConsole()).Run(args);
+                return;
+            }
+
             var options = CliOptions.ParseArgs(args);
 
             Engineering.TiaMajorVersion = options.TiaMajorVersion ?? Openness.BuiltForTiaMajorVersion;
@@ -280,6 +287,7 @@ namespace TiaMcpServer
             var knowledgeLookup = options?.KnowledgeLookupPath ?? CliOptions.DefaultKnowledgeLookupPath;
 
             services.AddSingleton<ISystemClock, SystemClock>();
+            services.AddSingleton<Secrets.ISecretStore>(_ => Secrets.DpapiSecretStore.ForCurrentUser());
             services.AddSingleton<IModeGate>(_ => ModeGate.ForStudy());
 
             // A missing policy denies every write. That is deliberate: see WritePolicyFile.
