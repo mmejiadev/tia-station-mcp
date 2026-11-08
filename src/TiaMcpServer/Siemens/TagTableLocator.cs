@@ -27,9 +27,25 @@ namespace TiaMcpServer.Siemens
         public PlcTagTable? Find(PlcTagTableGroup root, string tablePath)
         {
             var path = ProjectPath.Parse(tablePath);
-            var group = DescendTo(root, path);
 
-            return group?.TagTables.Find(path.Name);
+            return FindGroup(root, path.Parent)?.TagTables.Find(path.Name);
+        }
+
+        /// <summary>Finds a tag table group, without creating anything.</summary>
+        /// <param name="root">The program's tag table group.</param>
+        /// <param name="groupPath">The group's path, e.g. <c>Cell/IO</c>; empty for the root.</param>
+        /// <returns>The group, or null when part of the path is missing.</returns>
+        /// <remarks>Names are matched exactly, through Openness's own <c>Find</c>, as every tag tool here matches them.</remarks>
+        public PlcTagTableGroup? FindGroup(PlcTagTableGroup root, string groupPath)
+        {
+            PlcTagTableGroup? group = root;
+
+            foreach (var name in ProjectPath.GroupSegments(groupPath))
+            {
+                group = group?.Groups.Find(name);
+            }
+
+            return group;
         }
 
         /// <summary>Finds a tag table, creating it and the groups above it if they are missing.</summary>
@@ -50,23 +66,23 @@ namespace TiaMcpServer.Siemens
             return group.TagTables.Find(path.Name) ?? group.TagTables.Create(path.Name);
         }
 
-        /// <summary>The group holding the named object, or null when part of the path is missing.</summary>
-        private static PlcTagTableGroup? DescendTo(PlcTagTableGroup root, ProjectPath path)
+        /// <summary>The name of every tag table in a program, in every group.</summary>
+        /// <param name="root">The program's tag table group.</param>
+        /// <returns>The names; TIA Portal keeps them unique across the program.</returns>
+        public IEnumerable<string> AllNames(PlcTagTableGroup root)
         {
-            var group = root;
-
-            foreach (var name in GroupNames(path))
+            foreach (PlcTagTable table in root.TagTables)
             {
-                var nested = group.Groups.Find(name);
-                if (nested == null)
-                {
-                    return null;
-                }
-
-                group = nested;
+                yield return table.Name;
             }
 
-            return group;
+            foreach (PlcTagTableUserGroup group in root.Groups)
+            {
+                foreach (var name in AllNames(group))
+                {
+                    yield return name;
+                }
+            }
         }
 
         private static PlcTagTableGroup EnsureGroups(PlcTagTableGroup root, ProjectPath path)

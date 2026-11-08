@@ -1,9 +1,59 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-11-01**
+> Last updated: **2026-11-07**
 
 ## ▶ RESUME HERE
+
+### Master copies — 2026-11-07, branch `work/master-copies`
+
+From `main` after PR #62. Four new tools:
+
+- `GetMasterCopies` (read): the master copies of the project library or of a global library file (read-only),
+  with every folder by path and each master copy's name, path, author, creation date and contents. Each content
+  item gives its name, its Openness type and its kind: `block`, `tagTable` or `plcType`, or null for anything else.
+- `CreateMasterCopyFolder`: a folder in the project library; the folders above it must exist.
+- `CreateMasterCopy`: a master copy of a block, a tag table or a PLC data type, by kind and exact path; nothing in
+  the program changes. A folder already holding a master copy of that name is refused.
+- `CreateFromMasterCopy`: a block, tag table or PLC data type in a program from a master copy. What it is created
+  as is read from the master copy's content description, which must hold exactly one of the three. An object of
+  that name anywhere in the program is refused first (a block against blocks and data types alike, as they share
+  names), and `MasterCopyMode.ThrowIfExists` is asked for besides, as the default mode renames without a word
+  (`Main_1`, measured 2026-11-01). The program's blocks, types and tag tables are exported first.
+
+Rules in `TiaMcpServer.Portable/Library/MasterCopyRules.cs`, tested without TIA Portal (`MasterCopyRulesTests`).
+The writes go through `GuardedTool.Run`: the two library writes target `library` and keep a listing of the master
+copies before; `CreateFromMasterCopy` targets the program and group, and exports the program first, as `ImportBlock`
+does, with its tag tables besides. All three are in `Test16GuardedWrites`.
+
+Review round 2026-11-07 (`/code-review high`), ten findings. Fixed: a block named like a data type passed the name
+check; a tag table's path was refused as a pattern for holding a dot or a bracket; a folder spelled in another case
+was echoed back in the caller's spelling; `CreateFromMasterCopy` kept no backup; the reader walked the folder tree
+and read the contents twice; `TagTableLocator.Find` and the new `FindGroup` walked groups twice over. Measured,
+then fixed: **a tag table's own tags are not named in its content description, and TIA Portal renames one the
+program already holds without a word**, even with `ThrowIfExists` (`MC_Running` became `MC_Running(1)`, 2026-11-08).
+The first version of the test looked for `_1`, the block spelling, and passed while the rename happened; printing what
+was created showed it. `TagTableFromMasterCopy` now reads every tag and constant name before, checks the new table
+for a name of the program's with a number in brackets after (`MasterCopyRules.RenamedOnCreate`), and deletes the
+table again and refuses when it finds one.
+Kept as the codebase has it: tag table groups are matched exactly, as every tag tool matches them, while block and
+type groups ignore case; collaborators such as `TagTableReader` are created where used, as across `Portal`.
+
+Read from `Siemens.Engineering.dll` by reflection on 2026-11-06, not yet run: the concrete OB, FB, FC and data
+block classes are master copy sources and the `PlcBlock` they share is not, so the cast is checked; a watch table,
+an alarm text list, classic HMI screens and tags, and hardware are sources too, and creating from them is open.
+
+Also measured 2026-11-08: a device just added has a `Main` that never compiled, which TIA Portal V20 exports neither as
+SimaticML nor as a document, so the backup every program write takes refuses the write until the program is compiled.
+
+**Tests:** against TIA Portal V20, `Test59MasterCopies` 20/20 and `Test16GuardedWrites`: 86/86. Governance 852/854
+(2 skipped, as before). Build: 0 warnings. **Not exercised:** no test can provoke a failed delete of the renamed
+table, so that path is read, not run; a tag renamed by another spelling than a number in brackets would not be seen.
+**Not built:** deleting a master copy, as Openness cannot export one to keep it first (a copy into a scratch global
+library is the candidate); writing master copies to a global library; the other source kinds above.
+
+**Next:** run the tests with the user's permission; then, at her request of 2026-11-07, a systematic search for
+every way to make libraries, HMI and WinCC Unified work through the server.
 
 ### Library versions and a global library of one's own — 2026-11-01, branch `work/library-versions`
 
