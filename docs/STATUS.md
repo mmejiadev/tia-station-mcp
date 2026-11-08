@@ -1,9 +1,53 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-11-07**
+> Last updated: **2026-11-08**
 
 ## ▶ RESUME HERE
+
+### WinCC Unified script modules — 2026-11-08, branch `work/unified-script-modules`
+
+From `main` after PR #63. Two new tools, for the Scripts folder of a Unified HMI's project tree:
+
+- `GetUnifiedScriptModules` (read): each global script module's name and its JavaScript as TIA Portal holds it.
+- `WriteUnifiedScriptModule`: creates a module, or replaces one when `replace` is true. Every module of the HMI is
+  exported first, and each export is confirmed on disk.
+
+**Measured on TIA Portal V20 (2026-11-08, on copies, never saved).** Openness V20 holds a module's code in no property:
+it comes and goes as `NAME.hmi.yml` and `NAME.hmi.js`, and `Import` refuses a folder without the YAML. A module of a name
+already there is replaced without a word. JavaScript that does not parse is imported and compiles with no error.
+`HmiScriptModule` has **no `Delete`** (reflection), so a module made through Openness can only be replaced or deleted by hand.
+TIA Portal does not store a module as written, it rebuilds it: every top-level function comes back with `export`, in its
+order, and anything else (imports, variables, classes, comments) moves to the module's global definition area, in its order,
+above a generated comment. A function closing on its own line is moved to a line of its own.
+**`export default` is corrupted** (`default function () {`, which does not parse), and an export list stays beside the
+`export` put on the function, exporting it twice; both are refused.
+
+Syntax is checked by TIA Portal itself: `SyntaxCheck` exists only on an event handler's script, so a throw-away screen holds
+one for the moment of the check, with the code as its body, imports and `export` blanked so the reported lines stay the
+caller's. A test proves the refusal comes from there, with code whose brackets balance and which our own
+`UnifiedScriptChecker` passes. Faults of the kind `CheckUnifiedScripts` finds refuse the write too; its warnings come back
+as findings.
+
+The read-back compares by what TIA Portal does on import: the same functions in the same order and the same other
+statements in the same order, token for token, comments aside. Rules in `UnifiedScriptModuleRules`, read with
+`UnifiedScriptLexer`, whose tokens now carry their offsets, never with a regular expression over the code.
+
+Review round 2026-11-08 (`/code-review high`), ten findings, all fixed: a failed read-back left the import in place (a replace
+is now imported back from the backup; a new module cannot be removed, and the failure says so); the write skipped
+`AsHmiWriteFailure`, so an ended session was not forgotten; the export refusal and the syntax body used line-anchored
+regular expressions, missing an export later on a line and refusing text that was none; a missing backup file went unnoticed;
+the read-back sorted its tokens and passed `b - a` for `a - b`; the plan and audit said nothing of the code (now its length
+and SHA-256); a name could end in a newline or be a word YAML or Windows reserves; a syntax check with no answer passed; the
+import pattern could go quadratic.
+
+**Tests:** against TIA Portal V20, `Test60UnifiedScriptModules` 14/14 and `Test16GuardedWrites` 67/67. Governance 901/903
+(2 skipped, as before). Build: 0 warnings. **Not exercised:** no test can make TIA Portal keep something else, so the undo
+after a failed read-back is read, not run. **Not measured:** calling a module's function from a screen at runtime.
+**Not built:** deleting a module (no API).
+
+**Next:** the pull request, which the user opens and merges; then block and PLC data type library types and versions from
+documents, and the device group template for the integrated connection, both measured 2026-11-08.
 
 ### Master copies — 2026-11-07, branch `work/master-copies`
 

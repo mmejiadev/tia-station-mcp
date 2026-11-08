@@ -14,6 +14,13 @@
             Line = line;
         }
 
+        private UnifiedScriptToken(UnifiedScriptToken token, int start, int end)
+            : this(token.Kind, token.Text, token.Line)
+        {
+            Start = start;
+            End = end;
+        }
+
         /// <summary>What it is.</summary>
         public UnifiedScriptTokenKind Kind { get; }
 
@@ -22,6 +29,21 @@
 
         /// <summary>The line it starts on.</summary>
         public int Line { get; }
+
+        /// <summary>Where it starts in the script, as an offset; 0 unless the lexer placed it.</summary>
+        public int Start { get; }
+
+        /// <summary>Where it ends in the script, as the offset after its last character; 0 unless the lexer placed it.</summary>
+        public int End { get; }
+
+        /// <summary>This token, placed in the script.</summary>
+        /// <param name="start">The offset it starts at.</param>
+        /// <param name="end">The offset after its last character.</param>
+        /// <returns>The placed token.</returns>
+        public UnifiedScriptToken At(int start, int end)
+        {
+            return new UnifiedScriptToken(this, start, end);
+        }
 
         /// <summary>Whether it is this punctuation.</summary>
         /// <param name="punctuation">E.g. <c>(</c>.</param>
