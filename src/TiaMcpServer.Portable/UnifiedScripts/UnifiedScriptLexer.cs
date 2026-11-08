@@ -64,7 +64,8 @@ namespace TiaMcpServer.UnifiedScripts
             /// <summary>The next token, or null for whitespace or a comment.</summary>
             public UnifiedScriptToken? Next()
             {
-                var token = Read();
+                var start = _position;
+                var token = Read()?.At(start, _position);
                 _last = token ?? _last;
 
                 return token;

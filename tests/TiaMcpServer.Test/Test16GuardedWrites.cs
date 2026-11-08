@@ -608,6 +608,14 @@ namespace TiaMcpServer.Test
         }
 
         [TestMethod]
+        public void WriteUnifiedScriptModule_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.WriteUnifiedScriptModule("HMI_MTP700/HMI_RT_1", "Refused", "export function refused() {}");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
         public void UpdateUnifiedFaceplates_WithNoPolicy_IsRefused()
         {
             var response = McpServer.UpdateUnifiedFaceplates("HMI_MTP700/HMI_RT_1", "Refused");
