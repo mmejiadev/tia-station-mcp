@@ -584,6 +584,30 @@ namespace TiaMcpServer.Test
         }
 
         [TestMethod]
+        public void CreateMasterCopyFolder_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.CreateMasterCopyFolder("Refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void CreateMasterCopy_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.CreateMasterCopy("Refused", "block", "Refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void CreateFromMasterCopy_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.CreateFromMasterCopy("Refused", "Refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
         public void UpdateUnifiedFaceplates_WithNoPolicy_IsRefused()
         {
             var response = McpServer.UpdateUnifiedFaceplates("HMI_MTP700/HMI_RT_1", "Refused");
