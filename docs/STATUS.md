@@ -5,6 +5,38 @@
 
 ## ▶ RESUME HERE
 
+### A local secret store, encrypted with Windows DPAPI — 2026-11-08, branch `work/local-secrets`
+
+From `main` after PR #65. What the next branch, the HMI connection template, needs: a PLC's protection password that never
+goes through the conversation. So **no MCP tool takes or returns a value**. A person stores one in their own terminal:
+
+```powershell
+TiaMcpServer secret set NAME [--replace]
+TiaMcpServer secret list
+TiaMcpServer secret delete NAME
+```
+
+The value is typed twice, hidden, and refused if piped or given on the command line, where the shell's history would keep it.
+`ListSecrets` gives a model the names only. `DpapiSecretStore` keeps one file per secret under the account's local data,
+encrypted with DPAPI `CurrentUser` and bound to its name, so a renamed file does not read as another secret. The folder is
+deliberately not an option. No message repeats a name, as a value typed in the wrong place must not come back on the screen.
+
+Security review 2026-11-08 (`/security-review`): no finding at or above its confidence bar. Its known limit is DPAPI's own:
+any process of the same Windows account can decrypt. **`Reveal` has no caller yet**; where the template calls it needs its own
+security review, as the value must not enter `Exception.Data`, a plan, the audit trail or a response.
+
+Code review 2026-11-08 (`/code-review high`), ten findings. Fixed: disk and DPAPI failures fell out of the command as a stack
+trace; names were repeated on screen; an account with no local data folder made the path relative to the working folder; a failed
+write left a temporary copy, which `delete` would not reach; the value was asked for before the name was checked; a pasted value
+could overflow the reader; `ListSecrets` skipped the error model; the store was built in three places. Kept: a fixed folder, on
+purpose, and `Reveal`, which the next branch calls.
+
+**Tests:** Governance, TIA Portal not needed. The real executable was run for `list` and for its refusals of a piped value and of a
+value on the command line. Build: 0 warnings. **Not exercised:** the hidden typing itself, which needs a person at a terminal.
+
+**Next:** the pull request, which the user opens and merges; then the device group template, measured 2026-11-08, with
+`assets/HmiTemplateProject.zap20` from the probe copy of the class project, as the user agreed.
+
 ### Library types of blocks and PLC data types from documents — 2026-11-08, branch `work/library-types-from-documents`
 
 From `main` after PR #64. Two new tools:
