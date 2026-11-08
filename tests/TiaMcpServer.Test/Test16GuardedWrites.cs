@@ -632,6 +632,22 @@ namespace TiaMcpServer.Test
         }
 
         [TestMethod]
+        public void CreateLibraryTypeFromDocument_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.CreateLibraryTypeFromDocument("Refused", "C:\\Refused", "Refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void CreateLibraryTypeVersionFromDocument_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.CreateLibraryTypeVersionFromDocument("Refused", "Refused", "C:\\Refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
         public void ReleaseLibraryType_WithNoPolicy_IsRefused()
         {
             var response = McpServer.ReleaseLibraryType("Refused");

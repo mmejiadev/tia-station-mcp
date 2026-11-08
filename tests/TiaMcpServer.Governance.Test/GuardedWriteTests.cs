@@ -18,6 +18,37 @@ namespace TiaMcpServer.Governance.Tests
         private const string ForbiddenTarget = "PLC_0/Safety/FB_Estop";
         private const string OpenProject = @"C:\Projects\Cell\Cell.ap20";
 
+        [TestMethod]
+        public void TargetToPropose_BothAllowed_IsTheFirst()
+        {
+            var guard = GuardFor(OperationMode.Study, new RecordingAuditTrail());
+
+            Assert.AreEqual(AllowedTarget, guard.TargetToPropose(AllowedTarget, AllowedTarget));
+        }
+
+        /// <remarks>A change writing to two places must not pass on the permission for one of them alone.</remarks>
+        [TestMethod]
+        public void TargetToPropose_TheOtherRefused_IsTheOtherSoThatTheChangeIsRefused()
+        {
+            var audit = new RecordingAuditTrail();
+            var guard = GuardFor(OperationMode.Study, audit);
+            var ran = false;
+
+            var outcome = guard.Propose(Request(guard.TargetToPropose(AllowedTarget, ForbiddenTarget)), () => { ran = true; return "written"; }, Now);
+
+            Assert.AreEqual(ChangeOutcomeKind.Refused, outcome.Kind);
+            Assert.IsFalse(ran, "a change refused on one of its targets must not run");
+            Assert.AreEqual(ForbiddenTarget, audit.Entries[audit.Entries.Count - 1].Target);
+        }
+
+        [TestMethod]
+        public void TargetToPropose_TheFirstRefused_IsTheFirst()
+        {
+            var guard = GuardFor(OperationMode.Study, new RecordingAuditTrail());
+
+            Assert.AreEqual(ForbiddenTarget, guard.TargetToPropose(ForbiddenTarget, AllowedTarget));
+        }
+
         /// <remarks>
         /// The target names a path inside a project and not the project, so this is the only place
         /// the trail learns which project a change was made in. Both lines carry it: a process that
