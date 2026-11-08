@@ -62,6 +62,15 @@ namespace TiaMcpServer.Governance
             _project = project ?? throw new ArgumentNullException(nameof(project));
         }
 
+        /// <summary>The target to propose a change on when it writes to two, so that the policy has to allow both.</summary>
+        /// <param name="target">The target it is proposed on when both are allowed.</param>
+        /// <param name="alsoWritten">The other target it writes to.</param>
+        /// <returns><paramref name="alsoWritten"/> when the policy refuses it, so that the refusal is recorded against it; otherwise <paramref name="target"/>.</returns>
+        public string TargetToPropose(string target, string alsoWritten)
+        {
+            return _policy.Decide(_gate.Mode, alsoWritten).IsAllowed ? target : alsoWritten;
+        }
+
         /// <summary>Proposes a change, and runs it when this mode confirms automatically.</summary>
         /// <param name="request">What is being asked for.</param>
         /// <param name="execute">What running it does.</param>

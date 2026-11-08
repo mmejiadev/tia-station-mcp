@@ -5,6 +5,42 @@
 
 ## ▶ RESUME HERE
 
+### Library types of blocks and PLC data types from documents — 2026-11-08, branch `work/library-types-from-documents`
+
+From `main` after PR #64. Two new tools:
+
+- `CreateLibraryTypeFromDocument`: a project library type from a SIMATIC SD document declaring a function, a function
+  block or a PLC data type, with its first version in work and a linked instance in the program.
+- `CreateLibraryTypeVersionFromDocument`: the next version in work of such a type from a document named after it, or,
+  when asked, a replacement of what the version in work holds. It changes the program too, so the program's blocks and
+  types, the type's versions and the instance as a document are kept first.
+
+**Measured on TIA Portal V20 (2026-11-08, on copies, never saved).** `Types.CreateFromDocuments` wants the group of the
+document's own kind as its target; the instance lands in that group. A name the program holds is refused. A new version
+needs a released one and an instance, takes no target when the instance is in a subgroup, and moves the instance onto it
+with the document's content; `Override` replaces what a version in work holds. **A document that does not compile is taken
+without a word**, and only `Release` refuses it. `Discard` on a type's only version removes the type and its instance; on a
+later one it puts the instance back on the version before, content included. `TransferResultState` has only `Success` and
+`Warning`.
+
+So each write compiles the instance afterwards, and what does not compile is refused and undone. Rules in
+`LibraryTypeDocumentRules`, tested without TIA Portal. Both tools write to the program and to the library, so
+`GuardedWrite.TargetToPropose` makes a policy allow both, and records a refusal against the target it refuses.
+
+Review round 2026-11-08 (`/code-review high`), ten findings, all fixed: the policy never saw the library; a compile that threw
+undid nothing; the undo of `replaceInWork` could restore another version's content when the instance was not on the version in
+work; undo failures replaced the real error or hid an ended session; a missing created type or version went unnoticed; the tools
+skipped `RequireDocumentSupport`; a document's header was misread on a quoted brace or a block comment, and a second declaration
+passed. The message now asks to compile the program, as only the instance is compiled.
+
+**Tests:** against TIA Portal V20, `Test61LibraryTypesFromDocuments` 14/14 and `Test16GuardedWrites` 69/69. Governance 931/933
+(2 skipped, as before). Build: 0 warnings. **Not exercised:** a type with instances in two PLCs, including the refusal for an
+instance not on the version in work; the failure paths inside each undo, as no test can make TIA Portal fail them.
+**Not built:** a library folder for the new type (measured to work); master copies in a global library; deleting a type or version.
+
+**Next:** the pull request, which the user opens and merges; then the device group template for the integrated connection,
+measured 2026-11-08.
+
 ### WinCC Unified script modules — 2026-11-08, branch `work/unified-script-modules`
 
 From `main` after PR #63. Two new tools, for the Scripts folder of a Unified HMI's project tree:

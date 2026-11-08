@@ -54,7 +54,7 @@ namespace TiaMcpServer.ModelContextProtocol
             }
         }
 
-        [McpServerTool(Name = "EditLibraryType"), Description("Start a new version in work of a project library type, from its newest released version; TIA Portal numbers it. For a type Openness has no class for, such as a WinCC Unified faceplate; a PLC data type or block needs a test instance and is edited in TIA Portal. A type with a version in work already is refused, as TIA Portal edits one at a time. The new version holds what the released one held: a faceplate's content is still changed by hand in TIA Portal, then ReleaseLibraryType releases it, and UpdateUnifiedFaceplates moves its instances.")]
+        [McpServerTool(Name = "EditLibraryType"), Description("Start a new version in work of a project library type, from its newest released version; TIA Portal numbers it. For a type Openness has no class for, such as a WinCC Unified faceplate; a PLC data type or block needs a test instance, so it gets a new version from a document with CreateLibraryTypeVersionFromDocument. A type with a version in work already is refused, as TIA Portal edits one at a time. The new version holds what the released one held: a faceplate's content is still changed by hand in TIA Portal, then ReleaseLibraryType releases it, and UpdateUnifiedFaceplates moves its instances.")]
         public static ResponseLibraryTypes EditLibraryType(
             [Description("typeName: the type, exactly as GetLibraryTypes names it")] string typeName)
         {
