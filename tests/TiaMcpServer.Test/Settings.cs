@@ -40,6 +40,13 @@ namespace TiaMcpServer.Test
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "assets", "FaceplateProject.zap20");
 
         /// <summary>
+        /// The class project UNIFIED-LIBRERIES with the device group Group_1: an S7-1200 and a WinCC Unified PC RT with their
+        /// integrated connection, made by hand in TIA Portal on 2026-11-08, which Openness cannot do.
+        /// </summary>
+        public static string HmiTemplateArchivePath =>
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "assets", "HmiTemplateProject.zap20");
+
+        /// <summary>
         /// A global library folder, zipped: FACEPLATE_MOTOR_V1 and Faceplate_BOTO_MOTOR_V1 released as 0.0.1,
         /// and UDT_MOTOR_V1 that the first depends on. Made from the class project 0967_1 on 2026-10-30.
         /// </summary>
