@@ -648,6 +648,22 @@ namespace TiaMcpServer.Test
         }
 
         [TestMethod]
+        public void CreateDeviceGroupTemplate_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.CreateDeviceGroupTemplate("Refused", "C:\\Refused\\Refused.al20", "Refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void CreateDevicesFromTemplate_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.CreateDevicesFromTemplate("C:\\Refused\\Refused.al20", "Refused", "Refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
         public void ReleaseLibraryType_WithNoPolicy_IsRefused()
         {
             var response = McpServer.ReleaseLibraryType("Refused");
