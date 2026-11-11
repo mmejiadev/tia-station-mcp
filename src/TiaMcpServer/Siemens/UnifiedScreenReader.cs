@@ -168,7 +168,7 @@ namespace TiaMcpServer.Siemens
 
             foreach (var part in Readable(owner.GetType()).Where(property => UnifiedPropertyTree.IsPart(property.PropertyType)))
             {
-                if (part.GetValue(owner) is object value)
+                if (ReadIfOffered(part, owner) is object value)
                 {
                     CollectDynamizations(value, found, depth + 1);
                 }
@@ -227,11 +227,32 @@ namespace TiaMcpServer.Siemens
                 value = property.GetValue(owner);
                 return true;
             }
+            catch (TargetInvocationException failure) when (failure.InnerException is EngineeringNotSupportedException)
+            {
+                // The type declares the property and TIA Portal does not offer it on this item, so there is
+                // nothing to keep. Measured on V21 (2026-11-11): HmiToggleSwitch answers "'PressedStateTags' is not
+                // supported", which HmiButton alone carries, and counting it as unreadable refused every redraw.
+                value = null;
+                return false;
+            }
             catch (TargetInvocationException failure)
             {
                 _unreadable.Add($"{path}: {failure.InnerException?.Message ?? failure.Message}");
                 value = null;
                 return false;
+            }
+        }
+
+        /// <returns>The value, or null when TIA Portal does not offer the property on this item; see <see cref="TryRead"/>.</returns>
+        private static object? ReadIfOffered(PropertyInfo property, object owner)
+        {
+            try
+            {
+                return property.GetValue(owner);
+            }
+            catch (TargetInvocationException failure) when (failure.InnerException is EngineeringNotSupportedException)
+            {
+                return null;
             }
         }
 
