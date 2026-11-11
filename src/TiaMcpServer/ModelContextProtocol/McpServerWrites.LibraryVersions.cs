@@ -11,7 +11,7 @@ namespace TiaMcpServer.ModelContextProtocol
     /// <remarks>Global libraries of one's own, new versions in work, instances moved between versions, and PLC data types from a library.</remarks>
     public static partial class McpServer
     {
-        [McpServerTool(Name = "CreateGlobalLibrary"), Description("Create a new, empty global library in a folder and leave it closed; the library makes a folder of its own there. A library of that name already there is refused. A write policy names a library by its full folder, e.g. 'global-library/C:/Libraries/Faceplates', so a rule for one does not reach another of the same name. Answers with the path of its .al20 file, which GetLibraryTypes, CopyLibraryTypes and PublishLibraryTypes take.")]
+        [McpServerTool(Name = "CreateGlobalLibrary"), Description("Create a new, empty global library in a folder and leave it closed; the library makes a folder of its own there. A library of that name already there is refused. A write policy names a library by its full folder, e.g. 'global-library/C:/Libraries/Faceplates', so a rule for one does not reach another of the same name. Answers with the path of its .alNN file, which GetLibraryTypes, CopyLibraryTypes and PublishLibraryTypes take.")]
         public static ResponseLibraryTypes CreateGlobalLibrary(
             [Description("directory: the folder to create it in, e.g. 'C:\\Libraries'")] string directory,
             [Description("libraryName: the library's name, e.g. 'Faceplates_Clase'")] string libraryName)
@@ -33,7 +33,7 @@ namespace TiaMcpServer.ModelContextProtocol
 
         [McpServerTool(Name = "PublishLibraryTypes"), Description("Publish project library types to a global library file, with the types they depend on, e.g. a faceplate drawn by hand, so other projects can take it with CopyLibraryTypes. Each type needs a released version, as TIA Portal V20 publishes a type only in work as nothing at all, without a word; ReleaseLibraryType releases it. A type the library already holds, named or depended on, is refused, as bringing one over it can renumber its version in work: so publish types sharing a data type together, in one call. A library open in TIA Portal is refused, as saving it would save what is pending there too. A write policy names the library by its full folder, e.g. 'global-library/C:/Libraries/Faceplates'. The library is archived to the backup registry first, then saved and closed. Answers with every type the library holds afterwards.")]
         public static ResponseLibraryTypes PublishLibraryTypes(
-            [Description("globalLibraryPath: the global library file, e.g. 'C:\\Libraries\\Faceplates\\Faceplates.al20'")] string globalLibraryPath,
+            [Description("globalLibraryPath: the global library file, e.g. 'C:\\Libraries\\Faceplates\\Faceplates.al21'")] string globalLibraryPath,
             [Description("typeNames: the types to publish, exactly as GetLibraryTypes names them")] string[] typeNames)
         {
             // One Openness call at a time. See OpennessGate: two of them really do interleave.

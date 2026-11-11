@@ -408,6 +408,38 @@ namespace TiaMcpServer.Test
         }
 
         [TestMethod]
+        public void OpenProjectWithUpgrade_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.OpenProjectWithUpgrade(Path.Combine(AssemblyHooks.WorkingRoot, "refused", "refused.ap20"));
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void RetrieveProjectWithUpgrade_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.RetrieveProjectWithUpgrade(Settings.OlderVersionArchivePath, Path.Combine(AssemblyHooks.WorkingRoot, "refused-upgrade"));
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void ArchiveProject_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.ArchiveProject(Path.Combine(AssemblyHooks.WorkingRoot, "refused-archive"), "Refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void UpgradeGlobalLibrary_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.UpgradeGlobalLibrary(@"C:\Refused\Refused.al20");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
         public void CloseProject_WithNoPolicy_IsRefused()
         {
             var response = McpServer.CloseProject();
