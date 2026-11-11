@@ -229,9 +229,17 @@ namespace TiaMcpServer.Siemens
             var deviceItem = FindDeviceItem(devicePath)
                 ?? throw new PortalException(PortalErrorCode.NotFound, $"Device item not found: {devicePath}");
 
-            NetworkTopologyWriter.Write(backupDirectory, new NetworkTopologyReader(_logger).Read(FindDevices()));
+            RecordNetworkBefore(backupDirectory);
 
             return deviceItem;
+        }
+
+        /// <summary>Records the project's network as it stands, before a write changes it.</summary>
+        /// <param name="backupDirectory">The backup directory; checked by the caller, which says why one is needed.</param>
+        /// <remarks>One place for every write that rewires the network, so the record cannot differ between them.</remarks>
+        private void RecordNetworkBefore(string backupDirectory)
+        {
+            NetworkTopologyWriter.Write(backupDirectory, new NetworkTopologyReader(_logger).Read(FindDevices()));
         }
 
         private PortalException DecorateNetworkFailure(Exception ex, string devicePath, string backupDirectory, string operation)
