@@ -1,5 +1,8 @@
 ﻿using Microsoft.Extensions.Logging;
 using System;
+#if TIA_V21
+using Siemens.Engineering.SW;
+#endif
 
 namespace TiaMcpServer.Siemens
 {
@@ -146,7 +149,11 @@ namespace TiaMcpServer.Siemens
                 throw new PortalException(PortalErrorCode.InvalidState, "Open a project first");
             }
 
+#if TIA_V21
+            return RequireSimulationSettings().IsSimulationDuringBlockCompilationEnabled;
+#else
             return (bool)CurrentProject!.GetAttribute(SimulationSupportAttribute);
+#endif
         }
 
         /// <summary>
@@ -174,15 +181,39 @@ namespace TiaMcpServer.Siemens
                 return false;
             }
 
+#if TIA_V21
+            RequireSimulationSettings().IsSimulationDuringBlockCompilationEnabled = true;
+#else
             CurrentProject!.SetAttribute(SimulationSupportAttribute, true);
+#endif
 
             _logger?.LogInformation("Simulation during block compilation enabled; the program must be recompiled");
 
             return true;
         }
 
+#if TIA_V21
+        /// <remarks>
+        /// V21 moved the setting off the project's attributes into a service of the project: reading the
+        /// V20 attribute answers "'IsSimulationDuringBlockCompilationEnabled' is not supported by type
+        /// 'Siemens.Engineering.Project'" (the suite's first V21 run, 2026-11-11), and the V21 documentation
+        /// gives <c>PlcSimulationSettingsProvider</c> as the "service provider for simulation during block
+        /// compilation in project".
+        /// </remarks>
+        private PlcSimulationSettingsProvider RequireSimulationSettings()
+        {
+            // Asked of whatever is open, a local session included, as the V20 attribute was: whether a session offers
+            // the service has not been measured, and an answer of none is refused with that said.
+            var project = CurrentProject
+                ?? throw new PortalException(PortalErrorCode.InvalidState, "Open a project first");
+
+            return project.GetService<PlcSimulationSettingsProvider>()
+                ?? throw new PortalException(PortalErrorCode.InvalidState, "TIA Portal offered no simulation settings for the open project or session");
+        }
+#else
         // Named by TIA in the download failure it produces when the option is off.
         private const string SimulationSupportAttribute = "IsSimulationDuringBlockCompilationEnabled";
+#endif
 
         /// <summary>
         /// Whether the PLC program permits simulation, which downloading to PLCSIM requires.

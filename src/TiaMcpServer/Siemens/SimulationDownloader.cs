@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
+using Siemens.Engineering;
 using Siemens.Engineering.Connection;
 using Siemens.Engineering.Download;
 using Siemens.Engineering.Download.Configurations;
@@ -60,12 +61,11 @@ namespace TiaMcpServer.Siemens
                 ?? throw new PortalException(PortalErrorCode.InvalidState, $"'{_deviceItem.Name}' exposes no download service");
 
             var pcInterface = ResolveSimulationInterface(provider);
-            var connection = ResolveConnection(pcInterface);
 
             _logger?.LogInformation(
                 "IsConfigured before applying: {IsConfigured}", provider.Configuration.IsConfigured);
 
-            ApplyConnection(provider, connection, pcInterface);
+            var connection = ApplyConnection(provider, pcInterface);
 
             _logger?.LogInformation("Downloading {Device} through '{Interface}'...", _deviceItem.Name, pcInterface.Name);
 
@@ -131,33 +131,33 @@ namespace TiaMcpServer.Siemens
         }
 
         /// <summary>
-        /// The connection a download goes through.
+        /// The connections a download can go through, in the order they are tried.
         /// </summary>
         /// <remarks>
-        /// The subnet's address, not the target interface. TIA Portal's own download dialog fills
-        /// "Connection to interface/subnet" with the subnet — <c>PN/IE_1</c> for this project — and
-        /// finds the CPU at the address listed underneath it. Measured here: the target interface
-        /// (<c>1 X1</c>) carries no addresses at all, while the subnet carries 192.168.0.1.
+        /// The target interface first, as it worked on V20, then the subnet's address, which is what
+        /// TIA Portal's own download dialog fills "Connection to interface/subnet" with — <c>PN/IE_1</c>
+        /// for this project — and finds the CPU at. On V21 with PLCSIM Advanced V8 (2026-11-11) the
+        /// target interface did not configure while the device answered at 192.168.0.1, so the address
+        /// is tried too rather than giving up on the first.
         ///
-        /// <c>ConfigurationSubnet</c> is deliberately not what gets passed: only
+        /// <c>ConfigurationSubnet</c> is deliberately not among them: only
         /// <c>ConfigurationAddress</c>, <c>ConfigurationTargetInterface</c> and
         /// <c>ConfigurationAccessibleDevice</c> implement <c>IConfiguration</c>, which is what
-        /// <c>Download</c> accepts. The target interface stays as a fallback for a CPU that
-        /// exposes no subnet at all.
+        /// <c>Download</c> accepts.
         /// </remarks>
-        private static IConfiguration ResolveConnection(ConfigurationPcInterface pcInterface)
+        private static IEnumerable<IConfiguration> ConnectionCandidates(ConfigurationPcInterface pcInterface)
         {
             var target = pcInterface.TargetInterfaces.FirstOrDefault();
-
             if (target != null)
             {
-                return target;
+                yield return target;
             }
 
-            return ResolveSubnetAddress(pcInterface)
-                ?? throw new PortalException(
-                    PortalErrorCode.InvalidState,
-                    $"'{pcInterface.Name}' exposes neither a target interface nor a subnet address to connect through");
+            var address = ResolveSubnetAddress(pcInterface);
+            if (address != null)
+            {
+                yield return address;
+            }
         }
 
         /// <summary>The address published by the subnet, or null when the CPU is on none.</summary>
@@ -179,10 +179,9 @@ namespace TiaMcpServer.Siemens
         /// could have worked, because the missing step was never an argument. Verified by
         /// reflecting over the real Siemens.Engineering.dll rather than by reasoning about it.
         /// </remarks>
-        private static void ApplyConnection(
-            DownloadProvider provider,
-            IConfiguration connection,
-            ConfigurationPcInterface pcInterface)
+        /// <returns>The connection that configured.</returns>
+        /// <exception cref="PortalException">None configured; the message says, for each, whether it applied and configured.</exception>
+        private static IConfiguration ApplyConnection(DownloadProvider provider, ConfigurationPcInterface pcInterface)
         {
             // V19 onwards defaults a CPU to "only allow secure PG/PC and HMI communication", and a
             // PLCSIM Advanced controller does not speak it. The symptom is a connection that
@@ -191,7 +190,43 @@ namespace TiaMcpServer.Siemens
             // for a simulated target.
             provider.Configuration.EnableLegacyCommunication = true;
 
-            var isApplied = connection switch
+            var outcomes = new List<string>();
+
+            foreach (var candidate in ConnectionCandidates(pcInterface))
+            {
+                bool isApplied;
+                try
+                {
+                    isApplied = Apply(provider, candidate);
+                }
+                catch (EngineeringException refused)
+                {
+                    // Not given up on: the next candidate may still connect, and what this one said is reported.
+                    outcomes.Add($"{candidate.GetType().Name}: refused ({refused.Message.Trim()})");
+                    continue;
+                }
+
+                var isConfigured = provider.Configuration.IsConfigured;
+
+                if (isApplied && isConfigured)
+                {
+                    return candidate;
+                }
+
+                outcomes.Add($"{candidate.GetType().Name}: applied={isApplied}, configured={isConfigured}");
+            }
+
+            var tried = outcomes.Count == 0 ? "no target interface and no subnet address to connect through" : string.Join("; ", outcomes);
+
+            throw new PortalException(
+                PortalErrorCode.SimulationFailed,
+                $"The connection through '{pcInterface.Name}' could not be established ({tried}). " +
+                $"Accessible devices: {DescribeAccessibleDevices(pcInterface)}");
+        }
+
+        private static bool Apply(DownloadProvider provider, IConfiguration connection)
+        {
+            return connection switch
             {
                 ConfigurationAddress address => provider.Configuration.ApplyConfiguration(address),
                 ConfigurationTargetInterface target => provider.Configuration.ApplyConfiguration(target),
@@ -202,16 +237,6 @@ namespace TiaMcpServer.Siemens
                     PortalErrorCode.InvalidState,
                     $"A connection of type {connection.GetType().Name} cannot be applied")
             };
-
-            if (isApplied && provider.Configuration.IsConfigured)
-            {
-                return;
-            }
-
-            throw new PortalException(
-                PortalErrorCode.SimulationFailed,
-                $"The connection through '{pcInterface.Name}' could not be established. " +
-                $"Accessible devices: {DescribeAccessibleDevices(pcInterface)}");
         }
 
         /// <summary>
@@ -237,9 +262,7 @@ namespace TiaMcpServer.Siemens
                 ?? throw new PortalException(PortalErrorCode.InvalidState, $"'{_deviceItem.Name}' exposes no download service");
 
             var pcInterface = ResolveSimulationInterface(provider);
-            var connection = ResolveConnection(pcInterface);
-
-            ApplyConnection(provider, connection, pcInterface);
+            var connection = ApplyConnection(provider, pcInterface);
 
             return string.Join(
                 Environment.NewLine,
