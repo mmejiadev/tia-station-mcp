@@ -97,8 +97,10 @@ namespace TiaMcpServer.Siemens
         private bool OpenInAttachedPortal(string requestedProjectPath)
         {
             // see [5.3.1 Projekt öffnen, S.113]
+            // Open and not OpenWithUpgrade, so that TIA Portal itself refuses what the extension
+            // check missed: the upgrade writes a new project folder, and is asked for by name.
             _session = null;
-            CurrentProject = _portal?.Projects.OpenWithUpgrade(new FileInfo(requestedProjectPath));
+            CurrentProject = _portal?.Projects.Open(new FileInfo(requestedProjectPath));
 
             return CurrentProject != null;
         }

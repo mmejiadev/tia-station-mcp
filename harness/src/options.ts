@@ -107,7 +107,7 @@ export function parseOptions(args: readonly string[]): Options {
 
   if ((projectPath === undefined) === (archivePath === undefined)) {
     throw new Error(
-      'Usage: node src/run.ts (--archive <path to a .zap20> | --project <path to a .ap20>) ' +
+      'Usage: node src/run.ts (--archive <path to a .zapNN> | --project <path to a .apNN>) ' +
         '[--specs <dir>] [--database <file>] [--policy <file>] [--limit <n>] [--repeat <n>] ' +
         '[--generator stub|model] [--model <id>] [--out <dir>]. ' +
         'Give exactly one of --archive and --project: retrieving gives each run a project nothing ' +

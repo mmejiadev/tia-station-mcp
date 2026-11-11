@@ -18,7 +18,7 @@ namespace TiaMcpServer.Siemens
         /// <summary>Opens a global library read-only, or finds it open, runs <paramref name="use"/> on it, and closes it if opened here.</summary>
         /// <typeparam name="T">What <paramref name="use"/> gives back.</typeparam>
         /// <param name="portal">The TIA Portal instance.</param>
-        /// <param name="libraryPath">The library file, e.g. <c>C:\Libraries\Faceplates\Faceplates.al20</c>.</param>
+        /// <param name="libraryPath">The library file, e.g. <c>C:\Libraries\Faceplates\Faceplates.al21</c>.</param>
         /// <param name="use">What to do with the library.</param>
         /// <returns>
         /// What <paramref name="use"/> gave back, and a warning when the library could not be closed afterwards:
@@ -141,6 +141,8 @@ namespace TiaMcpServer.Siemens
 
             Directory.CreateDirectory(directory);
             Directory.CreateDirectory(scratch);
+            // Not measured on V21: a project archive there is written under exactly the name given, with no extension
+            // (2026-11-11), and a library archive may be too.
             opened.Archive(new DirectoryInfo(scratch), Path.GetFileNameWithoutExtension(file.Name), LibraryArchivationMode.Compressed);
 
             foreach (var archive in Directory.GetFiles(scratch))
@@ -155,7 +157,11 @@ namespace TiaMcpServer.Siemens
         /// Both sides through <see cref="Path.GetFullPath(string)"/>, and the library's folder counts as well as its
         /// file, as which of the two Openness gives as <c>Path</c> for an open library was not measured.
         /// </remarks>
-        private static bool IsTheFile(GlobalLibrary library, FileInfo file)
+        /// <summary>Whether an open library is the one at <paramref name="file"/>, by its file or by its folder.</summary>
+        /// <param name="library">An open global library.</param>
+        /// <param name="file">The library file asked for.</param>
+        /// <returns>True when both name the same library.</returns>
+        public static bool IsTheFile(GlobalLibrary library, FileInfo file)
         {
             var path = library.Path?.FullName;
             if (string.IsNullOrEmpty(path))
@@ -173,14 +179,17 @@ namespace TiaMcpServer.Siemens
         {
             if (string.IsNullOrWhiteSpace(libraryPath))
             {
-                throw new PortalException(PortalErrorCode.InvalidParams, "globalLibraryPath is required: the global library file, e.g. C:\\Libraries\\Faceplates\\Faceplates.al20");
+                throw new PortalException(PortalErrorCode.InvalidParams, "globalLibraryPath is required: the global library file, e.g. C:\\Libraries\\Faceplates\\Faceplates.al21");
             }
 
             var file = new FileInfo(libraryPath.Trim());
 
+            // Open refuses an older library with a message that names no version; the upgrade is a tool of its own.
+            ProjectUpgradeRule.RequireNoUpgradeNeeded(file.FullName, Engineering.TiaMajorVersion, "UpgradeGlobalLibrary");
+
             return file.Exists
                 ? file
-                : throw new PortalException(PortalErrorCode.InvalidParams, $"There is no global library file at '{file.FullName}'; give the .al20 file inside the library's folder");
+                : throw new PortalException(PortalErrorCode.InvalidParams, $"There is no global library file at '{file.FullName}'; give the .alNN file inside the library's folder");
         }
 
         /// <returns>Null when the library closed; otherwise the failure to throw, naming both.</returns>

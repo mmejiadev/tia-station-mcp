@@ -27,6 +27,25 @@
   </PropertyGroup>
 
   <!--
+    TIA Portal version the server is built for: 21 (default) or 20.
+
+    Here rather than in TiaMcpServer.csproj because the Openness package's targets flow to every
+    project that references the server, the test project included, and read these properties.
+
+    TiaPortalLocation is cleared when it holds no API for this version. The package only asks the
+    registry when the value is empty, so a variable left behind by an uninstalled TIA Portal hides
+    a working installation: measured 2026-11-11, a variable still naming V20 made 841 build errors.
+  -->
+  <PropertyGroup>
+    <TiaVersion Condition="'$(TiaVersion)' == ''">21</TiaVersion>
+    <TiaPortalLocation Condition="!Exists('$(TiaPortalLocation)\PublicAPI\V$(TiaVersion)')"></TiaPortalLocation>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TiaVersion)' == '21'">
+    <SiemensEngineeringDirectory Condition="'$(SiemensEngineeringDirectory)' == ''">$(OPENNESS_V21_PATH)</SiemensEngineeringDirectory>
+  </PropertyGroup>
+
+  <!--
     Tests keep TreatWarningsAsErrors but are allowed to skip XML documentation: documenting
     every [TestMethod] is noise. The documentation file itself stays enabled because IDE0005
     (unnecessary using) only runs when it is on.

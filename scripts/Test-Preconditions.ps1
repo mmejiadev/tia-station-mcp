@@ -17,7 +17,7 @@
     the copy that drifts is the one telling somebody their machine is ready when it is not.
 
 .PARAMETER TiaVersion
-    The TIA Portal version the server was built for: 20 (default) or 21.
+    The TIA Portal version the server was built for: 21 (default) or 20.
 
 .PARAMETER TiaPortalLocation
     Where that TIA Portal is installed. Defaults to the standard location for the version.
@@ -36,7 +36,7 @@
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('20', '21')] [string] $TiaVersion = '20',
+    [ValidateSet('20', '21')] [string] $TiaVersion = '21',
     [string] $TiaPortalLocation,
     [switch] $Json
 )
@@ -53,6 +53,18 @@ if (-not $TiaPortalLocation) {
 $OpennessAssembly = @{
     '20' = 'PublicAPI\V20\Siemens.Engineering.dll'
     '21' = 'PublicAPI\V21\net48\Siemens.Engineering.Base.dll'
+}
+
+# The PLCSIM Advanced that goes with each TIA Portal, and where its runtime API is when
+# PLCSIM_API_PATH does not say. The same probes as TiaMcpServer.csproj.
+$PlcSimApiName = 'Siemens.Simatic.Simulation.Runtime.Api.x64.dll'
+$PlcSimProduct = @{
+    '20' = 'PLCSIM Advanced V20'
+    '21' = 'PLCSIM Advanced V8.0'
+}
+$PlcSimDefaultApi = @{
+    '20' = Join-Path $env:ProgramW6432 "Siemens\Automation\PLCSIM_V20\resources\bin\wwwroot\assets\lib\runtime\$PlcSimApiName"
+    '21' = Join-Path ${env:ProgramFiles(x86)} "Common Files\Siemens\PLCSIMADV\API\8.0\$PlcSimApiName"
 }
 
 # The group Openness requires. Windows grants its token at sign-in, which is why every message
@@ -183,16 +195,18 @@ function Test-PlcSim {
     $api = $env:PLCSIM_API_PATH
 
     if (-not $api) {
-        $api = Join-Path $env:ProgramW6432 'Siemens\Automation\PLCSIM_V20\resources\bin\wwwroot\assets\lib\runtime\Siemens.Simatic.Simulation.Runtime.Api.x64.dll'
+        $api = $PlcSimDefaultApi[$TiaVersion]
     }
+
+    $product = $PlcSimProduct[$TiaVersion]
 
     if (Test-Path -LiteralPath $api) {
-        return New-Check -Name 'PLCSIM Advanced V20' -Met $true -Required $false -Found $api
+        return New-Check -Name $product -Met $true -Required $false -Found $api
     }
 
-    New-Check -Name 'PLCSIM Advanced V20' -Met $false -Required $false `
+    New-Check -Name $product -Met $false -Required $false `
         -Found "no runtime API at $api" `
-        -Fix ('Install PLCSIM Advanced V20 with its own licence, or set PLCSIM_API_PATH to where ' +
+        -Fix ("Install $product with its own licence, or set PLCSIM_API_PATH to where " +
               'its runtime API is. Without it the server still compiles and exports, but every ' +
               'simulation tool reports the runtime as unavailable and nothing can be downloaded.')
 }

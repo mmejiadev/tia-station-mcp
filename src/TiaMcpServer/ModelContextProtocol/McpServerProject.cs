@@ -59,7 +59,7 @@ namespace TiaMcpServer.ModelContextProtocol
             }
         }
 
-        [McpServerTool(Name = "OpenProject"), Description("Open a TIA-Portal local project/session")]
+        [McpServerTool(Name = "OpenProject"), Description("Open a TIA-Portal local project/session. A project (.apXX) made with an older TIA Portal is refused: OpenProjectWithUpgrade makes an upgraded copy.")]
         public static ResponseOpenProject OpenProject(
             [Description("path: defines the path where to the project/session")] string path)
         {
@@ -75,7 +75,7 @@ namespace TiaMcpServer.ModelContextProtocol
                 if (!Regex.IsMatch(extension, @"^\.ap\d+$") &&
                     !Regex.IsMatch(extension, @"^\.als\d+$"))
                 {
-                    throw new McpException("Invalid project file extension. Use .apXX for projects or .alsXX for sessions, where XX=18,19,20,....", McpErrorCode.InvalidParams);
+                    throw new McpException("Invalid project file extension. Use .apXX for projects or .alsXX for sessions, where XX=18,19,20,21,....", McpErrorCode.InvalidParams);
                 }
 
                 bool success = false;
@@ -125,10 +125,10 @@ namespace TiaMcpServer.ModelContextProtocol
             }
         }
 
-        [McpServerTool(Name = "RetrieveProject"), Description("Retrieve a TIA-Portal project archive (.zapXX) into a directory and open it")]
+        [McpServerTool(Name = "RetrieveProject"), Description("Retrieve a TIA-Portal project archive (.zapXX) of this TIA Portal's version into a directory and open it. One made with an older TIA Portal is refused: use RetrieveProjectWithUpgrade.")]
         public static ResponseRetrieveProject RetrieveProject(
             [Description("archivePath: full path of the .zapXX archive to retrieve")] string archivePath,
-            [Description("targetDirectory: directory to extract into; the call is refused if the project folder already exists")] string targetDirectory)
+            [Description("targetDirectory: an empty or new directory to extract into; one holding anything is refused, so nothing is overwritten")] string targetDirectory)
         {
             // One Openness call at a time. See OpennessGate: two of them really do interleave.
             using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();

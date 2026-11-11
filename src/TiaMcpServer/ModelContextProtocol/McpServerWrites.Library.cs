@@ -13,7 +13,7 @@ namespace TiaMcpServer.ModelContextProtocol
     {
         [McpServerTool(Name = "CopyLibraryTypes"), Description("Copy types from a global library file into the open project's library, e.g. the faceplates a class keeps in a shared library; the types each one depends on (a faceplate's PLC data type) come with it. The global library is opened read-only and never changed. A type the project library already holds, asked for or only depended on, is refused rather than merged, as TIA Portal V20 would renumber its version in work without a word; a name the global library lacks is refused too. Nothing in the project changes but the library gaining these types, and its types and versions before are kept in the backup registry. Answers with every type the project library gained. Then ReleaseLibraryType for a version still in work, and PlaceUnifiedFaceplates to use a faceplate.")]
         public static ResponseLibraryTypes CopyLibraryTypes(
-            [Description("globalLibraryPath: the global library file, e.g. 'C:\\Libraries\\Faceplates\\Faceplates.al20'")] string globalLibraryPath,
+            [Description("globalLibraryPath: the global library file, e.g. 'C:\\Libraries\\Faceplates\\Faceplates.al21'")] string globalLibraryPath,
             [Description("typeNames: the types to copy, exactly as GetLibraryTypes names them")] string[] typeNames)
         {
             // One Openness call at a time. See OpennessGate: two of them really do interleave.

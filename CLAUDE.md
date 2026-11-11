@@ -71,7 +71,10 @@ An MCP server in C# exposing the TIA Portal Openness API to an LLM, aimed at:
 2. Closing the generate → compile → test (PLCSIM Advanced) → fix loop.
 3. Versioning TIA projects in Git through bulk export to text.
 
-Target environment: **TIA Portal V20**, **.NET Framework 4.8**, **Windows x64**.
+Target environment: **TIA Portal V21**, **PLCSIM Advanced V8.0**, **.NET Framework 4.8**, **Windows x64**.
+V20 still builds with `-p:TiaVersion=20`, on a machine that has it. Most Openness behaviour recorded in
+this repository was measured on V20: a comment saying so is a record of where it was measured, and
+until it is measured again it is not a fact about V21.
 
 ---
 
@@ -446,7 +449,8 @@ A task is not finished until:
 # Environment — known limitations
 
 - User must be in the Windows group **`Siemens TIA Openness`** (needs re-login for the token).
-- `TiaPortalLocation` → `C:\Program Files\Siemens\Automation\Portal V20`.
+- `TiaPortalLocation` → `C:\Program Files\Siemens\Automation\Portal V21`, or unset: the build then
+  asks the registry, and ignores a value holding no API for the version being built.
 - TIA Portal asks for whitelist confirmation the first time an external app connects.
 - Current MCP transport: **stdio**. With stdio, **all logs go to stderr**.
 - Importing **LAD** blocks from SIMATIC SD documents requires the accompanying `.s7res`

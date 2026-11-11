@@ -42,7 +42,7 @@ namespace TiaMcpServer.Test
             Assert.AreEqual(Settings.Project1PlcSoftwarePath0, root.GetProperty("softwarePath").GetString());
             Assert.AreEqual(response.ErrorCount, root.GetProperty("errorCount").GetInt32());
             Assert.AreEqual(response.WarningCount, root.GetProperty("warningCount").GetInt32());
-            StringAssert.EndsWith(root.GetProperty("projectPath").GetString(), ".ap20", StringComparison.OrdinalIgnoreCase);
+            StringAssert.EndsWith(root.GetProperty("projectPath").GetString(), $".ap{TiaMcpServer.Siemens.Engineering.TiaMajorVersion}", StringComparison.OrdinalIgnoreCase);
         }
 
         /// <remarks>

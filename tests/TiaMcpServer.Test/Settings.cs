@@ -10,7 +10,7 @@ namespace TiaMcpServer.Test
     /// This file used to pin every test to absolute paths under <c>D:\Siemens\...</c>, which
     /// existed only on the original author's machine and left the whole suite dead everywhere
     /// else. Nothing here is a filesystem path any more: the project is built at run time by
-    /// retrieving <c>assets/TestProject1.zap20</c>, and what remains are paths *inside* the
+    /// retrieving <c>assets/TestProject1.zap21</c>, and what remains are paths *inside* the
     /// project, which are part of the fixture rather than of the machine.
     ///
     /// They are still <c>const</c> because <c>[DataRow]</c> only accepts compile-time constants.
@@ -22,6 +22,13 @@ namespace TiaMcpServer.Test
         /// so it works wherever the tests run.
         /// </summary>
         public static string Project1ArchivePath =>
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "assets", "TestProject1.zap21");
+
+        /// <summary>
+        /// An archive of an older TIA Portal, the only thing that can prove an upgrade. It stays at
+        /// V20 when the fixture archives move to V21.
+        /// </summary>
+        public static string OlderVersionArchivePath =>
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "assets", "TestProject1.zap20");
 
         /// <summary>
@@ -29,7 +36,7 @@ namespace TiaMcpServer.Test
         /// no tag — an error TIA Portal's Info tab showed with no text (2026-10-17).
         /// </summary>
         public static string UnifiedArchivePath =>
-            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "assets", "UnifiedProject.zap20");
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "assets", "UnifiedProject.zap21");
 
         /// <summary>
         /// The class project 0967_1, archived without restorable data: an S7-1500, a WinCC Unified PC RT
@@ -37,7 +44,7 @@ namespace TiaMcpServer.Test
         /// FACEPLATE_MOTOR_V1 and Faceplate_BOTO_MOTOR_V1, each with version 0.0.1 still in work.
         /// </summary>
         public static string FaceplateArchivePath =>
-            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "assets", "FaceplateProject.zap20");
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "assets", "FaceplateProject.zap21");
 
         /// <summary>
         /// The class project UNIFIED-LIBRERIES with the device group Group_1: an S7-1200 and a WinCC Unified PC RT with their
@@ -52,6 +59,13 @@ namespace TiaMcpServer.Test
         /// </summary>
         public static string FaceplateLibraryZipPath =>
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "assets", "FaceplateLibrary.zip");
+
+        /// <summary>
+        /// The same library as it was made on TIA Portal V20, zipped: kept to prove an upgrade, as the fixture
+        /// above moved to V21 on 2026-11-11.
+        /// </summary>
+        public static string OlderVersionLibraryZipPath =>
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "assets", "FaceplateLibraryV20.zip");
 
         /// <summary>
         /// The write policy the suite runs under, resolved the same way as the archive.
