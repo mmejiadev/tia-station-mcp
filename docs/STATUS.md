@@ -1,9 +1,120 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-11-08**
+> Last updated: **2026-11-11**
 
 ## ▶ RESUME HERE
+
+### The repository builds for TIA Portal V21 by default — 2026-11-11, branch `work/v21-by-default`
+
+From `main` after PR #66. The development PC moved from V20 to V21 on 2026-11-09/10 and V20 is uninstalled, so `TiaVersion`
+now defaults to 21, in `Directory.Build.props` so the test project sees it too. `-p:TiaVersion=20` still builds V20.
+
+- **A stale `TiaPortalLocation` no longer breaks the build.** The Openness package asks the registry only when that variable
+  is empty, so one still naming the uninstalled V20 made 841 errors. A value holding no API for the version built is now ignored.
+- **PLCSIM Advanced V8.0 is found** under `Common Files\Siemens\PLCSIMADV\API\8.0`, in the build and in `Test-Preconditions.ps1`.
+- **Building without the PLCSIM API compiles**, as the project file always promised: it was 8 errors in `SimulationRuntime.cs`,
+  then 7 more once those were gone, members used only with the API.
+- `New-Release.ps1`, `Test-Preconditions.ps1`, `INSTALL.md`, `README.md`, `CLAUDE.md` and the project file descriptions say V21.
+  Comments reading "measured on TIA Portal V20" stay: they say where it was measured, and most of it has not been measured on V21.
+
+**Checked by building (2026-11-11):** the solution with no helper variable, with `TiaPortalLocation` still on V20; the server
+without the PLCSIM API; the server for V20 against a saved copy of its API. All 0 warnings, 0 errors. `Test-Preconditions.ps1`
+passes all five checks. The built server answers `initialize` and listed 134 tools, 138 with the four added below.
+
+**Upgrading a project is now asked for by name.** Two guarded tools, `OpenProjectWithUpgrade` and `RetrieveProjectWithUpgrade`.
+`OpenProject` used to call `OpenWithUpgrade`, so an `.ap20` opened on V21 became a new folder without a word; it now calls `Open`,
+and `OpenProject` and `RetrieveProject` refuse an older file up front, naming the tool. Rules in `ProjectUpgradeRule`.
+
+**Measured on TIA Portal V21 (2026-11-11, through the built server, on copies):** the three `.zap20` fixtures and a copy of a class
+`.ap20` upgraded in 13 to 78 s, each original unchanged by hash. A retrieve leaves three folders in the target: the project as
+extracted, `_V21` and `.backup`, named after the project inside the archive, not the archive, so `RetrieveProjectWithUpgrade` needs
+an empty target. A repeat is refused, and so is an upgrade while a project is open. `OpenProject`, now on `Open`, opened an upgraded
+copy and read its tree. One `Connect` from a freshly rebuilt server gave no answer in 400 s and the next took 142 s; the cause was
+not established, and `INSTALL.md` names the Openness whitelist dialog as the usual one.
+
+Code review 2026-11-11 (`/code-review high`), ten findings. Fixed: the overwrite check on a retrieve, `OpenProject` still able to
+upgrade, a wrong-version result left as the current project, archives and project files accepted by each other's tool, the session
+wording in a description, missing tests. Left: a leftover `.backup` folder is not refused (its contents are timestamped) and a
+project at a drive root is not handled (TIA Portal keeps a project in its own folder). A V20 release needs `-TiaVersion 20` on the
+check it ships, as `INSTALL.md` says.
+
+**Archiving and libraries, the same day.** `ArchiveProject` (ROADMAP H7) writes the open project to a compressed `.zapNN`, and
+`UpgradeGlobalLibrary` makes a V21 copy of an older global library, which every other library tool now refuses with its name.
+Measured on V21 through the built server: TIA Portal writes an archive under exactly the name it is given and **adds no
+extension**, so the rule adds `.zap21`; it refuses a 183-character archive path, so the archive is written to a short temporary
+folder and moved; a library upgrade writes `<folder>_V21` and `.backup` beside the original, unchanged by hash, and when
+`<folder>_V21` is already there it writes `<folder>_V21_1` without a word, so that case is refused first. `RetrieveProject` now needs
+an empty target too: a V21 archive of `TestProject1` holds a project named `TestProject1_V21`, so checking a folder named after the
+archive found nothing.
+
+**The fixtures are V21 now**, made with these tools: `TestProject1.zap21`, `UnifiedProject.zap21`, `FaceplateProject.zap21`
+(each upgraded, archived without restorable data, and retrieved back to check) and `FaceplateLibrary.zip` (the upgraded library).
+`TestProject1.zap20` and `FaceplateLibraryV20.zip` stay as the only proofs of an upgrade. The two other `.zap20` are gone.
+
+**Tests:** Governance 1010, Spec 133, OpcUa 33, TIA Portal not needed. **The Openness suite ran on V21 for the first time
+(2026-11-11, 45 min): 580 passed, 33 failed, 4 skipped as before.** Not measured: `Open` on a project from an earlier update of
+V21, and whether unsaved changes go into an archive. No automated test builds the server without PLCSIM.
+
+The 33 failures, by cause:
+
+- **13, the 143-character path limit.** V21 adds `_V21` to the project and library folders, and the suite's working folders
+  (`%TEMP%\TiaMcpServer.Test\<guid>\<guid>\...`) now pass 143: `Test41`, `Test55`, `Test63`, `Test64`. A fault of the suite's paths.
+- **7, inconsistent blocks.** The fixtures were archived with restorable data discarded, after an upgrade, and nothing compiled them,
+  so `ExportBlock` refuses (`Test4`, `Test5`, `Test36`). A fault of the fixtures: compile, then archive.
+- **4, simulation support.** `IsSimulationDuringBlockCompilationEnabled` is no longer an attribute of the project in V21; the V21
+  documentation puts it on `PlcSimulationSettingsProvider` (`Test11`, `Test20`). **`EnableSimulationSupport` is broken on V21.**
+- **4, a new library version from a document.** V21 refuses `LibraryTypeVersionComposition.CreateFromDocuments` with "an object with
+  the name ... already exists in the plc" where V20 moved the instance (`Test61`). **`CreateLibraryTypeVersionFromDocument` is
+  broken on V21.**
+- **3, a toggle switch.** V21 has `PressedStateTags` on `HmiButton` only, and reading it from `HmiToggleSwitch` throws "not
+  supported", which the screen backup takes as a property it cannot keep (`Test44`). **`DrawUnifiedScreen` refuses a screen with a
+  toggle switch on V21.**
+- **1, the PLCSIM connection** (`Test11.DescribeSimulationConnection`): the device is found at 192.168.0.1 and the connection is not
+  made. Not diagnosed; it may follow from simulation support.
+
+The run's report: `openness-v21-first.trx`, in the session's scratch folder, not kept.
+
+**Since, the same day.** The suite's working folders take eight characters of a GUID instead of thirty-two, and `TestProject1.zap21`
+was made again with its eight PLCs compiled (0 errors) and its restorable data kept: **second run 601 passed, 12 failed**, the 20
+failures of the suite's own making gone. Then, each run against TIA Portal by its own test classes:
+
+- `EnableSimulationSupport` reads and writes `PlcSimulationSettingsProvider`, a service of the project, on V21 (`TIA_V21`); V20 keeps
+  the attribute. Measured: the setting no longer throws.
+- `UnifiedScreenReader` skips a property TIA Portal answers "not supported" for on that item, as there is nothing to keep:
+  `Test44` 3/3.
+- `CreateLibraryTypeVersionFromDocument` on V21 starts the next version through the instance (`LibraryTypeVersion.Edit(
+  LibraryTypeInstanceInfo)`) and then replaces what it holds with the document (`CreateOptions.Override`), taking the version back
+  on a failure. Passing the instance's group to the new `CreateFromDocuments` overload was tried first and refused the same way.
+  `Test61` 14/14.
+- The download connection tries the target interface and then the subnet address, and says for each whether it applied and
+  configured. On V21 both **applied and did not configure**; downloading anyway answered "Connect to module PLC_0 failed", so
+  `IsConfigured` still tells the truth and the check stays. The connection API is the same on V20 and V21, member for member.
+  **The likely cause is the machine:** the PLCSIM virtual adapter `Ethernet 2` holds `169.254.17.238/16`, not the
+  `192.168.0.100/24` it was given on 2026-08-13, while the controller is at 192.168.0.1; the device scan works at layer 2 either
+  way. Setting that address needs an administrator, so it is the user's to do. `Test11` and `Test20`, 5 tests, wait on it.
+
+**The address was it.** The user set `Ethernet 2` to 192.168.0.100 (mask 255.255.0.0, which still holds 192.168.0.1): the cell's
+three downloads to PLCSIM went through and ran. The one `Test11` download that still failed after them passed alone, and the whole
+`Test11` class passed alone twice; in the suite's own order it did not fail.
+
+**Third full run, V21 (2026-11-11, 46 min): 613 passed, 0 failed, 4 skipped** — the three multiuser-session tests and the one
+skipped before.
+
+Code review 2026-11-11, third round (`/code-review high`), ten findings. Fixed, and the affected classes run again against TIA Portal
+(`Test11`, `Test16`, `Test20`, `Test55`, `Test58`, `Test62`, `Test63`, `Test64`: 121/121): a connection candidate that throws no
+longer stops the next one from being tried; an empty temporary folder left behind no longer turns a written archive into a failure;
+an upgrade whose result is refused says the copy it left is on disk; simulation settings are asked of a local session too instead
+of refusing it (whether a session offers the service is unmeasured); the archive tool's text no longer says TIA Portal adds the
+extension. Left, each with its reason: the library backup's archive name, marked unmeasured in `GlobalLibraryAccess` (a V21
+project archive gets no extension, a library archive may not either); `.ap15_1`-style names and sessions outside the version rule;
+a leftover `.backup` folder and a project at a drive root; the suite's fixtures being V21 only, as its `README.md` says; no
+`CancellationToken`, as an Openness call cannot be cancelled once made.
+
+**Tests:** Governance 1010, Spec 133, OpcUa 33. Build: 0 warnings.
+
+**Next, in order:** the user's commits and pull request; then whether a V21 library archive gets an extension; then measuring again
+what else was measured on V20; then `work/hmi-connection-template`, whose `HmiTemplateProject.zap20` needs the same upgrade.
 
 ### A local secret store, encrypted with Windows DPAPI — 2026-11-08, branch `work/local-secrets`
 
