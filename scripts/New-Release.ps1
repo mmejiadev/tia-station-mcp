@@ -22,7 +22,7 @@
     Where to write the artefact. Defaults to 'release' beside the repository.
 
 .PARAMETER TiaVersion
-    The TIA Portal version to build for: 20 (default) or 21. V21 changed the Openness API
+    The TIA Portal version to build for: 21 (default) or 20. V21 changed the Openness API
     incompatibly, so each version is its own artefact; the V21 one is named with a -v21 suffix.
     On a machine without TIA Portal V21, set OPENNESS_V21_PATH to a copy of PublicAPI\V21\net48.
 
@@ -39,7 +39,7 @@
 [CmdletBinding()]
 param(
     [string] $OutputDirectory,
-    [ValidateSet('20', '21')] [string] $TiaVersion = '20',
+    [ValidateSet('20', '21')] [string] $TiaVersion = '21',
     [switch] $AllowDirtyTree
 )
 
