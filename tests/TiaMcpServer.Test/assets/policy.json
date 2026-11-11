@@ -4,7 +4,7 @@
 // actually be got wrong: a section name capitalised differently, a pattern that matches the group
 // but not the software itself. Tests that construct their own policy object never exercise it.
 //
-// It names exactly the fixture in assets/TestProject1.zap20 and the instances the simulation tests
+// It names exactly the fixture in assets/TestProject1.zap21 and the instances the simulation tests
 // create. Anything else is refused, which is what the suite asserts in Test16GuardedWrites.
 {
   "study": {

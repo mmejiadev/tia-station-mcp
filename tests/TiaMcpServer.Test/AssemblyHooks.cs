@@ -61,7 +61,7 @@ namespace TiaMcpServer.Test
                     "the tests would attach to that session instead of starting their own.");
             }
 
-            WorkingRoot = Path.Combine(Path.GetTempPath(), "TiaMcpServer.Test", Guid.NewGuid().ToString("N"));
+            WorkingRoot = Path.Combine(Path.GetTempPath(), "TiaMcpServer.Test", ShortName());
 
             _sharedPortal = new Portal();
             _sharedPortal.ConnectPortal();
@@ -173,7 +173,17 @@ namespace TiaMcpServer.Test
         /// <returns>The directory path. It is not created until something writes to it.</returns>
         public static string CreateTestDirectory()
         {
-            return Path.Combine(WorkingRoot, Guid.NewGuid().ToString("N"));
+            return Path.Combine(WorkingRoot, ShortName());
+        }
+
+        /// <remarks>
+        /// Eight characters of a GUID, not thirty-two. TIA Portal refuses a project or library path over 143
+        /// characters, and V21 adds '_V21' to the folders it upgrades: two full GUIDs under %TEMP% put 13 tests
+        /// past the limit by one or two characters on 2026-11-11. One run makes a few hundred of these.
+        /// </remarks>
+        private static string ShortName()
+        {
+            return Guid.NewGuid().ToString("N").Substring(0, 8);
         }
     }
 }

@@ -29,7 +29,7 @@ namespace TiaMcpServer.Test
             _testDirectory = AssemblyHooks.CreateTestDirectory();
             var libraryDirectory = Path.Combine(_testDirectory, "library");
             ZipFile.ExtractToDirectory(Settings.FaceplateLibraryZipPath, libraryDirectory);
-            _libraryPath = Directory.GetFiles(libraryDirectory, "*.al20", SearchOption.AllDirectories).Single();
+            _libraryPath = Directory.GetFiles(libraryDirectory, $"*.al{Engineering.TiaMajorVersion}", SearchOption.AllDirectories).Single();
 
             AssemblyHooks.SharedPortal.CreateProject(_testDirectory, "LibraryTypes");
         }
