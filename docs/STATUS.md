@@ -1,4 +1,4 @@
-﻿# Project status
+﻿ Project status
 
 > Living document. Update it at the end of every working session.
 > Last updated: **2026-11-11**
@@ -114,7 +114,35 @@ a leftover `.backup` folder and a project at a drive root; the suite's fixtures 
 **Tests:** Governance 1010, Spec 133, OpcUa 33. Build: 0 warnings.
 
 **Next, in order:** the user's commits and pull request; then whether a V21 library archive gets an extension; then measuring again
-what else was measured on V20; then `work/hmi-connection-template`, whose `HmiTemplateProject.zap20` needs the same upgrade.
+what else was measured on V20; then the HMI connection template below, merged unfinished in PR #67, whose
+`HmiTemplateProject.zap20` needs the same upgrade.
+
+### HMI connection template, unfinished — 2026-11-09, merged unfinished as PR #67
+
+**Not ready for use.** Pushed as it stood because the user was replacing TIA Portal V20 with V21 on this machine, and merged so;
+the remaining work and its measurements happen on V21.
+
+Two new tools. `CreateDeviceGroupTemplate` makes a device group of the open project, with the integrated HMI connection made
+by hand in it, a master copy in a global library. `CreateDevicesFromTemplate` places one, joins the first Ethernet interface of
+each device to a subnet, protects each PLC with a stored secret by name, and compiles each device.
+
+Measured on TIA Portal V20, 2026-11-08: a placed copy keeps its connection. Placing it again renames everything without a word
+(`Group_2`, `PLC_2`, `HMI_RT_2`) and repeats its addresses. A PLC refuses a weak password, and a second one. Without a password it
+does not compile. **Tests, on V20:** `Test62DeviceTemplates` 9/9; `Test16GuardedWrites` passed its entries. Governance 986/988
+(2 skipped, as before). Builds with 0 warnings for V20 and for V21. No test has run on V21.
+
+Security review: the value does not leak (traced from `Reveal` to `Protect`). **To fix before merging:**
+
+- `CreateDevicesFromTemplate` proposes on `ChangeTarget.Program(templateName)`, a label that gates nothing. Propose on what it
+  writes (the project, the library through `GlobalLibraryFile`) with `TargetToPropose`, and put the secret's name in the plan.
+  "Nothing existing changes" in its description is false when the subnet exists.
+- In `PortalDeviceTemplates`: find the subnet before `CreateFrom` or inside the undo; keep the topology first when joining an
+  existing subnet; do not drop a device with no Ethernet node without a word; walk `placed.Groups`; use `UnifiedRollback.Undo`; connect
+  through `SubnetConfigurator.Connect`; ignore empty addresses in `CheckAddressesFree`; report devices renamed as well as the
+  group; list PLCs that already had a password.
+
+**Next, on V21:** building for V21, V21 test assets and a first run of the Openness suite there are done (2026-11-11, above). Left:
+remake `HmiTemplateProject.zap20` for V21, run `Test62DeviceTemplates` there, and the fixes listed above.
 
 ### A local secret store, encrypted with Windows DPAPI — 2026-11-08, branch `work/local-secrets`
 
