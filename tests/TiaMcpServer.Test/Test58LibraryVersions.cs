@@ -152,6 +152,18 @@ namespace TiaMcpServer.Test
             Assert.AreEqual(1, Directory.GetFiles(Path.Combine(_testDirectory, "archive")).Length);
         }
 
+        /// <remarks>A project archive on V21 is written under exactly the name given, with no extension (measured 2026-11-11); a library backup a person cannot recognise as one is no backup.</remarks>
+        [TestMethod]
+        public void PublishLibraryTypes_Published_ArchivesTheLibraryUnderItsExtension()
+        {
+            AssemblyHooks.SharedPortal.ReleaseLibraryType(Motor, null, string.Empty, Backup());
+
+            AssemblyHooks.SharedPortal.PublishLibraryTypes(NewLibrary(), OnlyMotor, Path.Combine(_testDirectory, "archive"));
+
+            var archive = Path.GetFileName(Directory.GetFiles(Path.Combine(_testDirectory, "archive")).Single());
+            StringAssert.EndsWith(archive.ToUpperInvariant(), $".ZAL{Engineering.TiaMajorVersion}", $"the library backup was written as '{archive}'");
+        }
+
         /// <remarks>The backup registry's default root is relative, and Openness refuses a relative path: found by the review of 2026-11-01.</remarks>
         [TestMethod]
         public void PublishLibraryTypes_ARelativeBackupDirectory_StillArchivesTheLibrary()
