@@ -1,9 +1,9 @@
 ﻿using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
+#if PLCSIM_AVAILABLE
 using System.Linq;
 using System.Runtime.CompilerServices;
-#if PLCSIM_AVAILABLE
 using Siemens.Simatic.Simulation.Runtime;
 #endif
 
@@ -41,17 +41,17 @@ namespace TiaMcpServer.Siemens
         private const string UnavailableMessage =
             "The PLCSIM Advanced runtime is not available. Install PLCSIM Advanced, or set PlcSimApiPath if it is installed somewhere unusual.";
 
+#if PLCSIM_AVAILABLE
         // State changes are not instantaneous, and the parameterless overloads do not wait for
         // them. Passing an explicit timeout is what makes a create-run-stop-delete sequence
         // deterministic instead of racing the controller.
         private const uint TransitionTimeoutMilliseconds = 60000;
 
+        private readonly ILogger? _logger;
+
         // A simulated controller sits on an isolated virtual adapter, so it has nowhere to route to.
         private const string DefaultGateway = "0.0.0.0";
 
-        private readonly ILogger? _logger;
-
-#if PLCSIM_AVAILABLE
         // Keyed by instance name. Holding the handle is what keeps the virtual controller
         // registered; see the class remarks.
         private readonly Dictionary<string, IInstance> _heldInstances = new Dictionary<string, IInstance>(StringComparer.Ordinal);
@@ -61,7 +61,11 @@ namespace TiaMcpServer.Siemens
         /// <param name="logger">Optional logger.</param>
         public SimulationRuntime(ILogger? logger = null)
         {
+#if PLCSIM_AVAILABLE
             _logger = logger;
+#else
+            logger?.LogWarning("Built without the PLCSIM Advanced runtime API: every simulation tool reports it as unavailable");
+#endif
         }
 
         /// <summary>Releases every controller handle this object holds.</summary>
@@ -116,7 +120,6 @@ namespace TiaMcpServer.Siemens
         {
             return SimulationRuntimeManager.IsRuntimeManagerAvailable;
         }
-#endif
 
         private static bool IsMissingRuntime(Exception exception)
         {
@@ -125,6 +128,7 @@ namespace TiaMcpServer.Siemens
                 || exception is BadImageFormatException
                 || exception is System.IO.FileLoadException;
         }
+#endif
 
         /// <summary>
         /// How the runtime is reachable: <c>Softbus</c>, <c>TCPIPSingleAdapter</c>,
@@ -339,7 +343,11 @@ namespace TiaMcpServer.Siemens
         /// <exception cref="PortalException">The runtime is unavailable or the instance is unknown.</exception>
         public SimulationInstanceInfo StartInstance(string instanceName)
         {
+#if PLCSIM_AVAILABLE
             return WithInstance(instanceName, instance => instance.Run(TransitionTimeoutMilliseconds));
+#else
+            throw new PortalException(PortalErrorCode.InvalidState, UnavailableMessage);
+#endif
         }
 
         /// <summary>Puts a virtual controller into STOP.</summary>
@@ -348,7 +356,11 @@ namespace TiaMcpServer.Siemens
         /// <exception cref="PortalException">The runtime is unavailable or the instance is unknown.</exception>
         public SimulationInstanceInfo StopInstance(string instanceName)
         {
+#if PLCSIM_AVAILABLE
             return WithInstance(instanceName, instance => instance.Stop(TransitionTimeoutMilliseconds));
+#else
+            throw new PortalException(PortalErrorCode.InvalidState, UnavailableMessage);
+#endif
         }
 
         /// <summary>Powers a virtual controller off and on again.</summary>
@@ -363,6 +375,7 @@ namespace TiaMcpServer.Siemens
         /// <exception cref="PortalException">The runtime is unavailable or the instance is unknown.</exception>
         public SimulationInstanceInfo PowerCycleInstance(string instanceName)
         {
+#if PLCSIM_AVAILABLE
             return WithInstance(instanceName, instance =>
             {
                 // Powering off an instance that is already off throws InvalidOperatingState.
@@ -373,6 +386,9 @@ namespace TiaMcpServer.Siemens
 
                 instance.PowerOn(TransitionTimeoutMilliseconds);
             });
+#else
+            throw new PortalException(PortalErrorCode.InvalidState, UnavailableMessage);
+#endif
         }
 
         /// <summary>Where a virtual controller keeps its state on disk.</summary>
@@ -544,17 +560,6 @@ namespace TiaMcpServer.Siemens
                 instance.ControllerIPSuite4.Select(suite => suite.IPAddress.ToString()).ToList(),
                 instance.LicenseStatus.ToString());
         }
-#else
-        private SimulationInstanceInfo WithInstance(string instanceName, Action<object> action)
-        {
-            throw new PortalException(PortalErrorCode.InvalidState, UnavailableMessage);
-        }
-
-        private static SimulationInstanceInfo Describe(string instanceName)
-        {
-            throw new PortalException(PortalErrorCode.InvalidState, UnavailableMessage);
-        }
-#endif
 
         /// <summary>
         /// Single decoration point for this class: the PLCSIM API throws its own
@@ -577,6 +582,7 @@ namespace TiaMcpServer.Siemens
                 throw pex;
             }
         }
+#endif
 
         private static void RequireRuntime()
         {
