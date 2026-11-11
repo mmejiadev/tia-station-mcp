@@ -51,7 +51,7 @@ namespace TiaMcpServer.Test
         /// integrated connection, made by hand in TIA Portal on 2026-11-08, which Openness cannot do.
         /// </summary>
         public static string HmiTemplateArchivePath =>
-            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "assets", "HmiTemplateProject.zap20");
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "assets", "HmiTemplateProject.zap21");
 
         /// <summary>
         /// A global library folder, zipped: FACEPLATE_MOTOR_V1 and Faceplate_BOTO_MOTOR_V1 released as 0.0.1,

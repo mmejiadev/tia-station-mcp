@@ -93,5 +93,14 @@ namespace TiaMcpServer.Governance.Tests
         {
             DeviceTemplateRules.CheckAddressesFree("PN", Nothing, Placed);
         }
+
+        /// <remarks>A node with no address yet held on both sides was refused as a repeated address: found by the review of 2026-11-08.</remarks>
+        [TestMethod]
+        public void CheckAddressesFree_NodesWithNoAddressOnBothSides_Passes()
+        {
+            DeviceTemplateRules.CheckAddressesFree("PN", NoAddress, NoAddress);
+        }
+
+        private static readonly string[] NoAddress = { string.Empty };
     }
 }

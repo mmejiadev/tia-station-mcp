@@ -695,6 +695,28 @@ namespace TiaMcpServer.Test
             AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
         }
 
+        /// <remarks>It writes the project and takes from a library, so a policy that allows only the project must not let it through.</remarks>
+        [TestMethod]
+        public void CreateDevicesFromTemplate_PolicyAllowingOnlyTheProject_IsRefusedOnTheLibrary()
+        {
+            var policy = Path.Combine(AssemblyHooks.CreateTestDirectory(), "project-only.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(policy)!);
+            File.WriteAllText(policy, "{ \"study\": { \"allow\": [ \"project\" ], \"deny\": [] } }");
+            McpServer.SetServiceProvider(BuildDenyEverythingServices(policy));
+
+            try
+            {
+                var response = McpServer.CreateDevicesFromTemplate("C:\\Refused\\Refused.al20", "Refused", "Refused");
+
+                Assert.AreEqual("Refused", response.Meta?["outcome"]?.GetValue<string>(), response.Message);
+                StringAssert.Contains(response.Message ?? string.Empty, "global-library", StringComparison.Ordinal);
+            }
+            finally
+            {
+                McpServer.SetServiceProvider(BuildDenyEverythingServices(Path.Combine(AssemblyHooks.WorkingRoot, "no-such-policy.json")));
+            }
+        }
+
         [TestMethod]
         public void ReleaseLibraryType_WithNoPolicy_IsRefused()
         {

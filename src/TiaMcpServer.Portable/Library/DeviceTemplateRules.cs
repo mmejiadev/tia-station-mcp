@@ -54,9 +54,10 @@ namespace TiaMcpServer.Library
         /// <param name="held">The addresses on it.</param>
         /// <param name="placed">The addresses of the devices being placed.</param>
         /// <exception cref="PortalException"><see cref="PortalErrorCode.InvalidState"/> naming the addresses.</exception>
+        /// <remarks>A node with no address yet repeats nothing: two empty addresses are not one address used twice.</remarks>
         public static void CheckAddressesFree(string subnetName, IEnumerable<string> held, IEnumerable<string> placed)
         {
-            var repeated = placed.Intersect(held, StringComparer.Ordinal).ToList();
+            var repeated = placed.Where(address => !string.IsNullOrWhiteSpace(address)).Intersect(held, StringComparer.Ordinal).ToList();
 
             if (repeated.Count > 0)
             {

@@ -5,6 +5,33 @@
 
 ## ▶ RESUME HERE
 
+### Library backups named for V21, and the HMI connection template finished on V21 — 2026-11-11, branch `work/v21-library-backup-and-template`
+
+From `main` after PR #68.
+
+- **A library backup had no extension on V21.** Measured: `PublishLibraryTypes` archived the library `Kit` as a file called `Kit`.
+  `LibraryArchiveRule` now names it `Kit.zal21` on V21, and the archive is checked to be there before the library is written;
+  V20 keeps the bare name it was measured with. `Test58` asserts the extension.
+- **The HMI connection template runs on V21.** `HmiTemplateProject.zap21` was made with `RetrieveProjectWithUpgrade` and
+  `ArchiveProject`, and `Test62DeviceTemplates` passes there: the placed copy keeps its integrated connection, the PLC takes its
+  password from the secret store, and the devices compile.
+- **The fixes listed for it before merging, done.** `CreateDevicesFromTemplate` proposes on the project and the library's folder
+  through `TargetToPropose`, so a policy has to allow both, and the plan names the secret; the network is recorded right before
+  the template is placed (`RecordNetworkBefore`, shared with the other network writes); the subnet is found before anything is
+  placed; devices join through `SubnetConfigurator.Connect`; devices of nested groups are placed too; devices with no Ethernet
+  interface and PLCs that already had a password are named in the answer; a failure is undone through `UnifiedRollback.Undo` with
+  TIA Portal's own reason; an empty address no longer counts as repeated. The description no longer says nothing existing changes.
+
+Code review 2026-11-11 (`/code-review high`), ten findings, eight fixed as above. Left: a template whose nodes arrive already on a
+subnet would now be refused rather than moved (the fixture's nodes arrive unconnected, so it is not measured), and a placement
+walks the project's devices about three times.
+
+**Tests:** against TIA Portal V21, `Test16GuardedWrites`, `Test55`, `Test58`, `Test62DeviceTemplates`: 114/114. Governance 1025.
+Build: 0 warnings. **Not run:** the whole Openness suite on this branch. Not covered by a test: nested groups, a device without
+Ethernet and a PLC already protected, as the fixture holds none.
+
+**Next, in order:** the user's commits and pull request; then measuring again on V21 what else was measured on V20.
+
 ### The repository builds for TIA Portal V21 by default — 2026-11-11, branch `work/v21-by-default`
 
 From `main` after PR #66. The development PC moved from V20 to V21 on 2026-11-09/10 and V20 is uninstalled, so `TiaVersion`
@@ -113,7 +140,7 @@ a leftover `.backup` folder and a project at a drive root; the suite's fixtures 
 
 **Tests:** Governance 1010, Spec 133, OpcUa 33. Build: 0 warnings.
 
-**Next, in order:** the user's commits and pull request; then whether a V21 library archive gets an extension; then measuring again
+**Next, in order (done the same day, see above: the pull request, PR #68, and the library archive's extension):** the user's commits and pull request; then whether a V21 library archive gets an extension; then measuring again
 what else was measured on V20; then the HMI connection template below, merged unfinished in PR #67, whose
 `HmiTemplateProject.zap20` needs the same upgrade.
 

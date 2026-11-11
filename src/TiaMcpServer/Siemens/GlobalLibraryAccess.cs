@@ -141,16 +141,45 @@ namespace TiaMcpServer.Siemens
 
             Directory.CreateDirectory(directory);
             Directory.CreateDirectory(scratch);
-            // Not measured on V21: a project archive there is written under exactly the name given, with no extension
-            // (2026-11-11), and a library archive may be too.
-            opened.Archive(new DirectoryInfo(scratch), Path.GetFileNameWithoutExtension(file.Name), LibraryArchivationMode.Compressed);
+            var archiveName = ArchiveName(file);
+            opened.Archive(new DirectoryInfo(scratch), archiveName, LibraryArchivationMode.Compressed);
 
-            foreach (var archive in Directory.GetFiles(scratch))
+            var written = Directory.GetFiles(scratch);
+            if (!IsArchiveWritten(written, archiveName))
+            {
+                throw new PortalException(PortalErrorCode.ExportFailed, $"TIA Portal reported the library archived, and '{archiveName}' is not in '{scratch}' (found: {string.Join(", ", written.Select(Path.GetFileName))}); nothing was written to the library");
+            }
+
+            foreach (var archive in written)
             {
                 File.Move(archive, Path.Combine(directory, Path.GetFileName(archive)));
             }
 
             Directory.Delete(scratch, recursive: true);
+        }
+
+        /// <remarks>
+        /// On V21 the name carries its extension, see <see cref="LibraryArchiveRule"/>. On V20 it stays bare, as it was
+        /// measured to work there, and what extension TIA Portal V20 adds was not recorded.
+        /// </remarks>
+        private static string ArchiveName(FileInfo file)
+        {
+            var name = Path.GetFileNameWithoutExtension(file.Name);
+#if TIA_V21
+            return LibraryArchiveRule.ArchiveFileName(name, Engineering.TiaMajorVersion);
+#else
+            return name;
+#endif
+        }
+
+        /// <remarks>A backup that is not there protects nothing, and the write it was meant to protect must not go on without it.</remarks>
+        private static bool IsArchiveWritten(string[] written, string archiveName)
+        {
+#if TIA_V21
+            return written.Any(path => string.Equals(Path.GetFileName(path), archiveName, StringComparison.OrdinalIgnoreCase));
+#else
+            return written.Length > 0 && archiveName.Length > 0;
+#endif
         }
 
         /// <remarks>

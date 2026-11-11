@@ -62,9 +62,10 @@ namespace TiaMcpServer.Siemens
         /// <summary>Brings a device group template into the open project, joins its devices to a subnet, protects its PLCs and compiles it.</summary>
         /// <param name="placement">The template, the subnet and the name of the secret.</param>
         /// <param name="secrets">Where the secret is kept.</param>
+        /// <param name="backupDirectory">Where the network as it stood is recorded first: a subnet already there is joined, and so changed.</param>
         /// <returns>What was placed, under the names TIA Portal gave it, with each device's compilation.</returns>
         /// <exception cref="PortalException">See <see cref="DeviceTemplateRules"/>; or the template or the secret is missing. What fails leaves nothing in the project.</exception>
-        public JsonObject CreateDevicesFromTemplate(DeviceTemplatePlacement placement, ISecretStore secrets)
+        public JsonObject CreateDevicesFromTemplate(DeviceTemplatePlacement placement, ISecretStore secrets, string backupDirectory)
         {
             _logger?.LogInformation("Placing template {Template} on subnet {Subnet}...", placement?.TemplateName, placement?.SubnetName);
 
@@ -74,8 +75,13 @@ namespace TiaMcpServer.Siemens
                 DeviceTemplateRules.CheckSubnetName(placement.SubnetName);
                 RequireDeviceGroupsOfOpenProject();
 
+                if (string.IsNullOrWhiteSpace(backupDirectory))
+                {
+                    throw new PortalException(PortalErrorCode.InvalidParams, "backupDirectory is required: a subnet already in the project is joined, and so changed");
+                }
+
                 using var password = string.IsNullOrWhiteSpace(placement.PlcSecretName) ? null : secrets.Reveal(placement.PlcSecretName);
-                var (placed, warning) = GlobalLibraryAccess.Use(RequirePortal(), placement.GlobalLibraryPath, global => PlaceTemplate(global, placement, password));
+                var (placed, warning) = GlobalLibraryAccess.Use(RequirePortal(), placement.GlobalLibraryPath, global => PlaceTemplate(global, placement, password, backupDirectory));
 
                 return WithWarning(placed, warning);
             }
@@ -106,7 +112,11 @@ namespace TiaMcpServer.Siemens
                 : throw new PortalException(PortalErrorCode.InvalidState, $"The device group '{groupName}' is empty; a template of it would bring nothing");
         }
 
-        private JsonObject PlaceTemplate(GlobalLibrary global, DeviceTemplatePlacement placement, SecureString? password)
+        /// <remarks>
+        /// The network is recorded once the template is found and right before anything is placed: a call refused for a name
+        /// or a secret that is not there leaves no backup protecting nothing.
+        /// </remarks>
+        private JsonObject PlaceTemplate(GlobalLibrary global, DeviceTemplatePlacement placement, SecureString? password, string backupDirectory)
         {
             var copy = MasterCopyReader.Find(global.MasterCopyFolder, placement.TemplateName)
                 ?? throw new PortalException(PortalErrorCode.NotFound, $"The global library has no template '{placement.TemplateName}'. It holds: {string.Join(", ", global.MasterCopyFolder.MasterCopies.Select(held => held.Name))}");
@@ -114,24 +124,41 @@ namespace TiaMcpServer.Siemens
             var contents = MasterCopyReader.Contents(copy);
             DeviceTemplateRules.RequireDeviceGroup(copy.Name, contents.Select(content => content.TypeName).ToList());
 
-            var placed = CurrentProject!.DeviceGroups.CreateFrom(copy);
+            // Found before anything is placed, so a failure in looking leaves nothing to take back.
             var subnet = FindSubnet(placement.SubnetName);
-            var isNewSubnet = subnet == null;
+            RecordNetworkBefore(backupDirectory);
+            var placed = CurrentProject!.DeviceGroups.CreateFrom(copy);
+            var made = new List<(string Name, Action Delete)> { (placed.Name, placed.Delete) };
 
             try
             {
-                subnet ??= CurrentProject.Subnets.Create(EthernetSubnetType, placement.SubnetName);
-                var joined = JoinToSubnet(placed, subnet);
-                var plcs = ProtectPlcs(placed, password);
+                subnet ??= CreateSubnet(placement.SubnetName, made);
+                var devices = AllDevices(placed);
 
-                return DescribePlaced(placed, contents[0].Name, (subnet.Name, joined, plcs));
+                return DescribePlaced(placed, contents[0].Name, devices, (subnet.Name, JoinToSubnet(devices, subnet), ProtectPlcs(devices, password)));
             }
             catch (Exception failure) when (!UnifiedRollback.IsSessionEnded(failure))
             {
-                var undone = UndoPlacement(placed, isNewSubnet ? subnet : null);
+                // TIA Portal's own reason is inside its wrapper, and the undo names only what this call made.
+                var reported = failure as PortalException
+                    ?? new PortalException(PortalErrorCode.WriteFailed, failure.GetBaseException().Message.Trim(), null, failure);
 
-                throw new PortalException((failure as PortalException)?.Code ?? PortalErrorCode.WriteFailed, $"{failure.GetBaseException().Message.Trim()} {undone}", null, failure);
+                throw UnifiedRollback.Undo(made, reported, made.Count == 1 ? "device group" : "device group and subnet");
             }
+        }
+
+        private Subnet CreateSubnet(string subnetName, List<(string Name, Action Delete)> made)
+        {
+            var created = CurrentProject!.Subnets.Create(EthernetSubnetType, subnetName);
+            made.Add((created.Name, created.Delete));
+
+            return created;
+        }
+
+        /// <remarks>A template's group may hold groups of its own, and their devices are placed with it.</remarks>
+        private static List<Device> AllDevices(DeviceUserGroup group)
+        {
+            return group.Devices.Concat(group.Groups.SelectMany(AllDevices)).ToList();
         }
 
         private Subnet? FindSubnet(string subnetName)
@@ -139,21 +166,29 @@ namespace TiaMcpServer.Siemens
             return AllSubnets().FirstOrDefault(subnet => string.Equals(subnet.Name, subnetName, StringComparison.OrdinalIgnoreCase));
         }
 
-        /// <remarks>One interface for each device: a second one on the same subnet is a fault, and which to use is the template's to say.</remarks>
-        private static JsonArray JoinToSubnet(DeviceUserGroup placed, Subnet subnet)
+        /// <remarks>
+        /// One interface for each device: a second one on the same subnet is a fault, and which to use is the template's to say.
+        /// Through <see cref="SubnetConfigurator"/>, as ConnectDeviceToSubnet does, so a node already on another subnet is
+        /// refused rather than moved. A device with no Ethernet interface is named in the answer, not passed over.
+        /// </remarks>
+        private (JsonArray Joined, JsonArray WithoutEthernet) JoinToSubnet(IReadOnlyList<Device> devices, Subnet subnet)
         {
-            var nodes = placed.Devices.Select(device => (Device: device, Node: FirstEthernetNode(device))).Where(entry => entry.Node != null).ToList();
+            var nodes = devices.Select(device => (Device: device, Node: FirstEthernetNode(device))).ToList();
+            var withEthernet = nodes.Where(entry => entry.Node != null).ToList();
 
-            DeviceTemplateRules.CheckAddressesFree(subnet.Name, subnet.Nodes.Select(AddressOf), nodes.Select(entry => AddressOf(entry.Node!)));
+            DeviceTemplateRules.CheckAddressesFree(subnet.Name, subnet.Nodes.Select(AddressOf), withEthernet.Select(entry => AddressOf(entry.Node!)));
 
+            var configurator = new SubnetConfigurator(_logger);
+            var subnets = AllSubnets();
             var joined = new JsonArray();
-            foreach (var (device, node) in nodes)
+
+            foreach (var (device, node) in withEthernet)
             {
-                node!.ConnectToSubnet(subnet);
-                joined.Add(new JsonObject { ["device"] = device.Name, ["node"] = node.Name, ["address"] = AddressOf(node) });
+                configurator.Connect(node!, subnets, subnet.Name);
+                joined.Add(new JsonObject { ["device"] = device.Name, ["node"] = node!.Name, ["address"] = AddressOf(node) });
             }
 
-            return joined;
+            return (joined, new JsonArray(nodes.Where(entry => entry.Node == null).Select(entry => (JsonNode)entry.Device.Name).ToArray()));
         }
 
         private static string AddressOf(Node node)
@@ -175,46 +210,70 @@ namespace TiaMcpServer.Siemens
             return items.SelectMany(item => new[] { item }.Concat(AllDeviceItems(item.DeviceItems)));
         }
 
-        /// <remarks>Only a PLC without a password: TIA Portal refuses a second one (measured 2026-11-08).</remarks>
-        private static (JsonArray Protected, JsonArray WithoutPassword) ProtectPlcs(DeviceUserGroup placed, SecureString? password)
+        /// <remarks>
+        /// Only a PLC without a password: TIA Portal refuses a second one (measured 2026-11-08). One that had a password in
+        /// the template keeps it, and is named so, since the stored secret is then not the one that opens it.
+        /// </remarks>
+        private static PlcProtection ProtectPlcs(IReadOnlyList<Device> devices, SecureString? password)
         {
-            var isProtected = new JsonArray();
-            var withoutPassword = new JsonArray();
+            var protection = new PlcProtection();
 
-            foreach (var item in placed.Devices.SelectMany(device => AllDeviceItems(device.DeviceItems)))
+            foreach (var item in devices.SelectMany(device => AllDeviceItems(device.DeviceItems)))
             {
                 var configurator = item.GetService<PlcMasterSecretConfigurator>();
 
-                if (configurator == null || configurator.MasterSecretConfiguration == MasterSecretConfiguration.WithPassword)
+                if (configurator == null)
                 {
+                    continue;
+                }
+
+                if (configurator.MasterSecretConfiguration == MasterSecretConfiguration.WithPassword)
+                {
+                    protection.AlreadyProtected.Add(item.Name);
                     continue;
                 }
 
                 if (password == null)
                 {
-                    withoutPassword.Add(item.Name);
+                    protection.WithoutPassword.Add(item.Name);
                     continue;
                 }
 
                 configurator.Protect(password);
-                isProtected.Add(item.Name);
+                protection.Protected.Add(item.Name);
             }
 
-            return (isProtected, withoutPassword);
+            return protection;
         }
 
-        private static JsonObject DescribePlaced(DeviceUserGroup placed, string nameInTemplate, (string Subnet, JsonArray Joined, (JsonArray Protected, JsonArray WithoutPassword) Plcs) connected)
+        /// <remarks>
+        /// TIA Portal renames a group placed a second time and every device in it (Group_2, PLC_2, HMI_RT_2, measured
+        /// 2026-11-08), so the devices are named as they now are, beside the flag.
+        /// </remarks>
+        private static JsonObject DescribePlaced(DeviceUserGroup placed, string nameInTemplate, IReadOnlyList<Device> devices, (string Subnet, (JsonArray Joined, JsonArray WithoutEthernet) Network, PlcProtection Plcs) connected)
         {
             return new JsonObject
             {
                 ["group"] = placed.Name,
                 ["renamedByTiaPortal"] = placed.Name != nameInTemplate,
+                ["devices"] = new JsonArray(devices.Select(device => (JsonNode)device.Name).ToArray()),
                 ["subnet"] = connected.Subnet,
-                ["joined"] = connected.Joined,
+                ["joined"] = connected.Network.Joined,
+                ["withoutEthernet"] = connected.Network.WithoutEthernet,
                 ["protectedPlcs"] = connected.Plcs.Protected,
                 ["plcsWithoutPassword"] = connected.Plcs.WithoutPassword,
-                ["compile"] = new JsonArray(placed.Devices.Select(device => (JsonNode)DescribeCompilation(device)).ToArray())
+                ["plcsAlreadyProtected"] = connected.Plcs.AlreadyProtected,
+                ["compile"] = new JsonArray(devices.Select(device => (JsonNode)DescribeCompilation(device)).ToArray())
             };
+        }
+
+        private sealed class PlcProtection
+        {
+            public JsonArray Protected { get; } = new JsonArray();
+
+            public JsonArray WithoutPassword { get; } = new JsonArray();
+
+            public JsonArray AlreadyProtected { get; } = new JsonArray();
         }
 
         private static JsonObject DescribeCompilation(Device device)
@@ -240,24 +299,6 @@ namespace TiaMcpServer.Siemens
             catch (Exception failure) when (IsUndoableFailure(failure))
             {
                 return new CompilationReport(CompilationSeverity.Error, errorCount: 1, warningCount: 0, new[] { new CompilationMessage(CompilationSeverity.Error, device.Name, failure.Message) });
-            }
-        }
-
-        /// <returns>What became of it, for the refusal to say; a failure here must not replace the failure being reported.</returns>
-        private static string UndoPlacement(DeviceUserGroup placed, Subnet? createdSubnet)
-        {
-            var name = placed.Name;
-
-            try
-            {
-                placed.Delete();
-                createdSubnet?.Delete();
-
-                return "Nothing was left in the project.";
-            }
-            catch (Exception failure) when (IsUndoableFailure(failure))
-            {
-                return $"Taking it back failed too ({failure.Message}): the device group '{name}' may still be in the project.";
             }
         }
     }

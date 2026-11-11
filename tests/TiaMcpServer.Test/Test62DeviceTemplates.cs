@@ -101,7 +101,7 @@ namespace TiaMcpServer.Test
         {
             var failure = Assert.ThrowsException<PortalException>(() => Place("PN_Cell", WeakSecret));
 
-            StringAssert.Contains(failure.Message, "Nothing was left", StringComparison.Ordinal);
+            StringAssert.Contains(failure.Message, "Nothing was created", StringComparison.Ordinal);
             Assert.IsFalse(failure.Message.Contains(WeakPassword), failure.Message);
             Assert.AreEqual(0, AssemblyHooks.SharedPortal.GetSoftwarePaths().Count);
         }
@@ -132,9 +132,26 @@ namespace TiaMcpServer.Test
         [TestMethod]
         public void CreateDevicesFromTemplate_ATemplateNotThere_IsNotFound()
         {
-            var failure = Assert.ThrowsException<PortalException>(() => AssemblyHooks.SharedPortal.CreateDevicesFromTemplate(new DeviceTemplatePlacement(_library, "No_Such_Template", "PN", string.Empty), new MadeUpSecrets()));
+            var failure = Assert.ThrowsException<PortalException>(() => AssemblyHooks.SharedPortal.CreateDevicesFromTemplate(new DeviceTemplatePlacement(_library, "No_Such_Template", "PN", string.Empty), new MadeUpSecrets(), AssemblyHooks.CreateTestDirectory()));
 
             Assert.AreEqual(PortalErrorCode.NotFound, failure.Code, failure.Message);
+        }
+
+        /// <remarks>
+        /// Joining a subnet already in the project changes it, so the network as it stood is kept first: the record holds
+        /// the first placement's PLC and not the second's, which TIA Portal names PLC_2.
+        /// </remarks>
+        [TestMethod]
+        public void CreateDevicesFromTemplate_PlacedAgain_RecordsTheNetworkAsItStoodBefore()
+        {
+            Place("PN_One", Secret);
+            var backup = AssemblyHooks.CreateTestDirectory();
+
+            AssemblyHooks.SharedPortal.CreateDevicesFromTemplate(new DeviceTemplatePlacement(_library, Template, "PN_Two", Secret), new MadeUpSecrets(), backup);
+
+            var recorded = File.ReadAllText(Path.Combine(backup, "network", "topology.txt"));
+            StringAssert.Contains(recorded, "PLC_1", StringComparison.Ordinal);
+            Assert.IsFalse(recorded.Contains("PLC_2"), recorded);
         }
 
         [TestMethod]
@@ -147,7 +164,7 @@ namespace TiaMcpServer.Test
 
         private static JsonObject Place(string subnet, string secret)
         {
-            return AssemblyHooks.SharedPortal.CreateDevicesFromTemplate(new DeviceTemplatePlacement(_library, Template, subnet, secret), new MadeUpSecrets());
+            return AssemblyHooks.SharedPortal.CreateDevicesFromTemplate(new DeviceTemplatePlacement(_library, Template, subnet, secret), new MadeUpSecrets(), AssemblyHooks.CreateTestDirectory());
         }
 
         private static int Errors(JsonObject placed)
