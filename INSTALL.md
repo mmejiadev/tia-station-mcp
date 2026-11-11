@@ -1,7 +1,7 @@
 ﻿# Installing tia-station-mcp
 
 This is a desktop tool, not a service. It runs on one Windows PC, the same one that has TIA Portal
-V20 installed and licensed, and nothing it produces leaves that machine.
+V21 installed and licensed, and nothing it produces leaves that machine.
 
 That is not a limitation waiting to be engineered away. Openness is an in-process API against an
 installed TIA Portal, so there is no container, no Linux host and no cloud version. It also means no
@@ -16,14 +16,15 @@ called out where they happen.
 
 | | Needed for | If it is missing |
 |---|---|---|
-| **TIA Portal V20**, with the Openness option, licensed | Everything | Nothing runs |
+| **TIA Portal V21**, with the Openness option, licensed | Everything | Nothing runs |
 | Membership of the Windows group **`Siemens TIA Openness`** | Everything | The server refuses to start |
 | **.NET Framework 4.8** | The server | It will not launch |
-| **PLCSIM Advanced V20**, with its own licence | Downloading and reading tags | The server still compiles and exports; every simulation tool reports the runtime as unavailable |
+| **PLCSIM Advanced V8.0**, with its own licence | Downloading and reading tags | The server still compiles and exports; every simulation tool reports the runtime as unavailable |
 | **Node 22.6 or newer** | The harness, the dashboard, the documentation lookup | The MCP server itself is unaffected |
 
-**V21 will not do.** This server targets V20, and the Openness API is versioned: a V21 installation
-is a different API, not a newer one.
+**Each build serves one version.** This server targets V21, and the Openness API is versioned: V21
+is a different API from V20, not a newer one. For TIA Portal V20, build with `-p:TiaVersion=20` and
+run the check below with `-TiaVersion 20`.
 
 ### Check it rather than assume it
 
@@ -41,7 +42,7 @@ is there and 1 when it is not, so it can gate a script.
 If TIA Portal is somewhere other than the default:
 
 ```powershell
-.\scripts\Test-Preconditions.ps1 -TiaPortalLocation 'D:\Siemens\Automation\Portal V20'
+.\scripts\Test-Preconditions.ps1 -TiaPortalLocation 'D:\Siemens\Automation\Portal V21'
 ```
 
 ### The group is granted at sign-in, not when you are added
@@ -191,7 +192,7 @@ No tool does this for you, on purpose.
 Four steps, in this order. If all four work, the installation is good.
 
 1. **Connect.** Ask the host to call `Connect`. First time, expect the whitelist dialog from step 3.
-2. **Open a project** with `OpenProject`, giving the full path to the `.ap20` file.
+2. **Open a project** with `OpenProject`, giving the full path to the `.ap21` file.
 3. **Compile** with `CompileSoftware` on a PLC software path such as `PLC_0`.
 4. **Download to PLCSIM and read a tag** with `DownloadToSimulation` and then `ReadSimulationTags`.
 
@@ -214,7 +215,7 @@ Everything on this one machine.
 
 | Piece | What it needs |
 |---|---|
-| `TiaMcpServer.exe` | TIA Portal V20, .NET 4.8, the group |
+| `TiaMcpServer.exe` | TIA Portal V21, .NET 4.8, the group |
 | The harness | Node, and the server built or installed |
 | The API and dashboard | Node, loopback only |
 | The knowledge index | Node, and documents you supply yourself |

@@ -171,7 +171,7 @@ anything typed into it to anything that changes a project.
 ## Requirements
 
 - Windows x64
-- TIA Portal V20 with the Openness component
+- TIA Portal V21 with the Openness component (V20 with `-p:TiaVersion=20`)
 - User in the `Siemens TIA Openness` Windows group — needs a re-login for the token
 - .NET Framework 4.8
 - PLCSIM Advanced, for the test phase

@@ -26,7 +26,7 @@
 # that is the intended alarm rather than an accident.
 #
 # What still cannot run here is everything that drives TIA Portal: TiaMcpServer.Test starts a portal
-# in [AssemblyInitialize]. To add it once a Windows machine with TIA Portal V20 is registered as a
+# in [AssemblyInitialize]. To add it once a Windows machine with TIA Portal V21 is registered as a
 # self-hosted runner, add a job with `runs-on: [self-hosted, windows, tia-portal]` calling
 # `dotnet build TiaMcpServer.sln` and `dotnet test`. It is not written here because a job whose
 # runner does not exist queues forever and reports nothing, which is worse than an honest gap.

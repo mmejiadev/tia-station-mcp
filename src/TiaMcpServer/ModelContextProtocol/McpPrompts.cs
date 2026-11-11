@@ -24,7 +24,7 @@ Use the Connect tool to initiate the connection.";
             return $@"Open the TIA Portal project.
 
 Common parameter values:
-- projectPath: the full path to the project file (.ap18, .ap19, .ap20, etc.) or local session file (.als18, .als19, .als20, etc.).
+- projectPath: the full path to the project file (.ap20, .ap21, etc.) or local session file (.als20, .als21, etc.).
 
 Use the OpenProject tool with this parameter:
 - projectPath: {projectPath}";
