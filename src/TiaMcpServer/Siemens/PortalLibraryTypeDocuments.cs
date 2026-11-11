@@ -82,7 +82,7 @@ namespace TiaMcpServer.Siemens
                 var instance = RequireTypeInstance(request.SoftwarePath, document, replaceInWork);
 
                 var before = SaveTypeVersionBackup(request, software, found, instance);
-                var result = found.Type.Versions.CreateFromDocuments(DocumentFolder(request.ImportPath), document.Name, replaceInWork ? CreateOptions.Override : CreateOptions.None, LibraryImportOptions.None);
+                var result = CreateVersionFromDocuments(found.Type, (request.ImportPath, document.Name), (instance, before), replaceInWork);
 
                 if (result.CreatedVersion == null)
                 {
@@ -103,6 +103,58 @@ namespace TiaMcpServer.Siemens
                 throw DecorateLibraryFailure(AsLibraryFailure(ex, "CreateLibraryTypeVersionFromDocument", PortalErrorCode.WriteFailed), "CreateLibraryTypeVersionFromDocument", request?.SoftwarePath ?? string.Empty, typeName ?? string.Empty);
             }
         }
+
+        /// <remarks>
+        /// V20 made the next version through the instance with no target (measured 2026-11-08). V21 refuses that with
+        /// "an object with the name ... already exists in the plc", and with the instance's group as the target as well
+        /// (both measured 2026-11-11). What V21 does take is replacing a version in work: so the next version is started
+        /// from the newest released one through the instance, as <c>Edit(LibraryTypeInstanceInfo)</c> does in TIA Portal's
+        /// own "edit type", and the document then replaces what it holds. A failure after that start takes it back.
+        /// </remarks>
+        private static VersionCreateTransferResults CreateVersionFromDocuments(LibraryType type, (string ImportPath, string Name) source, (TypeInstance Instance, DirectoryInfo Before) state, bool replaceInWork)
+        {
+            var folder = DocumentFolder(source.ImportPath);
+#if TIA_V21
+            if (!replaceInWork)
+            {
+                StartNextVersion(type, state.Instance);
+                return ReplaceStartedVersion(type, folder, source.Name, state.Before);
+            }
+#else
+            _ = state;
+#endif
+            return type.Versions.CreateFromDocuments(folder, source.Name, replaceInWork ? CreateOptions.Override : CreateOptions.None, LibraryImportOptions.None);
+        }
+
+#if TIA_V21
+        private static void StartNextVersion(LibraryType type, TypeInstance instance)
+        {
+            var newest = LibraryPublishRules.ReleasedVersion(type.Name, LibraryTypeReader.Versions(type), null);
+            var instanceInfo = instance.Item.GetService<LibraryTypeInstanceInfo>()
+                ?? throw new PortalException(PortalErrorCode.InvalidState, $"The instance of '{type.Name}' is not linked to the type, and TIA Portal starts a new version through it");
+
+            FindVersion(type, newest).Edit(instanceInfo);
+        }
+
+        private static VersionCreateTransferResults ReplaceStartedVersion(LibraryType type, DirectoryInfo folder, string name, DirectoryInfo before)
+        {
+            try
+            {
+                var result = type.Versions.CreateFromDocuments(folder, name, CreateOptions.Override, LibraryImportOptions.None);
+
+                if (result.CreatedVersion == null)
+                {
+                    throw new PortalException(PortalErrorCode.WriteFailed, $"{NotTaken(name, result.Messages).Message} {UndoTypeVersion(type, before, replaceInWork: false)}");
+                }
+
+                return result;
+            }
+            catch (Exception failure) when (IsUndoableFailure(failure))
+            {
+                throw new PortalException(PortalErrorCode.WriteFailed, $"{failure.Message.Trim()} {UndoTypeVersion(type, before, replaceInWork: false)}", null, failure);
+            }
+        }
+#endif
 
         private static (LibraryTypeDocumentKind Kind, string Name) ReadTypeDocument(string importPath, string documentName)
         {
