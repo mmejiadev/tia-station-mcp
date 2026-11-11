@@ -93,6 +93,8 @@ namespace TiaMcpServer.Siemens
                     throw new PortalException(PortalErrorCode.InvalidParams, "A project path is required");
                 }
 
+                ProjectUpgradeRule.RequireNoUpgradeNeeded(requested, Engineering.TiaMajorVersion, "OpenProjectWithUpgrade");
+
                 var openPath = ProjectPathInAttachedPortal(requested);
 
                 return CarryOut(DecideOpening(requested, openPath), requested, openPath);
@@ -116,8 +118,9 @@ namespace TiaMcpServer.Siemens
         /// </summary>
         /// <param name="archivePath">Full path of the archive to retrieve.</param>
         /// <param name="targetDirectory">
-        /// Directory the project is extracted into. TIA Portal creates a subfolder named after the
-        /// archive; if that subfolder already exists the call is refused rather than overwriting it.
+        /// Directory the project is extracted into, empty or new. TIA Portal creates a subfolder
+        /// named after the project inside the archive, which cannot be known before retrieving it,
+        /// so a directory holding anything is refused rather than risking an overwrite.
         /// </param>
         /// <returns>The full path of the retrieved project file.</returns>
         /// <exception cref="PortalException">
@@ -133,9 +136,8 @@ namespace TiaMcpServer.Siemens
                 ValidateRetrieveRequest(archivePath, targetDirectory);
                 MakeRoomForNewProject(targetDirectory);
 
-                // Retrieve() upgrades nothing: an archive from an older TIA version needs
-                // RetrieveWithUpgrade instead, which rewrites the project irreversibly.
-                // Staying on Retrieve keeps this operation non-destructive by default.
+                // Retrieve() upgrades nothing, which keeps this non-destructive by default. An archive
+                // from an older TIA Portal goes through RetrieveProjectWithUpgrade, asked for by name.
                 CurrentProject = _portal!.Projects.Retrieve(new FileInfo(archivePath), new DirectoryInfo(targetDirectory));
 
                 if (CurrentProject == null)
@@ -231,6 +233,12 @@ namespace TiaMcpServer.Siemens
 
         private void ValidateRetrieveRequest(string archivePath, string targetDirectory)
         {
+            ValidateRetrieveTarget(archivePath, targetDirectory);
+            ProjectUpgradeRule.RequireNoUpgradeNeeded(archivePath, Engineering.TiaMajorVersion, "RetrieveProjectWithUpgrade");
+        }
+
+        private void ValidateRetrieveTarget(string archivePath, string targetDirectory)
+        {
             if (string.IsNullOrWhiteSpace(archivePath))
             {
                 throw new PortalException(PortalErrorCode.InvalidParams, "archivePath is required");
@@ -251,11 +259,7 @@ namespace TiaMcpServer.Siemens
                 throw new PortalException(PortalErrorCode.NotFound, $"Archive not found: {archivePath}");
             }
 
-            var projectDirectory = Path.Combine(targetDirectory, Path.GetFileNameWithoutExtension(archivePath));
-            if (Directory.Exists(projectDirectory))
-            {
-                throw new PortalException(PortalErrorCode.InvalidState, $"Target already exists, refusing to overwrite: {projectDirectory}");
-            }
+            RequireEmptyTarget(targetDirectory);
         }
 
         public object? GetProjectInfo()
