@@ -133,7 +133,7 @@ namespace TiaMcpServer.ModelContextProtocol
             };
         }
 
-        [McpServerTool(Name = "AddDevice"), Description("Add a station to the open project: a CPU, an HMI panel, anything TIA Portal creates from an order number. The answer gives the path of the device's software - a PLC program or an HMI target - to pass to the other tools; a panel's HMI target sits on an item TIA Portal names itself, e.g. 'HMI_1/HMI_RT_2'. A name another device already has is refused. Nothing existing changes, so no backup is taken. Then PlugModule, SetDeviceAddress and CompileHardware.")]
+        [McpServerTool(Name = "AddDevice"), Description("Add a station to the open project: a CPU, an HMI panel, anything TIA Portal creates from an order number. The answer gives the path of the device's software - a PLC program or an HMI target - to pass to the other tools; a panel's HMI target sits on an item TIA Portal names itself, e.g. 'HMI_1/HMI_RT_2'. A name another device already has is refused. In Study Mode a PLC is left the way the class uses it, without passwords - confidential configuration data not protected and, where it has an access level, full access with no password - since on TIA Portal V21 a new S7-1500 does not compile until both are set or removed; the plan says so, and the answer lists each PLC (meta 'plcs'). An S7-1200 has no access level, its access being users and roles: it compiles once some user has full access, so the project's Anonymous user is activated and given the 'PLC administrator' role, which reaches every such PLC of the project; its state before is recorded, and in Study Mode the policy has to allow 'project' as well as the station. In Workshop Mode a PLC keeps the protection TIA Portal gives it. Nothing else existing changes but that user. Then PlugModule, SetDeviceAddress and CompileHardware.")]
         public static ResponseMessage AddDevice(
             [Description("typeIdentifier: what to create, as Openness names it, e.g. 'OrderNumber:6ES7 511-1AL03-0AB0/V4.0'")] string typeIdentifier,
             [Description("deviceName: name for the station, e.g. 'PLC_1'")] string deviceName)
@@ -143,12 +143,18 @@ namespace TiaMcpServer.ModelContextProtocol
 
             try
             {
-                var request = new Governance.ChangeRequest("AddDevice", ChangeTarget.Program(deviceName), typeIdentifier);
+                var opensPlcs = OpensAddedPlcs();
+                var detail = opensPlcs
+                    ? $"{typeIdentifier}; a PLC in it is left without passwords, and one on users and roles gives the project's Anonymous user PLC administrator (Study Mode)"
+                    : typeIdentifier;
+                var stationTarget = ChangeTarget.Program(deviceName);
+                var backupDirectory = Backups.Allocate("AddDevice", stationTarget);
+                var request = new Governance.ChangeRequest("AddDevice", TargetOfAddDevice(stationTarget, opensPlcs), detail).WithBackup(backupDirectory);
 
                 return GuardedTool.Run(
                     GuardedWrites,
                     request,
-                    () => DescribeAddedStation(Portal.AddDevice(typeIdentifier, deviceName), typeIdentifier),
+                    () => DescribeAddedDevice(Portal.AddDevice(typeIdentifier, deviceName), typeIdentifier, opensPlcs, backupDirectory),
                     () => new ResponseMessage());
             }
             catch (Exception ex) when (ex is not McpException)
@@ -181,14 +187,14 @@ namespace TiaMcpServer.ModelContextProtocol
             }
         }
 
-        private static ResponseMessage DescribeAddedStation(string added, string typeIdentifier)
+        private static ResponseMessage DescribeAddedStation(string added, string typeIdentifier, string note = "")
         {
             var softwarePaths = string.Join(", ", Portal.GetSoftwarePaths(added));
             var software = softwarePaths.Length == 0 ? string.Empty : $"; its software is at {softwarePaths}";
 
             return new ResponseMessage
             {
-                Message = $"Device '{added}' added from '{typeIdentifier}'{software}",
+                Message = $"Device '{added}' added from '{typeIdentifier}'{software}{note}",
                 Meta = new JsonObject
                 {
                     ["timestamp"] = DateTime.Now,

@@ -717,6 +717,39 @@ namespace TiaMcpServer.Test
             }
         }
 
+        /// <remarks>It lowers a PLC's protection, so it has to be asked like any other write.</remarks>
+        [TestMethod]
+        public void SetPlcFullAccess_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.SetPlcFullAccess("PLC_Refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        /// <remarks>
+        /// On a PLC with users and roles it changes the project's Anonymous user, which reaches every such PLC of the
+        /// project, so a policy that allows only the PLC must not let it through.
+        /// </remarks>
+        [TestMethod]
+        public void SetPlcFullAccess_PolicyAllowingOnlyThePlc_IsRefusedOnTheProject()
+        {
+            var policy = Path.Combine(AssemblyHooks.CreateTestDirectory(), "plc-only.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(policy)!);
+            File.WriteAllText(policy, "{ \"study\": { \"allow\": [ \"PLC_Refused\", \"PLC_Refused/*\" ], \"deny\": [] } }");
+            McpServer.SetServiceProvider(BuildDenyEverythingServices(policy));
+
+            try
+            {
+                var response = McpServer.SetPlcFullAccess("PLC_Refused/PLC_Refused");
+
+                Assert.AreEqual("Refused", response.Meta?["outcome"]?.GetValue<string>(), response.Message);
+                StringAssert.Contains(response.Message ?? string.Empty, "project", StringComparison.Ordinal);
+            }
+            finally
+            {
+                McpServer.SetServiceProvider(BuildDenyEverythingServices(Path.Combine(AssemblyHooks.WorkingRoot, "no-such-policy.json")));
+            }
+        }
         [TestMethod]
         public void ReleaseLibraryType_WithNoPolicy_IsRefused()
         {
