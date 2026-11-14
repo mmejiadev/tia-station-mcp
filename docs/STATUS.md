@@ -1,9 +1,109 @@
-﻿ Project status
+﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-11-11**
+> Last updated: **2026-11-14**
 
 ## ▶ RESUME HERE
+
+### Users and roles: an S7-1200 left without passwords compiles too — 2026-11-13, branch `work/v21-hmi-and-plc-access`
+
+Asked for by the user ("accesses"). **Measured on TIA Portal V21** on the probe project's S7-1200 V4.7: with its confidential
+data unprotected, one error remained, "At least one user must have the following runtime right: Full access"; activating the
+project's anonymous user (`UmacConfigurator.ActivateAnonymousUser`) and giving it the system role identified `PLCAdministrator`
+(HMI, read and full access) left it at 0 errors and one warning, that this is for testing. `UmacDevice` is a service of the
+station, not the PLC, and **passing a null one to UMAC took TIA Portal down** — the server never does. Role identifiers:
+`PLCAdministrator`, `PLCFAdministrator`, `PLCOperator`, `HMIAdministrator`; they do not follow TIA Portal's language, names do.
+
+**Changed:** `SetPlcFullAccess`, and `AddDevice` in Study Mode, now give the project's anonymous user that role whenever a PLC
+they open has no access level of its own (`AnonymousUserAccess`), recording its state before; they answer with a
+`PlcAccessReport` that says so. The anonymous user belongs to the whole project and reaches every PLC on users and roles:
+both plans say so, and `AddDevice` now takes a backup directory for that record.
+
+**Tests:** `Test65` +2 (a new S7-1200 compiles with 0 errors; an S7-1500 leaves the anonymous user alone). Governance 1125.
+Build: 0 warnings. Run against TIA Portal V21 on 2026-11-14 with the rest of the V21 work: `Test62`, `Test65` and `Test66` pass.
+
+### Measuring V20's facts again on V21 — 2026-11-11, branch `work/v21-hmi-and-plc-access`
+
+From `main` after PR #69. Probes outside the repository, each in a TIA Portal V21 it started itself without a window, on copies
+of `HmiTemplateProject.zap21` and on a new project; nothing of the user's was opened.
+
+- **The Openness API, V20 against V21.** Listed by reflection from both sets of assemblies: 322 types added, 16 removed (drive
+  telegrams, version-control workspace mappings, `ISoftwareCompareTarget`), none of them used here. Added and of use to us:
+  `HW.CommunicationConnections` (below), `PlcBlockWriteProtectionProvider`, `PlcBlock.Comment`, `Title`, `LoadMemoryLength`,
+  `WorkMemoryLength` and `DownloadDate`, `HmiSoftware.HmiGraphicLists`, the alarm line and alarm indicator of WinCC Unified, and
+  a download option to reinitialise data blocks or keep their values.
+- **An integrated HMI connection can be made through Openness on V21.** In V20 it was made by hand, as `Partner`, `Station` and
+  `Node` of a Unified connection are read-only. V21 adds `CommunicationManagement`, a service of every device item, whose
+  `Connections` on the HMI runtime's item (`HMI_RT_1`) holds the integrated connection as an `HmiConnection`. Measured twice:
+  in the fixture, the connection deleted and made again with `Connections.Create<HmiConnection>(localNode, plcItem, plcNode)`
+  came back as `HMI_Connection_2`; in a new project, a PLC and a PC station on one subnet got `HMI_Connection_1`,
+  192.168.0.2 to 192.168.0.1, `IsValid` true. Either way `HmiSoftware.Connections` lists it with driver
+  `SIMATIC S7 1200/1500` and `PLC_1` as its partner. It compiles: the new project's connection error ("Invalid certificate
+  configuration, please recompile your PLC") went once the PLC had a password for its confidential data and compiled.
+- **A PC station with WinCC Unified PC V21 is built as on V20.** `System:Rack.PC`, the runtime
+  `OrderNumber:6AV2 155-xxxxx-xxxx/21.0.1.0` plugged with an empty name in slot 1 (`HMI_RT_1`), `IE general` V8.2 in slot 2
+  (`IE general_1`). `PcHmiRuntime` accepts only `/20.0.0.2`, so `AddPcStation` refuses a V21 runtime it could build.
+- **A new S7-1200 V4.7 on V21 does not compile without a user holding "Full access"** ("Users and roles: At least one user must
+  have the following runtime right: Full access"), after its password for confidential data; a new WinCC Unified runtime wants
+  a runtime password and a start screen. Measured on a new project; projects made before carry their own settings.
+- **Still true on V21:** an S7-1200 (1215C, V4.7) exposes 31 attributes and no clock or system memory
+  (`ClockMemoryByte` and the rest: "not supported"); a SIMATIC SD document is exported for a block that does not compile
+  (`Test33`, in the V21 run of 2026-11-11); disposing the `TiaPortal` of an instance the server started closes it (gone within
+  20 s). Not measured again: that disposing a `TiaPortalProcess` closes a TIA Portal with a window, as only a window started
+  for the purpose could be used; the code keeps not doing it.
+
+**Then, the same day, the three changes the measuring made possible.**
+
+- **`AddPcStation` takes WinCC Unified PC RT V21** (`OrderNumber:6AV2 155-xxxxx-xxxx/21.0.1.0`, `PcHmiRuntime.UnifiedPcV21`).
+  The V20 runtime is still in V21's catalogue and still plugs, which is how `Test43` passed on V21 before; a class project made
+  in V21 uses the V21 one. `Test43` runs both.
+- **`SetPlcFullAccess`, new, and `AddDevice` doing the same to every PLC it adds.** Asked for by the user after a class
+  project's PLC_2 would not compile: on V21 a new CPU 1512C-1 PN V2.9 holds `WithoutPassword` for its confidential data and
+  `NoAccess` as its access level, and its hardware has three password errors. `PlcMasterSecretConfigurator.Unprotect()` and
+  `PlcAccessLevelProvider.PlcProtectionAccessLevel = FullAccess` leave it compiling with two warnings — measured on a probe
+  project and then on the class project's PLC_2, which compiled, downloaded to PLCSIM Advanced and ran. A PLC whose
+  confidential data has a password is refused, every PLC of the item checked before any is changed; the tool records each
+  PLC's parameters and protection first. **A deliberate default:** a PLC added through the server is unprotected, as the
+  class works; the tool's text says it is not for a PLC running a real machine.
+- **`CreateHmiConnection`, new (V21 only).** The integrated connection between a Unified HMI and a PLC on one subnet,
+  proposed on the HMI and the PLC through `TargetToPropose`, the network recorded first; a second connection between the
+  same two, two devices not on one subnet, and a path that is not a Unified HMI or a PLC are refused. On V20 it refuses,
+  saying the connection is made by hand there.
+
+**Tests:** `Test65PlcAccess` (9) and `Test66HmiConnections` (6) new; `Test16GuardedWrites` +3 (`SetPlcFullAccess`,
+`CreateHmiConnection`, and a policy allowing only the HMI refusing on the PLC); `Test43` and `PcHmiRuntimeTests` +1 runtime.
+Build: 0 warnings. Against TIA Portal V21 (2026-11-12): `Test16`, `Test43`, `Test65`, `Test66` together 99 of 105, the six
+failures the new tests' own (a bare `PLC_1` where a station made by `AddDevice` names its CPU `PLC_1/PLC_1`, and a station
+where a device item is taken); fixed, `Test65` and `Test66` 14/14. Governance 1027. The README's tool count (98) was already
+behind and is left alone.
+
+Code review 2026-11-12 (`/code-review high`), ten findings, all fixed: AddDevice answers that the station was added, with a
+warning, when its PLC could not be opened, instead of failing a plan whose station exists; the protection check is an allow-list
+(`None` and `WithoutPassword` for the confidential data, the five measured access levels) that refuses anything else, and the
+remarks and tool text say an access-level password cannot be read through Openness; a failure part-way names the PLCs already
+changed; each backup record is named after the PLC's whole path; `CreateHmiConnection` takes the first pair of nodes on one
+subnet rather than the first node on each side, and on V20 refuses before a backup or a plan; one `EthernetNodes` walk serves it
+and the template placement; `Test62` asserts a PLC protected with a password is refused. Its run found one more fact: **an
+S7-1200 V4.7 has no access-level service** (its access is users and roles), so a PLC is one that protects confidential data and
+the level is changed where there is one (`Test65`, a new S7-1200). After the fixes: `Test16`, `Test62`, `Test65`, `Test66`
+all passing (103 of 104, then the one failure fixed and `Test62` with `Test65` 20/20).
+
+Second review round 2026-11-12, as this lowers a PLC's protection, ten findings. Fixed: **only a PLC at `NoAccess` (as TIA
+Portal creates one) or already at full access is opened** — `ReadAccess` and `HMIAccess` are levels somebody chose and are
+refused; `NoAccess` behind a password set on purpose cannot be told apart through Openness, which the remarks say; **AddDevice
+opens a new PLC in Study Mode only** (an exhaustive switch over the mode), and its plan says so, so the audit and a Workshop
+confirmation are not blind to it; its text says an S7-1200 still needs a user with full access, made in TIA Portal; its answer
+carries the changes in meta (`plcs`, or `plcAccessWarning`); a station's PLCs are all checked before any is opened; a PLC is one
+with either protection service; `CreateHmiConnection` looks for the PLC's nodes in its whole station, so a CP in its rack
+counts. Left, with the reason: the V20 test build (the suite's fixtures are V21 only, as its README says, so it does not run on
+V20 anyway); opening the PLC in the tool rather than inside `Portal.AddDevice` (the Openness tests call `AddDevice` for the PLC
+as TIA Portal creates it, which `Test65` asserts does not compile); `ProtectPlcs` keeping its own check (it protects through the
+confidential-data service only, so `IsPlc`, which now accepts either service, is not its rule); the password refusal test
+staying in `Test62` (only the template placement makes a password-protected PLC). Not covered by a test: the refusal of
+`ReadAccess` and `HMIAccess`, as nothing in the server can set those levels. `Test65` has 9 tests.
+
+**Next, in order:** the tests after the second round; then the rest of `mejoras` from using the server on V21 (the Unified runtime's
+encrypted transfer, a start screen through `RuntimeSettings.StartScreen`, a user with full access for a new S7-1200).
 
 ### Library backups named for V21, and the HMI connection template finished on V21 — 2026-11-11, branch `work/v21-library-backup-and-template`
 
@@ -30,7 +130,7 @@ walks the project's devices about three times.
 Build: 0 warnings. **Not run:** the whole Openness suite on this branch. Not covered by a test: nested groups, a device without
 Ethernet and a PLC already protected, as the fixture holds none.
 
-**Next, in order:** the user's commits and pull request; then measuring again on V21 what else was measured on V20.
+**Next, in order (done: merged as PR #69, and the measuring is above):** the user's commits and pull request; then measuring again on V21 what else was measured on V20.
 
 ### The repository builds for TIA Portal V21 by default — 2026-11-11, branch `work/v21-by-default`
 
