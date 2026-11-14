@@ -26,6 +26,14 @@ namespace TiaMcpServer.Siemens
         /// <summary>WinCC Unified PC RT V20, measured 2026-10-20.</summary>
         public const string UnifiedPc = "OrderNumber:6AV2 155-xxxxx-xxxx/20.0.0.2";
 
+        /// <summary>WinCC Unified PC RT V21, measured 2026-11-11 on TIA Portal V21.</summary>
+        /// <remarks>
+        /// Plugged as V20's is: an empty name in slot 1 of <c>System:Rack.PC</c>, named <c>HMI_RT_1</c> by TIA Portal,
+        /// with <see cref="NetworkCard"/> in slot 2. The V20 runtime is still in V21's catalogue and still plugs, which
+        /// is how this server built PC stations on V21 until then; a class project made in V21 uses this one.
+        /// </remarks>
+        public const string UnifiedPcV21 = "OrderNumber:6AV2 155-xxxxx-xxxx/21.0.1.0";
+
         /// <summary>WinCC RT Advanced V17, measured 2026-10-20.</summary>
         public const string RuntimeAdvanced = "OrderNumber:6AV2 104-0xxxx-xxxx/17.0.0.0";
 
@@ -39,7 +47,7 @@ namespace TiaMcpServer.Siemens
         /// </remarks>
         public const string NetworkCard = "OrderNumber:IE_CP/SW V8.2 ...";
 
-        private static readonly string[] MeasuredRuntimes = { UnifiedPc, RuntimeAdvanced };
+        private static readonly string[] MeasuredRuntimes = { UnifiedPc, UnifiedPcV21, RuntimeAdvanced };
 
         /// <summary>Refuses a runtime that has not been measured as plugging into a PC station.</summary>
         /// <param name="runtimeTypeIdentifier">The runtime, as <c>FindCatalogEntries</c> gives it.</param>
@@ -59,7 +67,7 @@ namespace TiaMcpServer.Siemens
             throw new PortalException(
                 PortalErrorCode.InvalidParams,
                 $"'{runtimeTypeIdentifier}' is not an HMI runtime this server has measured on a PC station. "
-                + $"Use WinCC Unified PC ('{UnifiedPc}') or WinCC RT Advanced ('{RuntimeAdvanced}').");
+                + $"Use WinCC Unified PC V21 ('{UnifiedPcV21}') or V20 ('{UnifiedPc}'), or WinCC RT Advanced ('{RuntimeAdvanced}').");
         }
 
         /// <summary>Refuses plugging, moving or copying a module into a PC station's rack by hand.</summary>

@@ -11,6 +11,7 @@ namespace TiaMcpServer.Governance.Tests
     {
         [TestMethod]
         [DataRow("OrderNumber:6AV2 155-xxxxx-xxxx/20.0.0.2")]
+        [DataRow("OrderNumber:6AV2 155-xxxxx-xxxx/21.0.1.0")]
         [DataRow("OrderNumber:6AV2 104-0xxxx-xxxx/17.0.0.0")]
         [DataRow("ordernumber:6av2 155-xxxxx-xxxx/20.0.0.2")]
         public void RequireMeasured_MeasuredRuntime_DoesNotThrow(string runtime)
@@ -31,6 +32,7 @@ namespace TiaMcpServer.Governance.Tests
 
         [TestMethod]
         [DataRow("OrderNumber:6AV2 155-xxxxx-xxxx/19.0.0.0")]
+        [DataRow("OrderNumber:6AV2 155-xxxxx-xxxx/21.0.0.0")]
         [DataRow("OrderNumber:6AV2 104-0xxxx-xxxx/18.0.0.0")]
         [DataRow("OrderNumber:6AV2 155-bogus/20.0.0.2")]
         public void RequireMeasured_UnmeasuredVersionOfMeasuredRuntime_ThrowsInvalidParams(string runtime)
