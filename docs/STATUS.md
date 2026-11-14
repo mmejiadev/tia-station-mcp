@@ -5,6 +5,71 @@
 
 ## ▶ RESUME HERE
 
+### Code review of the branch, its fixes, and GoOnline taken out — 2026-11-14, branch `work/v21-vci-and-git`
+
+A `/code-review high` of everything new on `work/v21-remeasure` found ten things; all are fixed:
+
+- **The Anonymous user reaches the whole project.** Giving an S7-1200 full access activates the project's Anonymous user with
+  PLC administrator, which reaches every PLC on users and roles. `SetPlcFullAccess`, and `AddDevice` in Study Mode, now need the
+  policy to allow `project` as well as the PLC (`Test16`: a policy allowing only the PLC is refused on the project).
+- **PLCs were unprotected before the users-and-roles checks.** What granting needs (the UMAC service, the `PLCAdministrator`
+  role, a backup folder) is now found before any PLC is touched (`AnonymousUserAccess.Require`), and a grant failing afterwards
+  names the PLCs already opened. Not covered by a test: it needs a project without users and roles.
+- **Git ran in a folder a project names.** A repository's own settings can make Git run a program (`core.fsmonitor` on every
+  status, a filter on every add, a hook on every commit). `GitRepositorySafety` refuses any local setting outside a short list
+  (what `git init`, `git remote add` and an identity write), any hook that is not a `.sample`, and a `.git` file pointing
+  elsewhere — checked on every call. Patch folders and files must be full paths (`GitInput.RequireFullPath`).
+- **Table rows that do not fit their address.** Values are checked against the width (byte, word, double word), and Float takes
+  a double word only, so TIA Portal is never left to drop a row after the table's earlier rows are gone.
+- `CreateWatchTable` and `ImportWatchTables` now also refuse clearly while online (the check moved into the shared method);
+  `GetPcInterfaces` answers on a machine without PLCSIM Advanced; a VCI root given with a closing separator no longer breaks
+  `GetVciStatus` (`VciWorkspacePath.RelativeFolder`); `STATUS.md` and `PlcAccessReport.cs` were re-encoded.
+
+**`GoOnline` crashed TIA Portal, and is taken out.** Its first real run, once no PLCSIM instance of the user's was in the way:
+after a download to a CPU 1511 in PLCSIM Advanced (TCP/IP mode), `ApplyConfiguration` on "Siemens PLCSIM Virtual Ethernet
+Adapter" → `1 X1` returned, and `OnlineProvider.GoOnline()` killed TIA Portal — twice, reproduced alone, with no `Confirmation`,
+`Notification` or `Authentication` event raised first (diagnostic handlers attached, then removed). The V21 API gives `GoOnline`
+no callback; only `GetFingerprintData` takes an `OnlineConfigurationDelegate`, and a `TlsVerificationConfiguration` exists, so
+the suspect is the TLS certificate trust a CPU asks for — not measured. The tool, the portal method, its rule and its tests are
+removed; `GoOffline` and `GetOnlineState` stay. Open: measure going online with a CPU whose secure communication is off, or
+through the fingerprint delegate, before bringing it back.
+
+**A second review round (security)** found ten more, nine fixed:
+
+- Git is always run with `-c core.fsmonitor=false -c core.hooksPath=NUL -c submodule.recurse=false`, inherited by any Git it
+  starts (measured: a failing pre-commit hook did not run with `hooksPath=NUL`); its standard input is its own and closed, as
+  the server's is the MCP channel. A repository with `.git/commondir`, `.gitmodules` or `.git/modules` is refused, and
+  `commit.gpgsign` and `core.symlinks` are taken only as `false` (the settings are read with `-z`, values included).
+- A workspace folder Git works in must be on a local drive and not a whole drive; patch paths must be on a local drive — a
+  network share would send the history off the machine and the person's credentials with it.
+- A failed `git am --abort` is reported, not passed off as undone.
+- The Anonymous user is given full access only in a project where nobody set users up: project users, custom roles or UMC
+  users refuse it (a new project has none — `Test65`'s S7-1200 still passes).
+- A Float row must fit a 32-bit REAL.
+- Left: each Git operation repeats the safety check a few times (correct, slower). Not closed: a project can name any local
+  folder as its workspace, so the policy entry `git/<workspace>` is what stands between it and another repository.
+
+**Tests:** Governance 1153; the branch's Openness classes (`Test11`, `16`, `43`, `62`, `65`–`69`) **160 of 160** after the
+first round, `Test11` included now that no PLCSIM instance was running; `Test16`, `Test62`, `Test65` again after the second,
+116 of 116. Build: 0 warnings. Next: the commits.
+
+### The branch's Openness tests, run against TIA Portal V21 — 2026-11-13, branch `work/v21-vci-and-git`
+
+`Test11`, `Test16`, `Test43`, `Test62` and `Test65` to `Test69` together: **145 of 160**. The 15 failures, and what came of them:
+
+- **`Test11` (6): not the code.** Two PLCSIM Advanced instances the user was using (PLC_1 and PLC_2, in RUN) made the runtime
+  refuse its network mode ("InstanceAlreadyRunning"). They were left alone; `Test11` waits for a moment without them.
+- **`Test68` (2), two findings.** A force row read back as "watch only": the reader took a value as prepared only with its box
+  ticked, and the box is read-only through Openness — `WatchEntryIntention` now holds the value whenever there is one and says
+  "(box not ticked)". And **a row on a data block the program does not have made TIA Portal keep none of the table's rows,
+  without a word** (measured: four rows went in alone, with `%DB1.DBX0.0` none did): data block addresses are refused until
+  measured on one that exists, and both tools now count the rows read back and fail when any is missing, naming the backup.
+  TIA Portal writes `16#0C` back as `16#000C` on a word.
+- **`Test69` (7): the workspace folder has to exist.** The probe had taken `\PLC_1\Blocks` only because its previous try had
+  made the folder; on a new workspace it was "Relative Directory Path is Invalid". The exporter makes the folder first.
+
+After the fixes: `Test68` and `Test69` **15/15**; Governance 1127. Build: 0 warnings.
+
 ### Users and roles: an S7-1200 left without passwords compiles too — 2026-11-13, branch `work/v21-hmi-and-plc-access`
 
 Asked for by the user ("accesses"). **Measured on TIA Portal V21** on the probe project's S7-1200 V4.7: with its confidential
@@ -21,6 +86,48 @@ both plans say so, and `AddDevice` now takes a backup directory for that record.
 
 **Tests:** `Test65` +2 (a new S7-1200 compiles with 0 errors; an S7-1500 leaves the anonymous user alone). Governance 1125.
 Build: 0 warnings. Run against TIA Portal V21 on 2026-11-14 with the rest of the V21 work: `Test62`, `Test65` and `Test66` pass.
+
+### Git in a VCI workspace's folder: branches, commits, pull, changes as patches — 2026-11-13, branch `work/v21-vci-and-git`
+
+Asked for by the user after VCI: branches, commits with their messages, pull, and "exporting changes and importing them".
+Changes between the project and the files are `SyncVciWorkspace`'s; between copies of a repository without a server, patches.
+
+**Nine tools,** all on the repository in a VCI workspace's folder, found from the workspace's name and never taken from the
+caller: `GitStatus` and `GitLog` read; `GitInitWorkspace`, `GitCreateBranch`, `GitSwitchBranch`, `GitCommit`, `GitPull`,
+`GitExportChanges` (`format-patch`) and `GitImportChanges` (`apply --check`, then `am`, aborted if it fails) are planned, decided
+by the policy under `git/<workspace>` and audited; a pull also needs `git-remote/<workspace>`, a permission of its own. **No push.**
+
+**Safety, in `TiaMcpServer.Portable/Git/`:** branch names are held to a strict subset of `check-ref-format` (no leading dash, no
+`..`, no spaces or quotes), so nothing a caller writes can become another argument; a commit message goes to Git in a file
+(`-F`), never on the command line; `GitRunner` runs no shell, takes the folder as the working directory, refuses any argument
+that is not a single safe token, never lets Git prompt (`GIT_TERMINAL_PROMPT=0`, `GCM_INTERACTIVE=never`) and stops it after two
+minutes. Switching branch, pulling and importing refuse while there are uncommitted changes; a pull is fast-forward only.
+Commits carry the machine's own Git author.
+
+**Tests:** Governance 1125 — `GitInputTests`, and `GitRepositoryTests` against real Git in temporary folders (a branch's files,
+a refused switch, a patch carried to a copy and applied, a bad patch leaving the repository as it was); removing the
+uncommitted-changes check made its test fail. `Test16` +7 refusals. Build: 0 warnings.
+
+### TIA Portal's version control (VCI) — 2026-11-13, branch `work/v21-vci-and-git`
+
+Asked for by the user: workspaces, export, import and synchronisation, and branches. **Measured on TIA Portal V21** by probes on
+the probe project: `project.GetService<VersionControlInterface>().WorkspaceGroup.Workspaces.Create(name, folder)` writes
+`.vci\workspace.vci.config`; a block offers SimaticML and SimaticSD files, a tag table SimaticML, the program as a whole nothing
+("The Object {0} is not supported"); `Workspace.ExportObject` took the folder only **written from a leading backslash**, relative
+to the root (`\PLC_1\Blocks`) — absolute was "Relative Directory Path is Invalid", bare relative "cannot be a relative path";
+a block that does not compile is refused both ways out. A mapped object's status is `CompareState` and which side changed:
+a file edited reads Unequal / WorkspaceFileChanged and `Synchronize(WorkspaceToProject)` brought the edit into the block; a block
+edited reads Unequal / ProjectObjectChanged; a reformatted file stays Equal; synchronising an Equal one is refused.
+
+**Five tools.** `GetVciWorkspaces` and `GetVciStatus` read. `CreateVciWorkspace`; `ExportToVciWorkspace` writes every block, PLC
+data type and tag table of a program as one SimaticML file in folders mirroring the project, leaving mapped ones alone and
+naming those that do not compile; `SyncVciWorkspace` copies one way **only what changed on the side being copied, and nothing
+at all when any object changed on the side that would be overwritten** (`VciSyncRule`, all or nothing, undecided states refused),
+with the programs exported to the backup before the project is overwritten and the program required to compile before it is
+copied out. Branches are Git's, in the workspace's folder: next.
+
+**Tests:** Governance 1085 (`VciSyncRuleTests`, `VciWorkspacePathTests`); `Test16` +3 refusals; `Test69Vci` (9). Build: 0
+warnings. Run against TIA Portal V21 on 2026-11-14: `Test69` passes, once the exporter made the folder it exports to.
 
 ### Rows in the force table and in watch tables — 2026-11-13, branch `work/v21-online-and-tables`
 
