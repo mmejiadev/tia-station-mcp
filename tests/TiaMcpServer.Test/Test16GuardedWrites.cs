@@ -813,6 +813,31 @@ namespace TiaMcpServer.Test
 
             AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
         }
+
+        [TestMethod]
+        public void CreateVciWorkspace_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.CreateVciWorkspace("Refused", Path.Combine(AssemblyHooks.WorkingRoot, "refused-workspace"));
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void ExportToVciWorkspace_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.ExportToVciWorkspace("Refused", Settings.Project1PlcSoftwarePath0);
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        /// <remarks>Into the project, it overwrites blocks: the guard is asked before anything is read from the workspace.</remarks>
+        [TestMethod]
+        public void SyncVciWorkspace_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.SyncVciWorkspace("Refused", "WorkspaceToProject");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
         [TestMethod]
         public void ReleaseLibraryType_WithNoPolicy_IsRefused()
         {
