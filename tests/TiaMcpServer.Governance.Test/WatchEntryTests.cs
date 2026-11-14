@@ -54,5 +54,14 @@ namespace TiaMcpServer.Governance.Tests
 
             Assert.AreEqual("Cell checks | Watch | 3 row(s) | consistent", table.Line);
         }
+
+        /// <remarks>The box is read-only through Openness, so a row this server writes holds its value unticked (2026-11-13).</remarks>
+        [TestMethod]
+        public void Line_AValuePreparedWithTheBoxUnticked_SaysSo()
+        {
+            var row = new WatchEntryInfo("%Q0.0:P", "Bool", "Permanent", new WatchEntryIntention(true, "TRUE", string.Empty, false));
+
+            Assert.AreEqual("%Q0.0:P | Bool | Permanent | TRUE (box not ticked)", row.Line);
+        }
     }
 }
