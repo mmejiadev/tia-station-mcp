@@ -22,6 +22,52 @@ both plans say so, and `AddDevice` now takes a backup directory for that record.
 **Tests:** `Test65` +2 (a new S7-1200 compiles with 0 errors; an S7-1500 leaves the anonymous user alone). Governance 1125.
 Build: 0 warnings. Run against TIA Portal V21 on 2026-11-14 with the rest of the V21 work: `Test62`, `Test65` and `Test66` pass.
 
+### Rows in the force table and in watch tables — 2026-11-13, branch `work/v21-online-and-tables`
+
+Asked for by the user: the server knew nothing of force tables. Reading them was there (`GetWatchTables`, `GetWatchTable`);
+writing a row was not, as Openness creates no row in a table.
+
+**Measured on TIA Portal V21** by probes on a probe project (`Prot`, a new CPU 1512C, in the probe's own TIA Portal): rows go in
+as an imported SimaticML document, and the one V21 exports after such an import is the shape now written — the table, and an
+entry per row in `Entries` with `Address`, `DisplayFormat`, `ForceValue` (or `ModifyValue` and `ModifyTrigger`), `MonitorTrigger`
+and a comment. `ForceIntention` and `ModifyIntention` are **read-only** ("The property 'ForceIntention' is read-only"), so the box
+that starts forcing is ticked online in TIA Portal. TIA Portal adds `:P` to the inputs and outputs of the force table, and it
+**took `%M5.0` there without a word**, although an S7-1500 forces inputs and outputs only. An import replaces every row.
+
+**Two tools.** `WriteForceTable` replaces the force table's rows; `WriteWatchTable` writes a watch table at the program's root
+with exactly the rows given, creating it or replacing its rows. Rows come as JSON (`address`, `format`, `value`, `comment`) and
+are checked all or nothing by `WatchTableRowRules`, in `TiaMcpServer.Portable/WatchTables/`: absolute addresses only (`%I0.0`,
+`%QW2`, `%MD4`, `%DB1.DBX0.0`, `%DB1.DBW2`; a symbolic name is not measured yet), inputs and outputs only in the force table, a
+force row with a value, five display formats (Bool for a bit, DEC_signed, DEC_unsigned, Hex, Float) and values of their shape.
+Every table of the program is exported to the backup first, with the document that was imported beside it; refused while TIA
+Portal is online with the CPU.
+
+**Tests:** Governance 1068 (`WatchTableRowReaderTests`, `WatchTableDocumentTests`); `Test16` +2 refusals; `Test68TableRows` (6).
+Build: 0 warnings. Run against TIA Portal V21 on 2026-11-14: `Test68` passes, after the fixes the run found (data block rows refused, rows counted back).
+
+### Going online and seeing what answers on a network — 2026-11-13, branch `work/v21-online-and-tables`
+
+Asked for by the user: the server could not show which devices answer on a connection such as the Wi-Fi, nor go online.
+
+**Measured on TIA Portal V21 first.** `OnlineProvider.Configuration.Modes` offered a CPU one mode, `PN/IE`, with one interface,
+`PLCSIM` — in a TIA Portal without a window and, read only, in the user's own. **While any PLCSIM Advanced instance exists, even
+in STOP, TIA Portal offers only PLCSIM**: with the two instances deleted (the user's leave) the same project offered "Siemens
+PLCSIM Virtual Ethernet Adapter", both VMware adapters and the Wi-Fi; the disconnected Ethernet did not show. Windows had the
+Siemens protocols bound to every adapter all along. A search through PLCSIM found `S7-1500 CPU:192.168.0.1`. A search through
+the Wi-Fi was **not** made: Claude Code's own safety check refused it, and it waits for the user to run it on a network of her
+choosing.
+
+**Five tools.** `GetPcInterfaces` (reads TIA Portal's settings only; says how many PLCSIM instances exist, as they hide the real
+adapters) and `GetOnlineState` read. `ScanAccessibleDevices` sends the discovery request "Accessible devices" sends and changes
+nothing on any device, and it reaches every device on that network, so it is decided by the policy under a new target,
+`network/<interface name>`, planned and audited like a write. `GoOnline` went **through PLCSIM only** (`PcInterfaceRule`) —
+taken out on 2026-11-14, as it crashed TIA Portal (see the code review of 2026-11-14). `GoOffline` is
+guarded too, as every tool that changes a state is. The download to PLCSIM now takes "is it PLCSIM" from the same rule.
+
+**Tests:** Governance 1038 (`PcInterfaceRuleTests`, 11); `Test16` +3 refusals; `Test67Online` (5, none contacts a network);
+`Test11` +1, going online and offline through PLCSIM after a download. Build: 0 warnings. Run against TIA Portal V21 on 2026-11-14:
+`Test67` passes; the `Test11` case crashed TIA Portal in `GoOnline`, which was taken out with it (see the code review of 2026-11-14).
+
 ### Measuring V20's facts again on V21 — 2026-11-11, branch `work/v21-hmi-and-plc-access`
 
 From `main` after PR #69. Probes outside the repository, each in a TIA Portal V21 it started itself without a window, on copies
