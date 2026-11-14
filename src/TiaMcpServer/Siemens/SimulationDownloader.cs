@@ -29,7 +29,6 @@ namespace TiaMcpServer.Siemens
         // on its network mode: "PLCSIM" over the softbus, "Siemens PLCSIM Virtual Ethernet
         // Adapter" over TCP/IP. Both contain this marker and no physical network card does, which
         // is what keeps the rule safe while covering both modes.
-        private const string PlcSimInterfaceMarker = "PLCSIM";
         private const string ConfigurationModeName = "PN/IE";
 
         private readonly DeviceItem _deviceItem;
@@ -339,7 +338,7 @@ namespace TiaMcpServer.Siemens
                 ?? throw new PortalException(PortalErrorCode.InvalidState, $"The CPU offers no '{ConfigurationModeName}' connection mode");
 
             return mode.PcInterfaces.FirstOrDefault(
-                    candidate => candidate.Name.IndexOf(PlcSimInterfaceMarker, StringComparison.OrdinalIgnoreCase) >= 0)
+                    candidate => PcInterfaceRule.IsSimulation(candidate.Name))
                 ?? throw new PortalException(
                     PortalErrorCode.InvalidState,
                     "No PLCSIM interface is offered by this CPU, so the only targets available are real network adapters. " +

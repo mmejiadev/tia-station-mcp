@@ -780,6 +780,23 @@ namespace TiaMcpServer.Test
                 McpServer.SetServiceProvider(BuildDenyEverythingServices(Path.Combine(AssemblyHooks.WorkingRoot, "no-such-policy.json")));
             }
         }
+
+        /// <remarks>A search reaches every device on a network, so it is decided by the policy like a write.</remarks>
+        [TestMethod]
+        public void ScanAccessibleDevices_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.ScanAccessibleDevices("PLC_Refused", "Refused adapter");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void GoOffline_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.GoOffline("PLC_Refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
         [TestMethod]
         public void ReleaseLibraryType_WithNoPolicy_IsRefused()
         {
