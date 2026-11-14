@@ -44,6 +44,7 @@ namespace TiaMcpServer.Test
 
         [TestMethod]
         [DataRow("OrderNumber:6AV2 155-xxxxx-xxxx/20.0.0.2")]
+        [DataRow("OrderNumber:6AV2 155-xxxxx-xxxx/21.0.1.0")]
         [DataRow("OrderNumber:6AV2 104-0xxxx-xxxx/17.0.0.0")]
         public void AddPcStation_MeasuredRuntime_ItsSoftwareIsTheHmi(string runtime)
         {
@@ -61,6 +62,7 @@ namespace TiaMcpServer.Test
         /// </remarks>
         [TestMethod]
         [DataRow("OrderNumber:6AV2 155-xxxxx-xxxx/20.0.0.2")]
+        [DataRow("OrderNumber:6AV2 155-xxxxx-xxxx/21.0.1.0")]
         [DataRow("OrderNumber:6AV2 104-0xxxx-xxxx/17.0.0.0")]
         public void AddPcStation_MeasuredRuntime_HasANetworkInterface(string runtime)
         {

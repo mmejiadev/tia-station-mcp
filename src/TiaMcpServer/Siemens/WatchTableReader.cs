@@ -134,8 +134,10 @@ namespace TiaMcpServer.Siemens
 
         private static WatchEntryInfo Describe(PlcWatchTableEntry entry)
         {
-            var intention = entry.ModifyIntention
-                ? new WatchEntryIntention(true, entry.ModifyValue ?? string.Empty, entry.ModifyTrigger.ToString())
+            // A value with the box unticked is still prepared (see WatchEntryIntention).
+            var value = entry.ModifyValue ?? string.Empty;
+            var intention = entry.ModifyIntention || value.Length > 0
+                ? new WatchEntryIntention(true, value, entry.ModifyTrigger.ToString(), entry.ModifyIntention)
                 : WatchEntryIntention.None;
 
             return new WatchEntryInfo(
@@ -149,8 +151,9 @@ namespace TiaMcpServer.Siemens
         {
             // A force carries no trigger: it holds for as long as it is active, which is what makes
             // it different in kind from a modify rather than a louder version of one.
-            var intention = entry.ForceIntention
-                ? new WatchEntryIntention(true, entry.ForceValue ?? string.Empty, string.Empty)
+            var value = entry.ForceValue ?? string.Empty;
+            var intention = entry.ForceIntention || value.Length > 0
+                ? new WatchEntryIntention(true, value, string.Empty, entry.ForceIntention)
                 : WatchEntryIntention.None;
 
             return new WatchEntryInfo(

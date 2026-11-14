@@ -1,9 +1,262 @@
-﻿ Project status
+﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-11-11**
+> Last updated: **2026-11-14**
 
 ## ▶ RESUME HERE
+
+### Code review of the branch, its fixes, and GoOnline taken out — 2026-11-14, branch `work/v21-vci-and-git`
+
+A `/code-review high` of everything new on `work/v21-remeasure` found ten things; all are fixed:
+
+- **The Anonymous user reaches the whole project.** Giving an S7-1200 full access activates the project's Anonymous user with
+  PLC administrator, which reaches every PLC on users and roles. `SetPlcFullAccess`, and `AddDevice` in Study Mode, now need the
+  policy to allow `project` as well as the PLC (`Test16`: a policy allowing only the PLC is refused on the project).
+- **PLCs were unprotected before the users-and-roles checks.** What granting needs (the UMAC service, the `PLCAdministrator`
+  role, a backup folder) is now found before any PLC is touched (`AnonymousUserAccess.Require`), and a grant failing afterwards
+  names the PLCs already opened. Not covered by a test: it needs a project without users and roles.
+- **Git ran in a folder a project names.** A repository's own settings can make Git run a program (`core.fsmonitor` on every
+  status, a filter on every add, a hook on every commit). `GitRepositorySafety` refuses any local setting outside a short list
+  (what `git init`, `git remote add` and an identity write), any hook that is not a `.sample`, and a `.git` file pointing
+  elsewhere — checked on every call. Patch folders and files must be full paths (`GitInput.RequireFullPath`).
+- **Table rows that do not fit their address.** Values are checked against the width (byte, word, double word), and Float takes
+  a double word only, so TIA Portal is never left to drop a row after the table's earlier rows are gone.
+- `CreateWatchTable` and `ImportWatchTables` now also refuse clearly while online (the check moved into the shared method);
+  `GetPcInterfaces` answers on a machine without PLCSIM Advanced; a VCI root given with a closing separator no longer breaks
+  `GetVciStatus` (`VciWorkspacePath.RelativeFolder`); `STATUS.md` and `PlcAccessReport.cs` were re-encoded.
+
+**`GoOnline` crashed TIA Portal, and is taken out.** Its first real run, once no PLCSIM instance of the user's was in the way:
+after a download to a CPU 1511 in PLCSIM Advanced (TCP/IP mode), `ApplyConfiguration` on "Siemens PLCSIM Virtual Ethernet
+Adapter" → `1 X1` returned, and `OnlineProvider.GoOnline()` killed TIA Portal — twice, reproduced alone, with no `Confirmation`,
+`Notification` or `Authentication` event raised first (diagnostic handlers attached, then removed). The V21 API gives `GoOnline`
+no callback; only `GetFingerprintData` takes an `OnlineConfigurationDelegate`, and a `TlsVerificationConfiguration` exists, so
+the suspect is the TLS certificate trust a CPU asks for — not measured. The tool, the portal method, its rule and its tests are
+removed; `GoOffline` and `GetOnlineState` stay. Open: measure going online with a CPU whose secure communication is off, or
+through the fingerprint delegate, before bringing it back.
+
+**A second review round (security)** found ten more, nine fixed:
+
+- Git is always run with `-c core.fsmonitor=false -c core.hooksPath=NUL -c submodule.recurse=false`, inherited by any Git it
+  starts (measured: a failing pre-commit hook did not run with `hooksPath=NUL`); its standard input is its own and closed, as
+  the server's is the MCP channel. A repository with `.git/commondir`, `.gitmodules` or `.git/modules` is refused, and
+  `commit.gpgsign` and `core.symlinks` are taken only as `false` (the settings are read with `-z`, values included).
+- A workspace folder Git works in must be on a local drive and not a whole drive; patch paths must be on a local drive — a
+  network share would send the history off the machine and the person's credentials with it.
+- A failed `git am --abort` is reported, not passed off as undone.
+- The Anonymous user is given full access only in a project where nobody set users up: project users, custom roles or UMC
+  users refuse it (a new project has none — `Test65`'s S7-1200 still passes).
+- A Float row must fit a 32-bit REAL.
+- Left: each Git operation repeats the safety check a few times (correct, slower). Not closed: a project can name any local
+  folder as its workspace, so the policy entry `git/<workspace>` is what stands between it and another repository.
+
+**Tests:** Governance 1153; the branch's Openness classes (`Test11`, `16`, `43`, `62`, `65`–`69`) **160 of 160** after the
+first round, `Test11` included now that no PLCSIM instance was running; `Test16`, `Test62`, `Test65` again after the second,
+116 of 116. Build: 0 warnings. Next: the commits.
+
+### The branch's Openness tests, run against TIA Portal V21 — 2026-11-13, branch `work/v21-vci-and-git`
+
+`Test11`, `Test16`, `Test43`, `Test62` and `Test65` to `Test69` together: **145 of 160**. The 15 failures, and what came of them:
+
+- **`Test11` (6): not the code.** Two PLCSIM Advanced instances the user was using (PLC_1 and PLC_2, in RUN) made the runtime
+  refuse its network mode ("InstanceAlreadyRunning"). They were left alone; `Test11` waits for a moment without them.
+- **`Test68` (2), two findings.** A force row read back as "watch only": the reader took a value as prepared only with its box
+  ticked, and the box is read-only through Openness — `WatchEntryIntention` now holds the value whenever there is one and says
+  "(box not ticked)". And **a row on a data block the program does not have made TIA Portal keep none of the table's rows,
+  without a word** (measured: four rows went in alone, with `%DB1.DBX0.0` none did): data block addresses are refused until
+  measured on one that exists, and both tools now count the rows read back and fail when any is missing, naming the backup.
+  TIA Portal writes `16#0C` back as `16#000C` on a word.
+- **`Test69` (7): the workspace folder has to exist.** The probe had taken `\PLC_1\Blocks` only because its previous try had
+  made the folder; on a new workspace it was "Relative Directory Path is Invalid". The exporter makes the folder first.
+
+After the fixes: `Test68` and `Test69` **15/15**; Governance 1127. Build: 0 warnings.
+
+### Users and roles: an S7-1200 left without passwords compiles too — 2026-11-13, branch `work/v21-hmi-and-plc-access`
+
+Asked for by the user ("accesses"). **Measured on TIA Portal V21** on the probe project's S7-1200 V4.7: with its confidential
+data unprotected, one error remained, "At least one user must have the following runtime right: Full access"; activating the
+project's anonymous user (`UmacConfigurator.ActivateAnonymousUser`) and giving it the system role identified `PLCAdministrator`
+(HMI, read and full access) left it at 0 errors and one warning, that this is for testing. `UmacDevice` is a service of the
+station, not the PLC, and **passing a null one to UMAC took TIA Portal down** — the server never does. Role identifiers:
+`PLCAdministrator`, `PLCFAdministrator`, `PLCOperator`, `HMIAdministrator`; they do not follow TIA Portal's language, names do.
+
+**Changed:** `SetPlcFullAccess`, and `AddDevice` in Study Mode, now give the project's anonymous user that role whenever a PLC
+they open has no access level of its own (`AnonymousUserAccess`), recording its state before; they answer with a
+`PlcAccessReport` that says so. The anonymous user belongs to the whole project and reaches every PLC on users and roles:
+both plans say so, and `AddDevice` now takes a backup directory for that record.
+
+**Tests:** `Test65` +2 (a new S7-1200 compiles with 0 errors; an S7-1500 leaves the anonymous user alone). Governance 1125.
+Build: 0 warnings. Run against TIA Portal V21 on 2026-11-14 with the rest of the V21 work: `Test62`, `Test65` and `Test66` pass.
+
+### Git in a VCI workspace's folder: branches, commits, pull, changes as patches — 2026-11-13, branch `work/v21-vci-and-git`
+
+Asked for by the user after VCI: branches, commits with their messages, pull, and "exporting changes and importing them".
+Changes between the project and the files are `SyncVciWorkspace`'s; between copies of a repository without a server, patches.
+
+**Nine tools,** all on the repository in a VCI workspace's folder, found from the workspace's name and never taken from the
+caller: `GitStatus` and `GitLog` read; `GitInitWorkspace`, `GitCreateBranch`, `GitSwitchBranch`, `GitCommit`, `GitPull`,
+`GitExportChanges` (`format-patch`) and `GitImportChanges` (`apply --check`, then `am`, aborted if it fails) are planned, decided
+by the policy under `git/<workspace>` and audited; a pull also needs `git-remote/<workspace>`, a permission of its own. **No push.**
+
+**Safety, in `TiaMcpServer.Portable/Git/`:** branch names are held to a strict subset of `check-ref-format` (no leading dash, no
+`..`, no spaces or quotes), so nothing a caller writes can become another argument; a commit message goes to Git in a file
+(`-F`), never on the command line; `GitRunner` runs no shell, takes the folder as the working directory, refuses any argument
+that is not a single safe token, never lets Git prompt (`GIT_TERMINAL_PROMPT=0`, `GCM_INTERACTIVE=never`) and stops it after two
+minutes. Switching branch, pulling and importing refuse while there are uncommitted changes; a pull is fast-forward only.
+Commits carry the machine's own Git author.
+
+**Tests:** Governance 1125 — `GitInputTests`, and `GitRepositoryTests` against real Git in temporary folders (a branch's files,
+a refused switch, a patch carried to a copy and applied, a bad patch leaving the repository as it was); removing the
+uncommitted-changes check made its test fail. `Test16` +7 refusals. Build: 0 warnings.
+
+### TIA Portal's version control (VCI) — 2026-11-13, branch `work/v21-vci-and-git`
+
+Asked for by the user: workspaces, export, import and synchronisation, and branches. **Measured on TIA Portal V21** by probes on
+the probe project: `project.GetService<VersionControlInterface>().WorkspaceGroup.Workspaces.Create(name, folder)` writes
+`.vci\workspace.vci.config`; a block offers SimaticML and SimaticSD files, a tag table SimaticML, the program as a whole nothing
+("The Object {0} is not supported"); `Workspace.ExportObject` took the folder only **written from a leading backslash**, relative
+to the root (`\PLC_1\Blocks`) — absolute was "Relative Directory Path is Invalid", bare relative "cannot be a relative path";
+a block that does not compile is refused both ways out. A mapped object's status is `CompareState` and which side changed:
+a file edited reads Unequal / WorkspaceFileChanged and `Synchronize(WorkspaceToProject)` brought the edit into the block; a block
+edited reads Unequal / ProjectObjectChanged; a reformatted file stays Equal; synchronising an Equal one is refused.
+
+**Five tools.** `GetVciWorkspaces` and `GetVciStatus` read. `CreateVciWorkspace`; `ExportToVciWorkspace` writes every block, PLC
+data type and tag table of a program as one SimaticML file in folders mirroring the project, leaving mapped ones alone and
+naming those that do not compile; `SyncVciWorkspace` copies one way **only what changed on the side being copied, and nothing
+at all when any object changed on the side that would be overwritten** (`VciSyncRule`, all or nothing, undecided states refused),
+with the programs exported to the backup before the project is overwritten and the program required to compile before it is
+copied out. Branches are Git's, in the workspace's folder: next.
+
+**Tests:** Governance 1085 (`VciSyncRuleTests`, `VciWorkspacePathTests`); `Test16` +3 refusals; `Test69Vci` (9). Build: 0
+warnings. Run against TIA Portal V21 on 2026-11-14: `Test69` passes, once the exporter made the folder it exports to.
+
+### Rows in the force table and in watch tables — 2026-11-13, branch `work/v21-online-and-tables`
+
+Asked for by the user: the server knew nothing of force tables. Reading them was there (`GetWatchTables`, `GetWatchTable`);
+writing a row was not, as Openness creates no row in a table.
+
+**Measured on TIA Portal V21** by probes on a probe project (`Prot`, a new CPU 1512C, in the probe's own TIA Portal): rows go in
+as an imported SimaticML document, and the one V21 exports after such an import is the shape now written — the table, and an
+entry per row in `Entries` with `Address`, `DisplayFormat`, `ForceValue` (or `ModifyValue` and `ModifyTrigger`), `MonitorTrigger`
+and a comment. `ForceIntention` and `ModifyIntention` are **read-only** ("The property 'ForceIntention' is read-only"), so the box
+that starts forcing is ticked online in TIA Portal. TIA Portal adds `:P` to the inputs and outputs of the force table, and it
+**took `%M5.0` there without a word**, although an S7-1500 forces inputs and outputs only. An import replaces every row.
+
+**Two tools.** `WriteForceTable` replaces the force table's rows; `WriteWatchTable` writes a watch table at the program's root
+with exactly the rows given, creating it or replacing its rows. Rows come as JSON (`address`, `format`, `value`, `comment`) and
+are checked all or nothing by `WatchTableRowRules`, in `TiaMcpServer.Portable/WatchTables/`: absolute addresses only (`%I0.0`,
+`%QW2`, `%MD4`, `%DB1.DBX0.0`, `%DB1.DBW2`; a symbolic name is not measured yet), inputs and outputs only in the force table, a
+force row with a value, five display formats (Bool for a bit, DEC_signed, DEC_unsigned, Hex, Float) and values of their shape.
+Every table of the program is exported to the backup first, with the document that was imported beside it; refused while TIA
+Portal is online with the CPU.
+
+**Tests:** Governance 1068 (`WatchTableRowReaderTests`, `WatchTableDocumentTests`); `Test16` +2 refusals; `Test68TableRows` (6).
+Build: 0 warnings. Run against TIA Portal V21 on 2026-11-14: `Test68` passes, after the fixes the run found (data block rows refused, rows counted back).
+
+### Going online and seeing what answers on a network — 2026-11-13, branch `work/v21-online-and-tables`
+
+Asked for by the user: the server could not show which devices answer on a connection such as the Wi-Fi, nor go online.
+
+**Measured on TIA Portal V21 first.** `OnlineProvider.Configuration.Modes` offered a CPU one mode, `PN/IE`, with one interface,
+`PLCSIM` — in a TIA Portal without a window and, read only, in the user's own. **While any PLCSIM Advanced instance exists, even
+in STOP, TIA Portal offers only PLCSIM**: with the two instances deleted (the user's leave) the same project offered "Siemens
+PLCSIM Virtual Ethernet Adapter", both VMware adapters and the Wi-Fi; the disconnected Ethernet did not show. Windows had the
+Siemens protocols bound to every adapter all along. A search through PLCSIM found `S7-1500 CPU:192.168.0.1`. A search through
+the Wi-Fi was **not** made: Claude Code's own safety check refused it, and it waits for the user to run it on a network of her
+choosing.
+
+**Five tools.** `GetPcInterfaces` (reads TIA Portal's settings only; says how many PLCSIM instances exist, as they hide the real
+adapters) and `GetOnlineState` read. `ScanAccessibleDevices` sends the discovery request "Accessible devices" sends and changes
+nothing on any device, and it reaches every device on that network, so it is decided by the policy under a new target,
+`network/<interface name>`, planned and audited like a write. `GoOnline` went **through PLCSIM only** (`PcInterfaceRule`) —
+taken out on 2026-11-14, as it crashed TIA Portal (see the code review of 2026-11-14). `GoOffline` is
+guarded too, as every tool that changes a state is. The download to PLCSIM now takes "is it PLCSIM" from the same rule.
+
+**Tests:** Governance 1038 (`PcInterfaceRuleTests`, 11); `Test16` +3 refusals; `Test67Online` (5, none contacts a network);
+`Test11` +1, going online and offline through PLCSIM after a download. Build: 0 warnings. Run against TIA Portal V21 on 2026-11-14:
+`Test67` passes; the `Test11` case crashed TIA Portal in `GoOnline`, which was taken out with it (see the code review of 2026-11-14).
+
+### Measuring V20's facts again on V21 — 2026-11-11, branch `work/v21-hmi-and-plc-access`
+
+From `main` after PR #69. Probes outside the repository, each in a TIA Portal V21 it started itself without a window, on copies
+of `HmiTemplateProject.zap21` and on a new project; nothing of the user's was opened.
+
+- **The Openness API, V20 against V21.** Listed by reflection from both sets of assemblies: 322 types added, 16 removed (drive
+  telegrams, version-control workspace mappings, `ISoftwareCompareTarget`), none of them used here. Added and of use to us:
+  `HW.CommunicationConnections` (below), `PlcBlockWriteProtectionProvider`, `PlcBlock.Comment`, `Title`, `LoadMemoryLength`,
+  `WorkMemoryLength` and `DownloadDate`, `HmiSoftware.HmiGraphicLists`, the alarm line and alarm indicator of WinCC Unified, and
+  a download option to reinitialise data blocks or keep their values.
+- **An integrated HMI connection can be made through Openness on V21.** In V20 it was made by hand, as `Partner`, `Station` and
+  `Node` of a Unified connection are read-only. V21 adds `CommunicationManagement`, a service of every device item, whose
+  `Connections` on the HMI runtime's item (`HMI_RT_1`) holds the integrated connection as an `HmiConnection`. Measured twice:
+  in the fixture, the connection deleted and made again with `Connections.Create<HmiConnection>(localNode, plcItem, plcNode)`
+  came back as `HMI_Connection_2`; in a new project, a PLC and a PC station on one subnet got `HMI_Connection_1`,
+  192.168.0.2 to 192.168.0.1, `IsValid` true. Either way `HmiSoftware.Connections` lists it with driver
+  `SIMATIC S7 1200/1500` and `PLC_1` as its partner. It compiles: the new project's connection error ("Invalid certificate
+  configuration, please recompile your PLC") went once the PLC had a password for its confidential data and compiled.
+- **A PC station with WinCC Unified PC V21 is built as on V20.** `System:Rack.PC`, the runtime
+  `OrderNumber:6AV2 155-xxxxx-xxxx/21.0.1.0` plugged with an empty name in slot 1 (`HMI_RT_1`), `IE general` V8.2 in slot 2
+  (`IE general_1`). `PcHmiRuntime` accepts only `/20.0.0.2`, so `AddPcStation` refuses a V21 runtime it could build.
+- **A new S7-1200 V4.7 on V21 does not compile without a user holding "Full access"** ("Users and roles: At least one user must
+  have the following runtime right: Full access"), after its password for confidential data; a new WinCC Unified runtime wants
+  a runtime password and a start screen. Measured on a new project; projects made before carry their own settings.
+- **Still true on V21:** an S7-1200 (1215C, V4.7) exposes 31 attributes and no clock or system memory
+  (`ClockMemoryByte` and the rest: "not supported"); a SIMATIC SD document is exported for a block that does not compile
+  (`Test33`, in the V21 run of 2026-11-11); disposing the `TiaPortal` of an instance the server started closes it (gone within
+  20 s). Not measured again: that disposing a `TiaPortalProcess` closes a TIA Portal with a window, as only a window started
+  for the purpose could be used; the code keeps not doing it.
+
+**Then, the same day, the three changes the measuring made possible.**
+
+- **`AddPcStation` takes WinCC Unified PC RT V21** (`OrderNumber:6AV2 155-xxxxx-xxxx/21.0.1.0`, `PcHmiRuntime.UnifiedPcV21`).
+  The V20 runtime is still in V21's catalogue and still plugs, which is how `Test43` passed on V21 before; a class project made
+  in V21 uses the V21 one. `Test43` runs both.
+- **`SetPlcFullAccess`, new, and `AddDevice` doing the same to every PLC it adds.** Asked for by the user after a class
+  project's PLC_2 would not compile: on V21 a new CPU 1512C-1 PN V2.9 holds `WithoutPassword` for its confidential data and
+  `NoAccess` as its access level, and its hardware has three password errors. `PlcMasterSecretConfigurator.Unprotect()` and
+  `PlcAccessLevelProvider.PlcProtectionAccessLevel = FullAccess` leave it compiling with two warnings — measured on a probe
+  project and then on the class project's PLC_2, which compiled, downloaded to PLCSIM Advanced and ran. A PLC whose
+  confidential data has a password is refused, every PLC of the item checked before any is changed; the tool records each
+  PLC's parameters and protection first. **A deliberate default:** a PLC added through the server is unprotected, as the
+  class works; the tool's text says it is not for a PLC running a real machine.
+- **`CreateHmiConnection`, new (V21 only).** The integrated connection between a Unified HMI and a PLC on one subnet,
+  proposed on the HMI and the PLC through `TargetToPropose`, the network recorded first; a second connection between the
+  same two, two devices not on one subnet, and a path that is not a Unified HMI or a PLC are refused. On V20 it refuses,
+  saying the connection is made by hand there.
+
+**Tests:** `Test65PlcAccess` (9) and `Test66HmiConnections` (6) new; `Test16GuardedWrites` +3 (`SetPlcFullAccess`,
+`CreateHmiConnection`, and a policy allowing only the HMI refusing on the PLC); `Test43` and `PcHmiRuntimeTests` +1 runtime.
+Build: 0 warnings. Against TIA Portal V21 (2026-11-12): `Test16`, `Test43`, `Test65`, `Test66` together 99 of 105, the six
+failures the new tests' own (a bare `PLC_1` where a station made by `AddDevice` names its CPU `PLC_1/PLC_1`, and a station
+where a device item is taken); fixed, `Test65` and `Test66` 14/14. Governance 1027. The README's tool count (98) was already
+behind and is left alone.
+
+Code review 2026-11-12 (`/code-review high`), ten findings, all fixed: AddDevice answers that the station was added, with a
+warning, when its PLC could not be opened, instead of failing a plan whose station exists; the protection check is an allow-list
+(`None` and `WithoutPassword` for the confidential data, the five measured access levels) that refuses anything else, and the
+remarks and tool text say an access-level password cannot be read through Openness; a failure part-way names the PLCs already
+changed; each backup record is named after the PLC's whole path; `CreateHmiConnection` takes the first pair of nodes on one
+subnet rather than the first node on each side, and on V20 refuses before a backup or a plan; one `EthernetNodes` walk serves it
+and the template placement; `Test62` asserts a PLC protected with a password is refused. Its run found one more fact: **an
+S7-1200 V4.7 has no access-level service** (its access is users and roles), so a PLC is one that protects confidential data and
+the level is changed where there is one (`Test65`, a new S7-1200). After the fixes: `Test16`, `Test62`, `Test65`, `Test66`
+all passing (103 of 104, then the one failure fixed and `Test62` with `Test65` 20/20).
+
+Second review round 2026-11-12, as this lowers a PLC's protection, ten findings. Fixed: **only a PLC at `NoAccess` (as TIA
+Portal creates one) or already at full access is opened** — `ReadAccess` and `HMIAccess` are levels somebody chose and are
+refused; `NoAccess` behind a password set on purpose cannot be told apart through Openness, which the remarks say; **AddDevice
+opens a new PLC in Study Mode only** (an exhaustive switch over the mode), and its plan says so, so the audit and a Workshop
+confirmation are not blind to it; its text says an S7-1200 still needs a user with full access, made in TIA Portal; its answer
+carries the changes in meta (`plcs`, or `plcAccessWarning`); a station's PLCs are all checked before any is opened; a PLC is one
+with either protection service; `CreateHmiConnection` looks for the PLC's nodes in its whole station, so a CP in its rack
+counts. Left, with the reason: the V20 test build (the suite's fixtures are V21 only, as its README says, so it does not run on
+V20 anyway); opening the PLC in the tool rather than inside `Portal.AddDevice` (the Openness tests call `AddDevice` for the PLC
+as TIA Portal creates it, which `Test65` asserts does not compile); `ProtectPlcs` keeping its own check (it protects through the
+confidential-data service only, so `IsPlc`, which now accepts either service, is not its rule); the password refusal test
+staying in `Test62` (only the template placement makes a password-protected PLC). Not covered by a test: the refusal of
+`ReadAccess` and `HMIAccess`, as nothing in the server can set those levels. `Test65` has 9 tests.
+
+**Next, in order:** the tests after the second round; then the rest of `mejoras` from using the server on V21 (the Unified runtime's
+encrypted transfer, a start screen through `RuntimeSettings.StartScreen`, a user with full access for a new S7-1200).
 
 ### Library backups named for V21, and the HMI connection template finished on V21 — 2026-11-11, branch `work/v21-library-backup-and-template`
 
@@ -30,7 +283,7 @@ walks the project's devices about three times.
 Build: 0 warnings. **Not run:** the whole Openness suite on this branch. Not covered by a test: nested groups, a device without
 Ethernet and a PLC already protected, as the fixture holds none.
 
-**Next, in order:** the user's commits and pull request; then measuring again on V21 what else was measured on V20.
+**Next, in order (done: merged as PR #69, and the measuring is above):** the user's commits and pull request; then measuring again on V21 what else was measured on V20.
 
 ### The repository builds for TIA Portal V21 by default — 2026-11-11, branch `work/v21-by-default`
 

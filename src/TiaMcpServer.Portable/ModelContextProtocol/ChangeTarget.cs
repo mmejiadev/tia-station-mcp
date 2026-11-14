@@ -14,13 +14,16 @@ namespace TiaMcpServer.ModelContextProtocol
     /// and an unmatched target is refused, so the mistake would show up as an inexplicable refusal
     /// rather than as a typo.
     ///
-    /// Seven families, and nothing else:
+    /// Ten families, and nothing else:
     /// <list type="bullet">
     /// <item><description><c>PLC_0/Blocks/FB_Station</c> — a place in the project tree.</description></item>
     /// <item><description><c>simulation/Station_1</c> — a virtual controller, which is not in the project.</description></item>
     /// <item><description><c>simulation-runtime</c> — the PLCSIM Advanced runtime itself, machine-wide.</description></item>
     /// <item><description><c>project</c> — the project as a whole: saving it, closing it, copying it.</description></item>
     /// <item><description><c>opcua/192.168.0.1:4840</c> — an OPC UA server on the network, which a session may read from.</description></item>
+    /// <item><description><c>network/RZ616 Wi-Fi 6E 160MHz</c> — a PC network interface a session may search for devices through.</description></item>
+    /// <item><description><c>git/Cell</c> — the Git repository in a VCI workspace's folder: branches, commits, patches.</description></item>
+    /// <item><description><c>git-remote/Cell</c> — that repository's remote, which a pull contacts.</description></item>
     /// <item><description><c>library</c> and <c>library/FP_Motor</c> — the project library, and one type in it.</description></item>
     /// <item><description><c>global-library/C:/Libraries/Faceplates</c> — a global library by its folder, which is outside the project.</description></item>
     /// </list>
@@ -67,6 +70,9 @@ namespace TiaMcpServer.ModelContextProtocol
         private const string LibraryPrefix = ProjectLibrary + "/";
         private const string GlobalLibraryPrefix = "global-library/";
         private const string OpcUaPrefix = "opcua/";
+        private const string NetworkPrefix = "network/";
+        private const string GitPrefix = "git/";
+        private const string GitRemotePrefix = "git-remote/";
 
         /// <summary>A place in the project tree.</summary>
         /// <param name="softwarePath">Full path to the PLC software, for example <c>PLC_0</c>.</param>
@@ -197,6 +203,44 @@ namespace TiaMcpServer.ModelContextProtocol
         public static string OpcUaServer(string host, int port)
         {
             return OpcUaPrefix + (host ?? string.Empty) + ":" + port.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>A network interface of this PC, by the name TIA Portal gives it.</summary>
+        /// <param name="pcInterfaceName">The interface, e.g. <c>RZ616 Wi-Fi 6E 160MHz</c>.</param>
+        /// <returns>The target name, for example <c>network/RZ616 Wi-Fi 6E 160MHz</c>.</returns>
+        /// <remarks>
+        /// Not a change, and still a target, for the reason an OPC UA server is one: searching for accessible devices
+        /// sends a discovery request to everything on that network, which in a workshop or a plant is other people's
+        /// machines. So the interface has to be listed in the policy before a session may search through it. The
+        /// prefix keeps a rule about the project from being read as a rule about the network.
+        /// </remarks>
+        public static string NetworkInterface(string pcInterfaceName)
+        {
+            return NetworkPrefix + (pcInterfaceName ?? string.Empty).Trim();
+        }
+
+        /// <summary>The Git repository in a VCI workspace's folder, by the workspace's name.</summary>
+        /// <param name="workspaceName">The workspace, e.g. <c>Cell</c>.</param>
+        /// <returns>The target name, for example <c>git/Cell</c>.</returns>
+        /// <remarks>
+        /// Outside the project, and what a commit there records is somebody's history: a policy names the repositories a
+        /// session may commit to, branch in and import into, one by one.
+        /// </remarks>
+        public static string GitRepository(string workspaceName)
+        {
+            return GitPrefix + (workspaceName ?? string.Empty).Trim();
+        }
+
+        /// <summary>The remote of that repository, which a pull contacts over the network.</summary>
+        /// <param name="workspaceName">The workspace, e.g. <c>Cell</c>.</param>
+        /// <returns>The target name, for example <c>git-remote/Cell</c>.</returns>
+        /// <remarks>
+        /// Its own prefix rather than under <c>git/</c>: working in a repository and reaching a server are different
+        /// permissions, and a policy that allows <c>git/*</c> does not thereby let a session contact one.
+        /// </remarks>
+        public static string GitRemote(string workspaceName)
+        {
+            return GitRemotePrefix + (workspaceName ?? string.Empty).Trim();
         }
     }
 }

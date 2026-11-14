@@ -717,6 +717,184 @@ namespace TiaMcpServer.Test
             }
         }
 
+        /// <remarks>It lowers a PLC's protection, so it has to be asked like any other write.</remarks>
+        [TestMethod]
+        public void SetPlcFullAccess_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.SetPlcFullAccess("PLC_Refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        /// <remarks>
+        /// On a PLC with users and roles it changes the project's Anonymous user, which reaches every such PLC of the
+        /// project, so a policy that allows only the PLC must not let it through.
+        /// </remarks>
+        [TestMethod]
+        public void SetPlcFullAccess_PolicyAllowingOnlyThePlc_IsRefusedOnTheProject()
+        {
+            var policy = Path.Combine(AssemblyHooks.CreateTestDirectory(), "plc-only.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(policy)!);
+            File.WriteAllText(policy, "{ \"study\": { \"allow\": [ \"PLC_Refused\", \"PLC_Refused/*\" ], \"deny\": [] } }");
+            McpServer.SetServiceProvider(BuildDenyEverythingServices(policy));
+
+            try
+            {
+                var response = McpServer.SetPlcFullAccess("PLC_Refused/PLC_Refused");
+
+                Assert.AreEqual("Refused", response.Meta?["outcome"]?.GetValue<string>(), response.Message);
+                StringAssert.Contains(response.Message ?? string.Empty, "project", StringComparison.Ordinal);
+            }
+            finally
+            {
+                McpServer.SetServiceProvider(BuildDenyEverythingServices(Path.Combine(AssemblyHooks.WorkingRoot, "no-such-policy.json")));
+            }
+        }
+
+        [TestMethod]
+        public void CreateHmiConnection_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.CreateHmiConnection("PC_Refused/HMI_RT_1", "PLC_Refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        /// <remarks>It writes the HMI and takes up a connection of the PLC, so a policy that allows only the HMI must not let it through.</remarks>
+        [TestMethod]
+        public void CreateHmiConnection_PolicyAllowingOnlyTheHmi_IsRefusedOnThePlc()
+        {
+            var policy = Path.Combine(AssemblyHooks.CreateTestDirectory(), "hmi-only.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(policy)!);
+            File.WriteAllText(policy, "{ \"study\": { \"allow\": [ \"PC_Refused/HMI_RT_1\" ], \"deny\": [] } }");
+            McpServer.SetServiceProvider(BuildDenyEverythingServices(policy));
+
+            try
+            {
+                var response = McpServer.CreateHmiConnection("PC_Refused/HMI_RT_1", "PLC_Refused");
+
+                Assert.AreEqual("Refused", response.Meta?["outcome"]?.GetValue<string>(), response.Message);
+                StringAssert.Contains(response.Message ?? string.Empty, "PLC_Refused", StringComparison.Ordinal);
+            }
+            finally
+            {
+                McpServer.SetServiceProvider(BuildDenyEverythingServices(Path.Combine(AssemblyHooks.WorkingRoot, "no-such-policy.json")));
+            }
+        }
+
+        /// <remarks>A search reaches every device on a network, so it is decided by the policy like a write.</remarks>
+        [TestMethod]
+        public void ScanAccessibleDevices_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.ScanAccessibleDevices("PLC_Refused", "Refused adapter");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void GoOffline_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.GoOffline("PLC_Refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void WriteForceTable_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.WriteForceTable(Settings.Project1PlcSoftwarePath0, "{\"rows\": [{\"address\": \"%Q0.0\", \"format\": \"Bool\", \"value\": \"TRUE\"}]}");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void WriteWatchTable_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.WriteWatchTable(Settings.Project1PlcSoftwarePath0, "Refused", "{\"rows\": [{\"address\": \"%MW10\", \"format\": \"DEC_signed\"}]}");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void CreateVciWorkspace_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.CreateVciWorkspace("Refused", Path.Combine(AssemblyHooks.WorkingRoot, "refused-workspace"));
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void ExportToVciWorkspace_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.ExportToVciWorkspace("Refused", Settings.Project1PlcSoftwarePath0);
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        /// <remarks>Into the project, it overwrites blocks: the guard is asked before anything is read from the workspace.</remarks>
+        [TestMethod]
+        public void SyncVciWorkspace_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.SyncVciWorkspace("Refused", "WorkspaceToProject");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void GitInitWorkspace_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.GitInitWorkspace("Refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void GitCreateBranch_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.GitCreateBranch("Refused", "feature/refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void GitSwitchBranch_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.GitSwitchBranch("Refused", "main");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void GitCommit_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.GitCommit("Refused", "refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void GitPull_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.GitPull("Refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void GitExportChanges_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.GitExportChanges("Refused", "main", Path.Combine(AssemblyHooks.WorkingRoot, "refused-patches"));
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void GitImportChanges_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.GitImportChanges("Refused", Path.Combine(AssemblyHooks.WorkingRoot, "refused.patch"));
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
         [TestMethod]
         public void ReleaseLibraryType_WithNoPolicy_IsRefused()
         {

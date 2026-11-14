@@ -162,6 +162,21 @@ namespace TiaMcpServer.Test
             Assert.AreEqual(PortalErrorCode.NotFound, failure.Code, failure.Message);
         }
 
+        /// <remarks>
+        /// SetPlcFullAccess's safety rule: a PLC whose confidential data has a password was protected on purpose, and
+        /// removing it needs that password. The placement protects the template's PLC with the stored secret.
+        /// </remarks>
+        [TestMethod]
+        public void SetPlcFullAccess_PlcProtectedWithAPassword_ThrowsInvalidState()
+        {
+            Place("PN_Cell", Secret);
+
+            var failure = Assert.ThrowsException<PortalException>(
+                () => AssemblyHooks.SharedPortal.SetPlcFullAccess(Group + "/S7-1200 station_1/PLC_1", Path.Combine(_testDirectory, "backup")));
+
+            Assert.AreEqual(PortalErrorCode.InvalidState, failure.Code, failure.Message);
+        }
+
         private static JsonObject Place(string subnet, string secret)
         {
             return AssemblyHooks.SharedPortal.CreateDevicesFromTemplate(new DeviceTemplatePlacement(_library, Template, subnet, secret), new MadeUpSecrets(), AssemblyHooks.CreateTestDirectory());
