@@ -838,6 +838,63 @@ namespace TiaMcpServer.Test
 
             AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
         }
+
+        [TestMethod]
+        public void GitInitWorkspace_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.GitInitWorkspace("Refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void GitCreateBranch_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.GitCreateBranch("Refused", "feature/refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void GitSwitchBranch_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.GitSwitchBranch("Refused", "main");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void GitCommit_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.GitCommit("Refused", "refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void GitPull_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.GitPull("Refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void GitExportChanges_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.GitExportChanges("Refused", "main", Path.Combine(AssemblyHooks.WorkingRoot, "refused-patches"));
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void GitImportChanges_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.GitImportChanges("Refused", Path.Combine(AssemblyHooks.WorkingRoot, "refused.patch"));
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
         [TestMethod]
         public void ReleaseLibraryType_WithNoPolicy_IsRefused()
         {
