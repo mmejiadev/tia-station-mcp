@@ -797,6 +797,22 @@ namespace TiaMcpServer.Test
 
             AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
         }
+
+        [TestMethod]
+        public void WriteForceTable_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.WriteForceTable(Settings.Project1PlcSoftwarePath0, "{\"rows\": [{\"address\": \"%Q0.0\", \"format\": \"Bool\", \"value\": \"TRUE\"}]}");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void WriteWatchTable_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.WriteWatchTable(Settings.Project1PlcSoftwarePath0, "Refused", "{\"rows\": [{\"address\": \"%MW10\", \"format\": \"DEC_signed\"}]}");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
         [TestMethod]
         public void ReleaseLibraryType_WithNoPolicy_IsRefused()
         {

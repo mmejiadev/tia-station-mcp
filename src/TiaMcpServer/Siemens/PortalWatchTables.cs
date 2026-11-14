@@ -178,6 +178,10 @@ namespace TiaMcpServer.Siemens
         }
 
         /// <summary>The software a table write targets, with its tables exported before anything changes.</summary>
+        /// <remarks>
+        /// Offline first, then the backup: online, TIA Portal refuses a table write with a message that names neither the
+        /// cause nor the fix, and a backup taken for a write that cannot happen would only be clutter.
+        /// </remarks>
         private PlcSoftware RequireSoftwareForTableWrite(string softwarePath, string backupDirectory)
         {
             if (string.IsNullOrWhiteSpace(backupDirectory))
@@ -186,6 +190,13 @@ namespace TiaMcpServer.Siemens
             }
 
             var software = RequireSoftwareWithTables(softwarePath);
+
+            if (IsInOnlineMode(software))
+            {
+                throw new PortalException(
+                    PortalErrorCode.InvalidState,
+                    $"TIA Portal is online with the CPU of {softwarePath}, and tables are written only offline. Go offline (GoOffline) and try again.");
+            }
 
             new WatchTableExporter(_logger).ExportAll(software.WatchAndForceTableGroup, backupDirectory);
 
