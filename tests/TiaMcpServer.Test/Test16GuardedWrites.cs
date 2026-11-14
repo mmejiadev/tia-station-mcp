@@ -750,6 +750,36 @@ namespace TiaMcpServer.Test
                 McpServer.SetServiceProvider(BuildDenyEverythingServices(Path.Combine(AssemblyHooks.WorkingRoot, "no-such-policy.json")));
             }
         }
+
+        [TestMethod]
+        public void CreateHmiConnection_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.CreateHmiConnection("PC_Refused/HMI_RT_1", "PLC_Refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        /// <remarks>It writes the HMI and takes up a connection of the PLC, so a policy that allows only the HMI must not let it through.</remarks>
+        [TestMethod]
+        public void CreateHmiConnection_PolicyAllowingOnlyTheHmi_IsRefusedOnThePlc()
+        {
+            var policy = Path.Combine(AssemblyHooks.CreateTestDirectory(), "hmi-only.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(policy)!);
+            File.WriteAllText(policy, "{ \"study\": { \"allow\": [ \"PC_Refused/HMI_RT_1\" ], \"deny\": [] } }");
+            McpServer.SetServiceProvider(BuildDenyEverythingServices(policy));
+
+            try
+            {
+                var response = McpServer.CreateHmiConnection("PC_Refused/HMI_RT_1", "PLC_Refused");
+
+                Assert.AreEqual("Refused", response.Meta?["outcome"]?.GetValue<string>(), response.Message);
+                StringAssert.Contains(response.Message ?? string.Empty, "PLC_Refused", StringComparison.Ordinal);
+            }
+            finally
+            {
+                McpServer.SetServiceProvider(BuildDenyEverythingServices(Path.Combine(AssemblyHooks.WorkingRoot, "no-such-policy.json")));
+            }
+        }
         [TestMethod]
         public void ReleaseLibraryType_WithNoPolicy_IsRefused()
         {

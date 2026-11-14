@@ -198,11 +198,7 @@ namespace TiaMcpServer.Siemens
 
         private static Node? FirstEthernetNode(Device device)
         {
-            return AllDeviceItems(device.DeviceItems)
-                .Select(item => item.GetService<NetworkInterface>())
-                .Where(networkInterface => networkInterface != null)
-                .SelectMany(networkInterface => networkInterface!.Nodes)
-                .FirstOrDefault(node => node.NodeType == NetType.Ethernet);
+            return EthernetNodes(AllDeviceItems(device.DeviceItems)).FirstOrDefault();
         }
 
         private static IEnumerable<DeviceItem> AllDeviceItems(IEnumerable<DeviceItem> items)

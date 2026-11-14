@@ -242,6 +242,19 @@ namespace TiaMcpServer.Siemens
             NetworkTopologyWriter.Write(backupDirectory, new NetworkTopologyReader(_logger).Read(FindDevices()));
         }
 
+        /// <summary>The Ethernet nodes of a set of device items, in the order the items come.</summary>
+        /// <param name="items">The items, already walked by the caller.</param>
+        /// <returns>Every Ethernet node of their network interfaces.</returns>
+        /// <remarks>One walk for every caller, so a fix to how a node is found reaches all of them.</remarks>
+        private static IEnumerable<Node> EthernetNodes(IEnumerable<DeviceItem> items)
+        {
+            return items
+                .Select(item => item.GetService<NetworkInterface>())
+                .Where(networkInterface => networkInterface != null)
+                .SelectMany(networkInterface => networkInterface!.Nodes)
+                .Where(node => node.NodeType == NetType.Ethernet);
+        }
+
         private PortalException DecorateNetworkFailure(Exception ex, string devicePath, string backupDirectory, string operation)
         {
             var pex = ex as PortalException ?? new PortalException(PortalErrorCode.WriteFailed, $"{operation} failed: {ex.Message}", null, ex);
