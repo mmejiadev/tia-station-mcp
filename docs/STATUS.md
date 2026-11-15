@@ -5,6 +5,36 @@
 
 ## ▶ RESUME HERE
 
+### Connections between PLCs, and PUT/GET — 2026-11-15, branch `work/v21-plc-connections`
+
+Stacked on `work/v21-ip-settings`. Measured first on a new project in `%TEMP%\tiaprobe` (a CPU 1511-1 PN V4.0 and a CPU
+1215C V4.7 on one subnet), then built:
+
+- **`CreatePlcConnection`** (S7, TCP, ISO-on-TCP) and **`GetPlcConnections`**. New in V21's Openness:
+  `CommunicationManagement.Connections.Create<S7Connection|TcpConnection|IsoOnTcpConnection>(localNode, partnerCpu, partnerNode)`.
+  The first S7 one is `S7_Connection_1`, ID 100 at both ends, TSAP `SIMATIC-ACC10001`, the local CPU establishing it; TCP and
+  ISO-on-TCP come out as 101 and 102 (port 2000, TSAP `TCP-1`). The partner lists it with the ends swapped. Both stations
+  compile with 0 errors once their passwords are dealt with (`SetPlcFullAccess`). SCL calling `PUT`, `GET`, `BSEND` and `BRCV`
+  with `ID := W#16#100` compiles 0/0 on the 1511 — `LEN` of BSEND and BRCV is in/out and needs a variable, not a literal.
+  A second connection between the same PLCs is allowed (a program may use several); the same PLC at both ends is refused; a
+  connection TIA Portal reports invalid is said so in the answer. The connection lookup, the shared subnet and the same-item
+  check are shared with `CreateHmiConnection`.
+- **PUT/GET**: on an S7-1500 it is the CPU attribute `ProtectionEnablePutGetCommunication`, which **only appears after the
+  confidential data is unprotected**; `SetDeviceParameter` already writes it (description updated). An **S7-1200 V4.7 gives
+  Openness 31 attributes**: no PUT/GET, clock or system memory, cycle time — "not supported" when named, and absent from the
+  CAx (AML) export too. A master copy carries them (measured on the 1511: PUT/GET, clock memory and a 200 ms cycle survived
+  `MasterCopies.Create` + `Devices.CreateFrom`), so a 1200 prepared once by hand and kept as a master copy is the route.
+- **Trap:** `SystemRole.GetAssignedSystemDeviceFunctionRights(UmacDevice)` **kills TIA Portal V21**. Not used anywhere.
+
+**Review** (`/code-review high` over both branches, ten findings, all fixed): the mask and router findings are in the entry
+below; here, the invalid-connection warning, the code shared with the HMI connection, and the new tests marked inconclusive on
+a V20 build.
+
+**Tests:** Governance **1189** (36 new: `PlcConnectionKindsTests`, `IpSettingsRuleTests`); `Test70PlcConnections` (12),
+`Test71IpSettings` (5), `Test16GuardedWrites` (three new refusals: a policy allowing only one of the PLCs is refused on the
+partner) and `Test66HmiConnections` all pass. Build: 0 warnings. Next: point 2 of the plan, libraries, faceplates and Custom
+Web Controls (CWC measured 2026-11-15: made, placed, bound and clicked in Unified runtime).
+
 ### A node's subnet mask and router — 2026-11-15, branch `work/v21-ip-settings`
 
 Stacked on `work/v21-vci-and-git`. Measured on a new project in `%TEMP%\tiaprobe` (a CPU 1511-1 PN V4.0 and a CPU 1215C
