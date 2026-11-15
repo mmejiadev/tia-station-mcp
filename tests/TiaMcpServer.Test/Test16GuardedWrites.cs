@@ -781,6 +781,14 @@ namespace TiaMcpServer.Test
             }
         }
 
+        [TestMethod]
+        public void SetIpSettings_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.SetIpSettings(Settings.Project1PlcSoftwarePath0, "PROFINET interface_1", "255.255.255.0", "192.168.0.254");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
         /// <remarks>A search reaches every device on a network, so it is decided by the policy like a write.</remarks>
         [TestMethod]
         public void ScanAccessibleDevices_WithNoPolicy_IsRefused()
