@@ -77,8 +77,7 @@ namespace TiaMcpServer.Siemens
             var runtime = RequireUnifiedRuntimeItem(hmiPath);
             var plc = RequirePlcItem(plcPath);
             var (hmiNode, plcNode) = RequireSharedSubnet(runtime, plc, hmiPath, plcPath);
-            var connections = runtime.GetService<CommunicationManagement>()?.Connections
-                ?? throw new PortalException(PortalErrorCode.InvalidState, $"'{hmiPath}' offers no connections to make");
+            var connections = RequireConnections(runtime, hmiPath);
 
             RequireNotConnected(connections, plc, hmiPath, plcPath);
             RecordNetworkBefore(backupDirectory);
@@ -108,46 +107,56 @@ namespace TiaMcpServer.Siemens
         }
 
         /// <remarks>
-        /// The HMI's nodes are looked for in its whole station, as a PC station's interface is on its network card and
-        /// not on the runtime; the PLC's in its whole station too, as it may reach the subnet through a CP or CM in its
-        /// rack, which is the CPU's sibling and not its child. The first pair on one subnet is
-        /// taken, so a PC with a second card on another network, or a CPU with X1 and X2 on two, still finds the one
-        /// they share.
+        /// Each end's nodes are looked for in its whole station: a PC station's interface is on its network card and not
+        /// on the runtime, and a PLC may reach the subnet through a CP or CM in its rack, which is the CPU's sibling and
+        /// not its child. The first pair on one subnet is taken, so a PC with a second card on another network, or a CPU
+        /// with X1 and X2 on two, still finds the one they share. Used by the HMI connection and by the connections
+        /// between PLCs.
         /// </remarks>
-        private static (Node HmiNode, Node PlcNode) RequireSharedSubnet(DeviceItem runtime, DeviceItem plc, string hmiPath, string plcPath)
+        /// <remarks>
+        /// By name and station: whether Openness hands out one proxy per item is not promised, so the objects are not
+        /// compared. Shared by every check that asks whether two items are the same.
+        /// </remarks>
+        private static bool IsSameDeviceItem(DeviceItem first, DeviceItem second)
         {
-            var station = FindOwningDevice(runtime)
-                ?? throw new PortalException(PortalErrorCode.InvalidState, $"'{hmiPath}' is not inside a station");
-            var plcStation = FindOwningDevice(plc)
-                ?? throw new PortalException(PortalErrorCode.InvalidState, $"'{plcPath}' is not inside a station");
-            var plcNodes = EthernetNodes(AllDeviceItems(plcStation.DeviceItems)).Where(node => node.ConnectedSubnet != null).ToList();
-            var pair = EthernetNodes(AllDeviceItems(station.DeviceItems))
-                .Where(node => node.ConnectedSubnet != null)
-                .Select(hmiNode => (HmiNode: hmiNode, PlcNode: plcNodes.FirstOrDefault(plcNode => plcNode.ConnectedSubnet.Name == hmiNode.ConnectedSubnet.Name)))
-                .FirstOrDefault(candidate => candidate.PlcNode != null);
+            return first.Name == second.Name && FindOwningDevice(first)?.Name == FindOwningDevice(second)?.Name;
+        }
 
-            if (pair.PlcNode == null)
+        /// <remarks>The connections hang from the device item that holds the software: the HMI runtime or the CPU.</remarks>
+        private static ConnectionComposition RequireConnections(DeviceItem item, string path)
+        {
+            return item.GetService<CommunicationManagement>()?.Connections
+                ?? throw new PortalException(PortalErrorCode.InvalidState, $"'{path}' offers no connections");
+        }
+
+        private static (Node Local, Node Partner) RequireSharedSubnet(DeviceItem local, DeviceItem partner, string localPath, string partnerPath)
+        {
+            var localStation = FindOwningDevice(local)
+                ?? throw new PortalException(PortalErrorCode.InvalidState, $"'{localPath}' is not inside a station");
+            var partnerStation = FindOwningDevice(partner)
+                ?? throw new PortalException(PortalErrorCode.InvalidState, $"'{partnerPath}' is not inside a station");
+            var partnerNodes = EthernetNodes(AllDeviceItems(partnerStation.DeviceItems)).Where(node => node.ConnectedSubnet != null).ToList();
+            var pair = EthernetNodes(AllDeviceItems(localStation.DeviceItems))
+                .Where(node => node.ConnectedSubnet != null)
+                .Select(localNode => (Local: localNode, Partner: partnerNodes.FirstOrDefault(partnerNode => partnerNode.ConnectedSubnet.Name == localNode.ConnectedSubnet.Name)))
+                .FirstOrDefault(candidate => candidate.Partner != null);
+
+            if (pair.Partner == null)
             {
                 throw new PortalException(
                     PortalErrorCode.InvalidState,
-                    $"'{hmiPath}' and '{plcPath}' are not on one Ethernet subnet. Put both on the same one first "
+                    $"'{localPath}' and '{partnerPath}' are not on one Ethernet subnet. Put both on the same one first "
                     + "(CreateSubnet, ConnectDeviceToSubnet; GetNetworkTopology shows where each is).");
             }
 
-            return (pair.HmiNode, pair.PlcNode);
+            return (pair.Local, pair.Partner);
         }
 
-        /// <remarks>
-        /// By name and station: whether Openness hands out one proxy per item is not promised, so the objects are not
-        /// compared. A second connection to the same PLC would be a second HMI_Connection_N doing what the first does.
-        /// </remarks>
+        /// <remarks>A second connection to the same PLC would be a second HMI_Connection_N doing what the first does.</remarks>
         private static void RequireNotConnected(ConnectionComposition connections, DeviceItem plc, string hmiPath, string plcPath)
         {
-            var plcStation = FindOwningDevice(plc)?.Name;
             var existing = connections.OfType<HmiConnection>().FirstOrDefault(connection =>
-                connection.PartnerTarget != null
-                && connection.PartnerTarget.Name == plc.Name
-                && FindOwningDevice(connection.PartnerTarget)?.Name == plcStation);
+                connection.PartnerTarget != null && IsSameDeviceItem(connection.PartnerTarget, plc));
 
             if (existing != null)
             {
