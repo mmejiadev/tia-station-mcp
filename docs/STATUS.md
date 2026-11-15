@@ -1,9 +1,23 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-11-14**
+> Last updated: **2026-11-15**
 
 ## ▶ RESUME HERE
+
+### A node's subnet mask and router — 2026-11-15, branch `work/v21-ip-settings`
+
+Stacked on `work/v21-vci-and-git`. Measured on a new project in `%TEMP%\tiaprobe` (a CPU 1511-1 PN V4.0 and a CPU 1215C
+V4.7 on one subnet): a node's `SubnetMask`, `UseRouter` and `RouterAddress` are writable and read back as written.
+
+- **`SetIpSettings`** sets both. `IpSettingsRule` (Portable) refuses a mask that is not ones then zeros, a /31 or /32, and a
+  router outside the node's subnet, equal to the node, or on the subnet's network or broadcast address — TIA Portal stores a
+  router outside the subnet without complaint, and the PLC never reaches it. Everything is checked before anything is
+  recorded; then the network and the node's own attributes are recorded (the network record has no masks), and a refusal
+  part-way puts back what had been written. A node with no address in the project is `InvalidState`.
+
+**Tests:** Governance (`IpSettingsRuleTests`), `Test71IpSettings` 5 of 5 and a `Test16` refusal. A `/code-review high` run
+over this and the connections between PLCs that follow found ten things, all fixed. Build: 0 warnings.
 
 ### Code review of the branch, its fixes, and GoOnline taken out — 2026-11-14, branch `work/v21-vci-and-git`
 
