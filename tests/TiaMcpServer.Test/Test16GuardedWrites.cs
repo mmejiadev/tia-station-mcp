@@ -782,6 +782,49 @@ namespace TiaMcpServer.Test
         }
 
         [TestMethod]
+        public void CreatePlcConnection_WithNoPolicy_IsRefused()
+        {
+            RequirePlcConnectionsBuild();
+
+            var response = McpServer.CreatePlcConnection("PLC_Refused", "PLC_Partner_Refused", "S7");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        /// <remarks>It changes both PLCs' configuration, so a policy that allows only the one establishing it must not let it through.</remarks>
+        [TestMethod]
+        public void CreatePlcConnection_PolicyAllowingOnlyOnePlc_IsRefusedOnThePartner()
+        {
+            RequirePlcConnectionsBuild();
+
+            var policy = Path.Combine(AssemblyHooks.CreateTestDirectory(), "one-plc.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(policy)!);
+            File.WriteAllText(policy, "{ \"study\": { \"allow\": [ \"PLC_Refused\" ], \"deny\": [] } }");
+            McpServer.SetServiceProvider(BuildDenyEverythingServices(policy));
+
+            try
+            {
+                var response = McpServer.CreatePlcConnection("PLC_Refused", "PLC_Partner_Refused", "S7");
+
+                Assert.AreEqual("Refused", response.Meta?["outcome"]?.GetValue<string>(), response.Message);
+                StringAssert.Contains(response.Message ?? string.Empty, "PLC_Partner_Refused", StringComparison.Ordinal);
+            }
+            finally
+            {
+                McpServer.SetServiceProvider(BuildDenyEverythingServices(Path.Combine(AssemblyHooks.WorkingRoot, "no-such-policy.json")));
+            }
+        }
+
+        /// <remarks>On a V20 build the tool refuses before the guard, so there is no plan to see refused.</remarks>
+        private static void RequirePlcConnectionsBuild()
+        {
+            if (!TiaMcpServer.Siemens.Portal.CanUsePlcConnections)
+            {
+                Assert.Inconclusive("Connections between PLCs need a TIA Portal V21 build");
+            }
+        }
+
+        [TestMethod]
         public void SetIpSettings_WithNoPolicy_IsRefused()
         {
             var response = McpServer.SetIpSettings(Settings.Project1PlcSoftwarePath0, "PROFINET interface_1", "255.255.255.0", "192.168.0.254");
