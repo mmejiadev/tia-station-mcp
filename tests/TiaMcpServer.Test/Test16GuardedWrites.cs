@@ -599,6 +599,36 @@ namespace TiaMcpServer.Test
             AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
         }
 
+        [TestMethod]
+        public void InstallCustomWebControl_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.InstallCustomWebControl("PilotLight");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        /// <remarks>It puts script into every HMI of the project, so a policy allowing only 'project' (to save it) must not let it through.</remarks>
+        [TestMethod]
+        public void InstallCustomWebControl_PolicyAllowingOnlyTheProject_IsRefused()
+        {
+            var policy = Path.Combine(AssemblyHooks.CreateTestDirectory(), "project-only.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(policy)!);
+            File.WriteAllText(policy, "{ \"study\": { \"allow\": [ \"project\" ], \"deny\": [] } }");
+            McpServer.SetServiceProvider(BuildDenyEverythingServices(policy));
+
+            try
+            {
+                var response = McpServer.InstallCustomWebControl("PilotLight");
+
+                Assert.AreEqual("Refused", response.Meta?["outcome"]?.GetValue<string>(), response.Message);
+                StringAssert.Contains(response.Message ?? string.Empty, "custom-web-controls/TiaStation.PilotLight", StringComparison.Ordinal);
+            }
+            finally
+            {
+                McpServer.SetServiceProvider(BuildDenyEverythingServices(Path.Combine(AssemblyHooks.WorkingRoot, "no-such-policy.json")));
+            }
+        }
+
         /// <remarks>Editing and releasing a type must not let a session delete it.</remarks>
         [TestMethod]
         public void DeleteLibraryType_PolicyAllowingEditingTheType_IsRefused()
@@ -618,6 +648,14 @@ namespace TiaMcpServer.Test
             {
                 McpServer.SetServiceProvider(BuildDenyEverythingServices(Path.Combine(AssemblyHooks.WorkingRoot, "no-such-policy.json")));
             }
+        }
+
+        [TestMethod]
+        public void PlaceCustomWebControls_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.PlaceCustomWebControls("PC_Refused/HMI_RT_1", @"{ ""screen"": ""Main"", ""controls"": [ { ""name"": ""Lamp_1"", ""control"": ""TiaStation.PilotLight"" } ] }");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
         }
 
         [TestMethod]
