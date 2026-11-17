@@ -26,8 +26,16 @@ namespace TiaMcpServer.UnifiedScreens
         /// <summary>The screen's name.</summary>
         public string Name { get; }
 
-        private static bool IsResourceList(UnifiedPropertySetting setting)
+        /// <summary>Whether a setting names the text list a symbolic IO field shows.</summary>
+        /// <param name="setting">A property setting.</param>
+        /// <returns>True for a non-empty <see cref="ResourceListProperty"/>.</returns>
+        public static bool IsResourceList(UnifiedPropertySetting setting)
         {
+            if (setting == null)
+            {
+                throw new ArgumentNullException(nameof(setting));
+            }
+
             return setting.Path.Equals(ResourceListProperty, StringComparison.OrdinalIgnoreCase)
                 && setting.Value.ValueKind == System.Text.Json.JsonValueKind.String
                 && setting.Value.GetString()!.Trim().Length > 0;
