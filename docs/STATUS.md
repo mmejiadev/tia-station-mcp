@@ -5,6 +5,46 @@
 
 ## ▶ RESUME HERE
 
+### Keeping the project library tidy — 2026-11-15, branch `work/v21-library-maintenance`
+
+On `main` after the connections between PLCs; point 2 of the plan (libraries, faceplates, Custom Web Controls), part one. Measured on
+a copy of a class project with six types (a block, a UDT, four faceplates) before building:
+
+- **`GetLibraryTypeUsage`** reads `ProjectLibrary.UpdateCheck(project, ReportOutOfDateAndUpToDate)`: every instance of every
+  type, with device, path, the version it shows and TIA Portal's status. It reaches **WinCC Unified faceplates** as well as
+  PLC blocks and data types; `LibraryTypeVersion.FindInstances` takes only a PLC program or a classic HMI.
+- **`DiscardLibraryTypeEdit`**, **`SetDefaultLibraryTypeVersion`**, **`DeleteLibraryTypeVersion`**, **`DeleteLibraryType`**
+  (`library-delete/<type>`; choosing the default `library/<type>`) and **`CleanUpProjectLibrary`** (`library-cleanup`, the whole project library). TIA Portal refuses to delete the
+  default version, a version other types depend on, and a type with instances; `LibraryVersionRules` (Portable) refuses the
+  first, a version in work and a type's only version before anything else, naming the tool to use instead.
+  `CleanUpLibrary(PreserveDefaultVersionOfUnusedTypes)` removed five of six versions of each faceplate on the copy; the
+  answer names every version removed.
+- **Backup is an archive of the project**, as a faceplate's content has no export. `Project.Archive` refuses a project with
+  unsaved changes, so the tools that delete or discard refuse one too ("save it first (SaveProject)"), before anything is
+  touched. Choosing the default keeps the type's description, as choosing again undoes it.
+
+Also measured, while fixing the review: TIA Portal refuses to delete a type with a version in work, and **discarding a
+type's only version, in work, removes the type** (a faceplate never released). `DeleteLibraryType` refuses the first and
+points to `DiscardLibraryTypeEdit`, which says in its answer when the type went too.
+
+**Review** (`/code-review high`, ten findings, eight fixed): `DeleteLibraryType` no longer reads the type after deleting it
+(it reported a done delete as failed); the clean-up has its own target, **`library-cleanup`**, as a policy allowing
+`library` only lets types be added; a type's only version is sent to `DeleteLibraryType`, not to choosing another default;
+only TIA Portal's "cannot be ..." refusals become an invalid state; the usage reader lets the nearer level win and takes as
+status only a level with a status part. Left: the backup folder is allocated before the policy decides (so in every tool of
+the repository), and the clean-up archives even when nothing turns out unused.
+
+**Later review rounds, 2026-11-16:** TIA Portal's refusals to delete are recognised by their exception type, not by the
+English words - TIA Portal answers in its user interface language - and only around the deletes, where they were measured;
+discarding, choosing the default and cleaning up report any failure as an operation failure. The only released version
+beside one in work is sent to release or discard it, not to choosing a default that does not exist. The usage report gives
+each instance's own name; the targets are passed by each tool, not chosen by comparing its name; one local-project guard
+instead of three copies.
+
+**Tests:** Governance **1203** (`LibraryVersionRulesTests` 12, one `ChangeTargetLibraryTests`); `Test72LibraryMaintenance`
+13 of 13 and five `Test16` refusals (a policy allowing `library` and one type does not let the clean-up through). Build: 0
+warnings. Next: Custom Web Controls (generate, install, place, bind), then the faceplate templates.
+
 ### Connections between PLCs, and PUT/GET — 2026-11-15, branch `work/v21-plc-connections`
 
 Stacked on `work/v21-ip-settings`. Measured first on a new project in `%TEMP%\tiaprobe` (a CPU 1511-1 PN V4.0 and a CPU
