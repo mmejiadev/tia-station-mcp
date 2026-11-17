@@ -5,6 +5,85 @@
 
 ## ▶ RESUME HERE
 
+### WinCC Unified Custom Web Controls: a catalogue, install, place — 2026-11-15, branch `work/v21-custom-web-controls`
+
+Stacked on `work/v21-library-maintenance`; point 2 of the plan, part two. Measured first on copies of a class project: a pilot light written from scratch as a Custom
+Web Control (CWC) - a zip of `manifest.json`, `control/index.html` and WebCC - put in `UserFiles\CustomControls\{GUID}.zip`
+was recognised once the project was opened again (**not** while it stayed open), placed by its manifest name (its GUID is
+refused), drawn as its real page in the screen editor, bound on its interface property, compiled with no error, and in
+runtime a click fired its event, whose script toggled a tag the lamp showed again.
+
+- **`GetCustomWebControlCatalog`**: seven ready-made, animated controls in one dark industrial style - `PilotLight` (glows,
+  blinks on alarm), `Motor` (fan speed follows Speed), `Tank` (moving surface, high and low limits), `Valve` (actuator turns),
+  `Gauge` (needle over green, amber and red bands), `Conveyor` (belt both ways), `PushButton` (Pressed/Released, lamp).
+  Embedded as JSON plus `.html`, `.css` and `.js`, read by the same reader as an author's control.
+- **`InstallCustomWebControl`**: a catalogue control or one's own definition (properties boolean, string, number, integer,
+  colour; events; markup, style and a script defining `render(p)`, with `TiaStation.color/bool/number/fire` helpers). The
+  GUID comes from the name, so installing again replaces. WebCC is taken from the local TIA Portal (`Data\Hmi\CustomControls`),
+  never shipped. In the server's own TIA Portal the saved project is closed and opened again; in a TIA Portal with a window it
+  is not, and the answer says to reopen it there. Target `custom-web-controls/<control name>`.
+- **`PlaceCustomWebControls`**: size (the placement's or the manifest's; TIA Portal's own is 640 x 320 with a title bar) and
+  `WindowFlags` none, fixed values converted by the manifest's kind, tags on the interface property, event scripts; every
+  name and every tag's root checked first (TIA Portal finds a missing tag only at compile time), all or none.
+  **`GetCustomWebControls`** lists what the project has.
+- Looked at outside TIA Portal too: each catalogue page rendered with a WebCC stand-in in a separate headless Chrome, which
+  is how the gauge's faint needle and the motor's "100 %" on fault were found and fixed.
+
+**Review** (`/code-review high`, ten findings, all fixed): installing a control has its own target,
+**`custom-web-controls`** (a policy allowing `project`, which saving needs, must not let a session put script into the HMI),
+and deleting or discarding from a library type has **`library-delete/<type>`** (a rule to edit and release a faceplate must not
+delete it); a reopen that fails says the package is in and how to open the project again; a locked or damaged package is
+listed as unreadable instead of failing the list, and why WebCC could not be read is reported; a property named twice in the
+placement is refused; a control installed by somebody else can be placed whatever its naming; the tag root uses the
+faceplates' rule; only TIA Portal's "cannot be deleted" refusals become an invalid state; the gauge compares the value with
+the limits themselves.
+
+**Second review round, security** (ten findings, nine fixed; the first of them later undone, see the runtime check): every
+generated page declared a **Content-Security-Policy** keeping the control inside its own package; the
+install target is **`custom-web-controls/<control name>`**, so a rule can allow the catalogue (`custom-web-controls/TiaStation.*`)
+and not a written definition, and the plan says which it is with a fingerprint of the page; cleaning up with
+`deleteUnusedTypes` needs **`library-cleanup/types`**; a name another package already declares is refused, and placing a name
+two packages declare is refused; markup, style and script may not hold what would swallow the page's own scripts (raw-text
+elements, comments, script tags); `__proto__`, `constructor` and the like are refused as names; WebCC is taken only from
+`control/libs` or `control/static` of a package under the TIA Portal folder that holds `PublicAPI`, never higher up; a package
+is written to a temporary file and moved into place, and never through a junction; a manifest or library in a package is
+read only up to a limit.
+
+**Runtime check, 2026-11-15/16 - solved: the seven catalogue controls draw.** Installed and placed on a copy with this
+branch's own code (`Portal` loaded from the build), the HMI compiled with 0 errors and 0 warnings, and the first build of
+the seven drew **blank** in the screen editor and in runtime. That build declared a Content-Security-Policy and carried the
+WebCC copy of AuditViewer's `control/static`; the current one does neither, and fresh items of all seven draw in the
+editor - pilot lit, motor, valve, tank at 65 %, gauge at 78, conveyor, push button. The two causes were changed together
+and are not told apart, so both stay out. Not the cause, each measured with a variant drawn beside the others: the zip
+entries' external attributes (0 here, `0x81b60000` in the pilot) and the icon - a package without either draws.
+
+Measured on the way: **a package replaced under items already placed breaks the HMI's compile** - each such item fails with
+"'<item>' and its ZIP file '{GUID}' do not match. Update "My controls" in the "Toolbox" task card using the "Refresh" button
+and recompile the device." The earlier "still blank" readings after each fix were those stale items, not the fixed
+packages. `InstallCustomWebControl` **does** replace a control of the same name (same package id), and its description says
+that items already placed then fail the compile until "My controls" is refreshed in the toolbox, by hand: whether a control
+is in use is on the screens, which the install does not read.
+
+The Content-Security-Policy of the security round is **taken out**: it is replaced by a check of what an author writes - no
+address with a scheme or `//`, no `fetch`, `XMLHttpRequest`, `WebSocket`, `sendBeacon`, `@import`, `import(` or browser
+storage - stated in `CustomWebControlRules` as a guard against a plain reach-out, not against one built to hide.
+
+**Third and fourth review rounds, 2026-11-16** (`/code-review high` twice, twenty findings, all fixed):
+- *Security:* a written definition may not be named under `TiaStation.` - a rule allowing
+  `custom-web-controls/TiaStation.*` means the catalogue, and the name gives the package id, so it could have replaced a
+  catalogue control with its own script; WebCC is read only from `control/libs` or `control/static` (the one reading
+  method refuses any other path); an event's arguments named twice are refused; `render` must be defined, not just named.
+- *Errors:* a reopen that returns false says the project is closed and how to open it. A control newer than the open
+  project is refused with "close the project and open it again", not a null reference. An event script is syntax-checked
+  where it is written (the setter takes broken JavaScript without a word) and a broken one undoes the placement.
+- *Smaller:* a bound tag is written trimmed, as checked; tags are looked up one by one rather than every HMI tag read; a
+  placement finds a control whatever the case of its name; one screen backup (`UnifiedScreenBackup`) for faceplates and
+  controls instead of two copies.
+- The library tools' findings of these rounds are under "Keeping the project library tidy".
+
+**Tests:** Governance **1277**; `Test72`, `Test73` (8) and all of `Test16` **127 of 127** after the fourth round. Build: 0
+warnings.
+
 ### Keeping the project library tidy — 2026-11-15, branch `work/v21-library-maintenance`
 
 On `main` after the connections between PLCs; point 2 of the plan (libraries, faceplates, Custom Web Controls), part one. Measured on
