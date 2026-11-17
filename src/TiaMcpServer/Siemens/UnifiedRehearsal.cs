@@ -39,7 +39,7 @@ namespace TiaMcpServer.Siemens
 
                 if (refused.Count > 0)
                 {
-                    throw new PortalException(PortalErrorCode.InvalidParams, $"Nothing was drawn: {string.Join("; ", refused)}");
+                    throw new PortalException(PortalErrorCode.InvalidParams, $"Nothing was changed: {string.Join("; ", refused)}");
                 }
             }
             finally
