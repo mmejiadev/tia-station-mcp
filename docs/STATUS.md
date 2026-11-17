@@ -1,9 +1,39 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-11-15**
+> Last updated: **2026-11-17**
 
 ## ▶ RESUME HERE
+
+### Changing some items of a Unified screen — 2026-11-17, branch `work/v21-unified-screen-edit`
+
+Point 2f of the plan. `DrawUnifiedScreen` deletes every item and draws the description, so adding one button meant
+describing the whole screen, and a screen holding a faceplate or a Custom Web Control - which it cannot draw back - could
+not be changed by it at all (found using the MCP after the V21 migration).
+
+- **`EditUnifiedScreen`**: `{ screen, properties, remove: [names], set: [{ name, properties }], draw: [items] }`. `set`
+  changes properties in place and the item keeps its place among the others - a faceplate or a Custom Web Control too;
+  `draw` adds an item, or replaces the one of its name, written exactly as in `DrawUnifiedScreen` (the same reader);
+  `remove` deletes. An item is named in one list at most, case aside. Every other item is left as it is.
+- Checked before anything changes: the items there, every property against its type, HMI tags and text lists; a `set`
+  on a property a tag or an animation drives is refused (it would change nothing in runtime). The backup is what each
+  undo needs: an item removed or replaced, read as `GetUnifiedScreen` reads it and checked to draw back (removing a
+  faceplate is refused); a property set in place, its value before (`UnifiedScreenEditValues`). Then scripts and
+  animations are rehearsed on a throw-away screen.
+- Each step done puts its undo on a list (`UnifiedRollback.UndoChanges`, as the other Unified writers): when TIA Portal
+  refuses a later step, only what was done is undone - a property gets its value back in place, an item drawn is deleted,
+  an item removed or replaced is drawn back on top of the others (Openness places no item below another), which the
+  refusal says.
+- Measured on V21: TIA Portal refuses an item name like `Bad/Name"&?` only when the item is created, which is how the undo
+  is tested; with the undo taken out, that test fails (two items left of three). An empty tooltip written back reads as
+  the rich text `<body><p/></body>`, not as nothing.
+- Two review rounds (`/code-review high`, twenty findings, all fixed): among them, a screen in a group is refused as for a
+  drawing (the rehearsal holds its screen under the name), an unreadable property elsewhere no longer refuses the edit, a
+  blank name in `draw` no longer becomes `Button_1` and replaces it, a refusal names the item and property, and the
+  shared guards say "Nothing was changed" rather than "Nothing was drawn".
+
+**Tests:** Governance **1297** (`UnifiedScreenEditReaderTests` 20); `Test74UnifiedScreenEdits` **11 of 11**; `Test44`,
+`Test49` and `Test16` pass with the shared checks. Build: 0 warnings.
 
 ### WinCC Unified Custom Web Controls: a catalogue, install, place — 2026-11-15, branch `work/v21-custom-web-controls`
 
