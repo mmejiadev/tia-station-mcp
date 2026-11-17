@@ -1,0 +1,18 @@
+{
+  "name": "TiaStation.Gauge",
+  "displayName": "Gauge",
+  "description": "A half-round gauge: a needle sweeps to Value between Min and Max over green, amber (from WarnLimit) and red (from AlarmLimit) bands; the value and its arc take the band's colour.",
+  "width": 200,
+  "height": 150,
+  "properties": [
+    { "name": "Value", "type": "number", "default": 42 },
+    { "name": "Min", "type": "number", "default": 0 },
+    { "name": "Max", "type": "number", "default": 100 },
+    { "name": "WarnLimit", "type": "number", "default": 70 },
+    { "name": "AlarmLimit", "type": "number", "default": 90 },
+    { "name": "Unit", "type": "string", "default": "bar" },
+    { "name": "Decimals", "type": "integer", "default": 1 },
+    { "name": "Label", "type": "string", "default": "PT1" }
+  ],
+  "events": []
+}

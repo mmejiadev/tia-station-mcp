@@ -1,0 +1,19 @@
+<div id="root" class="gauge">
+    <svg class="art" viewBox="0 0 200 118" preserveAspectRatio="xMidYMid meet">
+        <path class="face" d="M6 104 A94 94 0 0 1 194 104 Z"/>
+        <path class="track" d="M22 100 A78 78 0 0 1 178 100"/>
+        <path id="normal" class="band normal"/>
+        <path id="warn" class="band warn"/>
+        <path id="alarm" class="band alarm"/>
+        <path id="fill" class="fill" d="M22 100 A78 78 0 0 1 178 100" pathLength="100"/>
+        <g id="needle" class="needle">
+            <path d="M100 96.5 L30 100 L100 103.5 Z"/>
+        </g>
+        <circle cx="100" cy="100" r="8" class="hub"/>
+        <text id="value" class="value" x="100" y="64" text-anchor="middle"></text>
+        <text id="unit" class="unit" x="100" y="78" text-anchor="middle"></text>
+        <text id="min" class="end" x="30" y="99" text-anchor="middle"></text>
+        <text id="max" class="end" x="170" y="99" text-anchor="middle"></text>
+    </svg>
+    <div id="label" class="label"></div>
+</div>

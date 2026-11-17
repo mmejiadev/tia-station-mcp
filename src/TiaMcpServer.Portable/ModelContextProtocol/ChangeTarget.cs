@@ -66,6 +66,32 @@ namespace TiaMcpServer.ModelContextProtocol
         /// </remarks>
         public const string ProjectLibrary = "library";
 
+        /// <summary>
+        /// Deleting from the project library whatever nothing uses, every type at once.
+        /// </summary>
+        /// <remarks>
+        /// Its own name, not <see cref="ProjectLibrary"/>: a policy allowing <c>library</c> lets a session add types, and
+        /// must not thereby let it delete versions and whole types in bulk. Like <see cref="SimulationRuntime"/>, a session
+        /// that needs it names it.
+        /// </remarks>
+        public const string ProjectLibraryCleanUp = "library-cleanup";
+
+        /// <summary>
+        /// Installing a WinCC Unified Custom Web Control in the project: a web page that runs in every HMI runtime of it.
+        /// </summary>
+        /// <remarks>
+        /// Its own name, not <see cref="Project"/>: a policy that lets a session save the project - which deleting library
+        /// types asks for - must not thereby let it put script into the HMI, and in the server's own TIA Portal close and
+        /// open the project.
+        /// </remarks>
+        public const string CustomWebControls = "custom-web-controls";
+
+        /// <summary>Deleting from the project library whole types nothing uses, besides their unused versions.</summary>
+        /// <remarks>Apart from <see cref="ProjectLibraryCleanUp"/>: a rule allowing old versions to be pruned must not thereby let whole types go.</remarks>
+        public const string ProjectLibraryCleanUpTypes = ProjectLibraryCleanUp + "/types";
+
+        private const string LibraryDeletionPrefix = "library-delete/";
+
         private const string SimulationPrefix = "simulation/";
         private const string LibraryPrefix = ProjectLibrary + "/";
         private const string GlobalLibraryPrefix = "global-library/";
@@ -112,6 +138,30 @@ namespace TiaMcpServer.ModelContextProtocol
         public static string LibraryType(string typeName)
         {
             return LibraryPrefix + (typeName ?? string.Empty).Trim('/');
+        }
+
+        /// <summary>Installing one Custom Web Control, by its name.</summary>
+        /// <param name="controlName">The control's name, e.g. <c>TiaStation.PilotLight</c>.</param>
+        /// <returns>The target name, for example <c>custom-web-controls/TiaStation.PilotLight</c>.</returns>
+        /// <remarks>
+        /// By name, so a rule can allow the catalogue's controls (<c>custom-web-controls/TiaStation.*</c>) without allowing
+        /// every definition a session writes, nor the replacing of a control already installed under another name.
+        /// </remarks>
+        public static string CustomWebControl(string controlName)
+        {
+            return CustomWebControls + "/" + (controlName ?? string.Empty).Trim('/');
+        }
+
+        /// <summary>Deleting or discarding from one project library type: a version, the version in work, or the whole type.</summary>
+        /// <param name="typeName">The type's name, e.g. <c>FP_Motor</c>.</param>
+        /// <returns>The target name, for example <c>library-delete/FP_Motor</c>.</returns>
+        /// <remarks>
+        /// Apart from <see cref="LibraryType"/>: a rule that lets a session edit and release a faceplate drawn by hand must
+        /// not thereby let it delete the faceplate, which has no export to bring it back from.
+        /// </remarks>
+        public static string LibraryTypeDeletion(string typeName)
+        {
+            return LibraryDeletionPrefix + (typeName ?? string.Empty).Trim('/');
         }
 
         /// <summary>A global library, by the folder that holds it: where one is created.</summary>

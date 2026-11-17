@@ -30,6 +30,54 @@ namespace TiaMcpServer.Governance.Tests
             Assert.IsFalse(typeRule.Matches(ChangeTarget.ProjectLibrary));
         }
 
+        /// <remarks>Adding types to the library must not grant deleting them in bulk (review of 2026-11-15).</remarks>
+        [TestMethod]
+        public void ProjectLibraryCleanUp_ARuleAllowingTheLibrary_DoesNotAllowCleaningItUp()
+        {
+            var libraryRule = TargetPattern.Parse(ChangeTarget.ProjectLibrary);
+            var typeRule = TargetPattern.Parse("library/*");
+
+            Assert.IsFalse(libraryRule.Matches(ChangeTarget.ProjectLibraryCleanUp));
+            Assert.IsFalse(typeRule.Matches(ChangeTarget.ProjectLibraryCleanUp));
+        }
+
+        /// <remarks>Editing and releasing a type must not grant deleting it (review of 2026-11-15).</remarks>
+        [TestMethod]
+        public void LibraryTypeDeletion_ARuleForEditingTypes_DoesNotAllowDeletingThem()
+        {
+            var editRule = TargetPattern.Parse("library/*");
+
+            Assert.IsFalse(editRule.Matches(ChangeTarget.LibraryTypeDeletion("FP_Motor")));
+        }
+
+        /// <remarks>Saving the project must not grant putting script into its HMIs (review of 2026-11-15).</remarks>
+        [TestMethod]
+        public void CustomWebControl_ARuleAllowingTheProject_DoesNotAllowInstallingControls()
+        {
+            var projectRule = TargetPattern.Parse(ChangeTarget.Project);
+
+            Assert.IsFalse(projectRule.Matches(ChangeTarget.CustomWebControl("Plant.Pump")));
+        }
+
+        /// <remarks>A rule for the catalogue's controls must not reach a definition a session wrote (security review of 2026-11-15).</remarks>
+        [TestMethod]
+        public void CustomWebControl_ARuleForTheCatalogue_DoesNotReachAnotherControl()
+        {
+            var catalogueRule = TargetPattern.Parse(ChangeTarget.CustomWebControl("TiaStation.*"));
+
+            Assert.IsTrue(catalogueRule.Matches(ChangeTarget.CustomWebControl("TiaStation.PilotLight")));
+            Assert.IsFalse(catalogueRule.Matches(ChangeTarget.CustomWebControl("Plant.Pump")));
+        }
+
+        /// <remarks>Pruning old versions must not grant deleting whole types (security review of 2026-11-15).</remarks>
+        [TestMethod]
+        public void ProjectLibraryCleanUpTypes_ARuleForPruningVersions_DoesNotAllowDeletingTypes()
+        {
+            var pruneRule = TargetPattern.Parse(ChangeTarget.ProjectLibraryCleanUp);
+
+            Assert.IsFalse(pruneRule.Matches(ChangeTarget.ProjectLibraryCleanUpTypes));
+        }
+
         /// <remarks>The review of 2026-11-01: the target was the file's stem, so a rule for a scratch library reached a shared one of that name.</remarks>
         [TestMethod]
         public void GlobalLibraryFile_ARuleForOneLibrary_DoesNotReachAnotherOfThatName()

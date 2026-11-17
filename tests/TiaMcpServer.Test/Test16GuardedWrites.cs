@@ -600,6 +600,118 @@ namespace TiaMcpServer.Test
         }
 
         [TestMethod]
+        public void InstallCustomWebControl_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.InstallCustomWebControl("PilotLight");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        /// <remarks>It puts script into every HMI of the project, so a policy allowing only 'project' (to save it) must not let it through.</remarks>
+        [TestMethod]
+        public void InstallCustomWebControl_PolicyAllowingOnlyTheProject_IsRefused()
+        {
+            var policy = Path.Combine(AssemblyHooks.CreateTestDirectory(), "project-only.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(policy)!);
+            File.WriteAllText(policy, "{ \"study\": { \"allow\": [ \"project\" ], \"deny\": [] } }");
+            McpServer.SetServiceProvider(BuildDenyEverythingServices(policy));
+
+            try
+            {
+                var response = McpServer.InstallCustomWebControl("PilotLight");
+
+                Assert.AreEqual("Refused", response.Meta?["outcome"]?.GetValue<string>(), response.Message);
+                StringAssert.Contains(response.Message ?? string.Empty, "custom-web-controls/TiaStation.PilotLight", StringComparison.Ordinal);
+            }
+            finally
+            {
+                McpServer.SetServiceProvider(BuildDenyEverythingServices(Path.Combine(AssemblyHooks.WorkingRoot, "no-such-policy.json")));
+            }
+        }
+
+        /// <remarks>Editing and releasing a type must not let a session delete it.</remarks>
+        [TestMethod]
+        public void DeleteLibraryType_PolicyAllowingEditingTheType_IsRefused()
+        {
+            var policy = Path.Combine(AssemblyHooks.CreateTestDirectory(), "edit-only.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(policy)!);
+            File.WriteAllText(policy, "{ \"study\": { \"allow\": [ \"library/*\" ], \"deny\": [] } }");
+            McpServer.SetServiceProvider(BuildDenyEverythingServices(policy));
+
+            try
+            {
+                var response = McpServer.DeleteLibraryType("Refused");
+
+                Assert.AreEqual("Refused", response.Meta?["outcome"]?.GetValue<string>(), response.Message);
+            }
+            finally
+            {
+                McpServer.SetServiceProvider(BuildDenyEverythingServices(Path.Combine(AssemblyHooks.WorkingRoot, "no-such-policy.json")));
+            }
+        }
+
+        [TestMethod]
+        public void PlaceCustomWebControls_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.PlaceCustomWebControls("PC_Refused/HMI_RT_1", @"{ ""screen"": ""Main"", ""controls"": [ { ""name"": ""Lamp_1"", ""control"": ""TiaStation.PilotLight"" } ] }");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void DiscardLibraryTypeEdit_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.DiscardLibraryTypeEdit("Refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void SetDefaultLibraryTypeVersion_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.SetDefaultLibraryTypeVersion("Refused", "0.0.1");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void DeleteLibraryTypeVersion_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.DeleteLibraryTypeVersion("Refused", "0.0.1");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void DeleteLibraryType_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.DeleteLibraryType("Refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        /// <remarks>It deletes from every type, so a policy letting a session add types to the library, or change one, must not let it through.</remarks>
+        [TestMethod]
+        public void CleanUpProjectLibrary_PolicyAllowingTheLibraryAndOneType_IsRefused()
+        {
+            var policy = Path.Combine(AssemblyHooks.CreateTestDirectory(), "library-and-type.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(policy)!);
+            File.WriteAllText(policy, "{ \"study\": { \"allow\": [ \"library\", \"library/Refused\" ], \"deny\": [] } }");
+            McpServer.SetServiceProvider(BuildDenyEverythingServices(policy));
+
+            try
+            {
+                var response = McpServer.CleanUpProjectLibrary();
+
+                Assert.AreEqual("Refused", response.Meta?["outcome"]?.GetValue<string>(), response.Message);
+            }
+            finally
+            {
+                McpServer.SetServiceProvider(BuildDenyEverythingServices(Path.Combine(AssemblyHooks.WorkingRoot, "no-such-policy.json")));
+            }
+        }
+
+        [TestMethod]
         public void EditLibraryType_WithNoPolicy_IsRefused()
         {
             var response = McpServer.EditLibraryType("Refused");

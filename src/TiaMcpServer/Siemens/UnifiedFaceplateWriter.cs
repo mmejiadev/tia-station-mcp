@@ -3,10 +3,7 @@ using Siemens.Engineering.HmiUnified.UI.Screens;
 using Siemens.Engineering.Library.Types;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Text.Json;
-using System.Text.Json.Nodes;
 using TiaMcpServer.UnifiedFaceplates;
 using UnifiedHmiSoftware = Siemens.Engineering.HmiUnified.HmiSoftware;
 
@@ -21,8 +18,6 @@ namespace TiaMcpServer.Siemens
     /// </remarks>
     internal sealed class UnifiedFaceplateWriter
     {
-        private const string ScreenItemsFile = "screen-items.json";
-
         private readonly HmiScreen _screen;
         private readonly UnifiedFaceplateList _list;
         private readonly UnifiedFaceplateRules _rules;
@@ -56,7 +51,7 @@ namespace TiaMcpServer.Siemens
         /// <param name="backupDirectory">Where the screen's items before the change are listed.</param>
         public void Place(string backupDirectory)
         {
-            SaveScreenItems(backupDirectory);
+            UnifiedScreenBackup.SaveItems(_screen, backupDirectory);
             var made = new List<(string Name, Action Delete)>();
 
             try
@@ -71,23 +66,6 @@ namespace TiaMcpServer.Siemens
             {
                 throw UnifiedRollback.Undo(made, failure, "faceplates");
             }
-        }
-
-        private void SaveScreenItems(string backupDirectory)
-        {
-            if (string.IsNullOrWhiteSpace(backupDirectory))
-            {
-                throw new PortalException(PortalErrorCode.InvalidParams, "backupDirectory is required: the screen's items are listed before any is added");
-            }
-
-            var items = new JsonObject
-            {
-                ["screen"] = _screen.Name,
-                ["items"] = new JsonArray(_screen.ScreenItems.Select(item => (JsonNode)item.Name).ToArray())
-            };
-
-            Directory.CreateDirectory(backupDirectory);
-            File.WriteAllText(Path.Combine(backupDirectory, ScreenItemsFile), items.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
         }
 
         private void Write(HmiFaceplateContainer created, UnifiedFaceplateDescription faceplate)

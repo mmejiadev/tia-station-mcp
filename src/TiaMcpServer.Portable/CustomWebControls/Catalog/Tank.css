@@ -1,0 +1,24 @@
+.tank {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 100%; user-select: none; font-family: "Segoe UI", system-ui, sans-serif;
+    --liquid: rgb(33, 150, 243); --alarm: rgb(229, 57, 53);
+}
+.art { width: 96%; height: 80%; }
+.liquid { transition: transform 1s cubic-bezier(.25, .8, .3, 1); }
+.wave { fill: var(--liquid); transition: fill .4s ease; }
+.wave.back { opacity: .55; animation: drift 5.5s linear infinite reverse; }
+.wave.front { opacity: .92; animation: drift 3.4s linear infinite; }
+.scale path { stroke: #8a939e; stroke-width: 1.2; }
+.limit { stroke: #c9d1da; stroke-width: 2; stroke-linecap: round; transition: stroke .3s ease; }
+.limit.crossed { stroke: var(--alarm); animation: blink .8s linear infinite; }
+.caption { display: flex; gap: 6px; align-items: center; margin-top: 1.5vh; max-width: 96%; }
+.label, .value {
+    font-size: min(13px, 7vh); font-weight: 600; letter-spacing: .03em; color: #e8edf3;
+    background: #2b313b; padding: 2px 9px; border-radius: 9px; white-space: nowrap;
+}
+.label { overflow: hidden; text-overflow: ellipsis; }
+.value { background: #1d2128; font-variant-numeric: tabular-nums; transition: color .3s ease; }
+.value.crossed { color: var(--alarm); }
+.label:empty { display: none; }
+@keyframes drift { from { transform: translateX(0); } to { transform: translateX(-68px); } }
+@keyframes blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: .25; } }

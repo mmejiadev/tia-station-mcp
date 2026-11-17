@@ -1,0 +1,28 @@
+.conveyor {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 100%; cursor: pointer; user-select: none; font-family: "Segoe UI", system-ui, sans-serif;
+    --state: rgb(122, 131, 143); --period: 1s;
+}
+.art { width: 98%; height: 66%; }
+.conveyor:active .art { transform: scale(.99); }
+.belt { fill: #23282f; stroke: #16191f; stroke-width: 2; transition: stroke .3s ease; }
+.running .belt { stroke: var(--state); }
+.fault .belt { stroke: rgb(229, 57, 53); stroke-width: 3; animation: blink .8s linear infinite; }
+.stripes path { stroke: #3f4752; stroke-width: 4; }
+.running .stripes { animation: belt var(--period) linear infinite; }
+.reverse .stripes { animation-direction: reverse; }
+.roller circle { fill: #4a525d; stroke: #16191f; stroke-width: 2; }
+.spokes { stroke: #a3acb7; stroke-width: 2; stroke-linecap: round; transform-box: fill-box; transform-origin: center; }
+.running .spokes { animation: spin var(--period) linear infinite; }
+.reverse .spokes { animation-direction: reverse; }
+.caption { display: flex; gap: 6px; align-items: center; margin-top: 1vh; max-width: 96%; }
+.label, .state {
+    font-size: min(13px, 12vh); font-weight: 600; letter-spacing: .03em; color: #e8edf3;
+    background: #2b313b; padding: 2px 9px; border-radius: 9px; white-space: nowrap;
+}
+.label { overflow: hidden; text-overflow: ellipsis; }
+.state { color: var(--state); background: #1d2128; }
+.label:empty, .state:empty { display: none; }
+@keyframes belt { from { transform: translateX(0); } to { transform: translateX(20px); } }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: .3; } }

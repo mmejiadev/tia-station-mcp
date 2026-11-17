@@ -51,6 +51,8 @@
   <ItemGroup>
     <!-- A framework assembly: UnifiedPropertyConverterTests checks the colours it builds. -->
     <Reference Include="System.Drawing" />
+    <!-- A framework assembly too: CustomWebControlPackageTests opens the packages it builds. -->
+    <Reference Include="System.IO.Compression" />
   </ItemGroup>
 
   <ItemGroup>

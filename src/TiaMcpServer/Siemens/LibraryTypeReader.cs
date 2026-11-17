@@ -132,12 +132,12 @@ namespace TiaMcpServer.Siemens
             };
         }
 
-        /// <summary>A type's versions as numbers and states.</summary>
+        /// <summary>A type's versions as numbers, states and which is the default.</summary>
         /// <param name="type">The type.</param>
         /// <returns>One entry per version.</returns>
         public static IReadOnlyList<LibraryVersionInfo> Versions(LibraryType type)
         {
-            return type.Versions.Select(version => new LibraryVersionInfo(version.VersionNumber, IsReleased(version))).ToList();
+            return type.Versions.Select(version => new LibraryVersionInfo(version.VersionNumber, IsReleased(version), version.IsDefault)).ToList();
         }
 
         /// <summary>Whether a version is released (committed) or in work.</summary>
