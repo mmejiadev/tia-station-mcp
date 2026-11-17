@@ -536,6 +536,14 @@ namespace TiaMcpServer.Test
         }
 
         [TestMethod]
+        public void EditUnifiedScreen_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.EditUnifiedScreen("HMI_MTP700/HMI_RT_1", @"{ ""screen"": ""Refused"", ""remove"": [ ""Box"" ] }");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
         public void CreateUnifiedTags_WithNoPolicy_IsRefused()
         {
             var response = McpServer.CreateUnifiedTags("HMI_MTP700/HMI_RT_1", @"{ ""tags"": [ { ""name"": ""Refused"", ""dataType"": ""Bool"" } ] }");
