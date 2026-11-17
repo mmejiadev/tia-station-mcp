@@ -1,4 +1,5 @@
-﻿using Siemens.Engineering.HmiUnified.UI.Controls;
+﻿using Siemens.Engineering.HmiUnified.UI.Base;
+using Siemens.Engineering.HmiUnified.UI.Controls;
 using Siemens.Engineering.HmiUnified.UI.Screens;
 using System.Collections.Generic;
 using System.Linq;
@@ -50,6 +51,40 @@ namespace TiaMcpServer.Siemens
         /// <exception cref="PortalException"><see cref="PortalErrorCode.InvalidState"/> naming what would be lost.</exception>
         public static void RequireRestorable(HmiScreen screen, JsonObject backup)
         {
+            var lost = ScreenLosses(screen);
+            lost.AddRange(screen.ScreenItems.SelectMany(ItemLosses));
+            lost.AddRange(BackupLosses(backup));
+
+            if (lost.Count > 0)
+            {
+                throw new PortalException(
+                    PortalErrorCode.InvalidState,
+                    $"Nothing was drawn: '{screen.Name}' holds what its backup cannot keep, so redrawing it would lose it for good: "
+                    + $"{Listed(lost)}. Change those in TIA Portal first, or draw a screen of another name.");
+            }
+        }
+
+        /// <summary>Throws when the backup of the items an edit deletes or replaces would not draw them back.</summary>
+        /// <param name="screen">The screen, named in the refusal.</param>
+        /// <param name="items">The items the edit deletes or replaces; one set in place is put back by its values instead.</param>
+        /// <param name="backup">Their backup, as <see cref="UnifiedScreenReader.ReadSome"/> read it.</param>
+        /// <exception cref="PortalException"><see cref="PortalErrorCode.InvalidState"/> naming what would be lost.</exception>
+        /// <remarks>Only those items: an item the edit leaves alone - a faceplate, a Custom Web Control - stays as it is, and needs no backup.</remarks>
+        public static void RequireItemsRestorable(HmiScreen screen, IReadOnlyList<HmiScreenItemBase> items, JsonObject backup)
+        {
+            var lost = items.SelectMany(ItemLosses).Concat(BackupLosses(backup)).ToList();
+
+            if (lost.Count > 0)
+            {
+                throw new PortalException(
+                    PortalErrorCode.InvalidState,
+                    $"Nothing was changed on '{screen.Name}': items the edit touches hold what their backup cannot keep, so they could not be put back: "
+                    + $"{Listed(lost)}. Leave them out of the edit, or change them in TIA Portal.");
+            }
+        }
+
+        private static List<string> ScreenLosses(HmiScreen screen)
+        {
             var lost = new List<string>(UnifiedBackupCoverage.Lost(screen, $"the screen '{screen.Name}'"));
 
             if (UnifiedScreenReader.Dynamizations(screen).Count > 0)
@@ -57,41 +92,49 @@ namespace TiaMcpServer.Siemens
                 lost.Add($"the screen '{screen.Name}' has tag links or animations of its own, which its backup does not keep");
             }
 
-            foreach (var item in screen.ScreenItems)
+            return lost;
+        }
+
+        private static IEnumerable<string> ItemLosses(HmiScreenItemBase item)
+        {
+            var lost = new List<string>();
+
+            if (!UnifiedItemTypes.IsDrawable(item.GetType().FullName!))
             {
-                if (!UnifiedItemTypes.IsDrawable(item.GetType().FullName!))
-                {
-                    lost.Add($"'{item.Name}' is a {item.GetType().Name}, which this tool does not draw back");
-                }
-
-                if (item is HmiTrendControl trends && trends.TrendAreas.SelectMany(area => area.Trends).Any(trend => !string.IsNullOrEmpty(trend.DataSourceY.Source)))
-                {
-                    lost.Add($"'{item.Name}' shows trends, which its backup does not keep: a list of parts is not a property the coverage check can see");
-                }
-
-                lost.AddRange(UnifiedBackupCoverage.Lost(item, $"'{item.Name}'", eventsKept: true));
-                lost.AddRange(UnifiedEventWriter.Problems(item, item.Name));
-                lost.AddRange(UnifiedAnimationReader.Problems(UnifiedScreenReader.Dynamizations(item), item.Name));
+                lost.Add($"'{item.Name}' is a {item.GetType().Name}, which this tool does not draw back");
             }
 
+            if (item is HmiTrendControl trends && trends.TrendAreas.SelectMany(area => area.Trends).Any(trend => !string.IsNullOrEmpty(trend.DataSourceY.Source)))
+            {
+                lost.Add($"'{item.Name}' shows trends, which its backup does not keep: a list of parts is not a property the coverage check can see");
+            }
+
+            lost.AddRange(UnifiedBackupCoverage.Lost(item, $"'{item.Name}'", eventsKept: true));
+            lost.AddRange(UnifiedEventWriter.Problems(item, item.Name));
+            lost.AddRange(UnifiedAnimationReader.Problems(UnifiedScreenReader.Dynamizations(item), item.Name));
+
+            return lost;
+        }
+
+        private static IEnumerable<string> BackupLosses(JsonObject backup)
+        {
             if (backup["unreadable"] is JsonArray unreadable)
             {
-                lost.AddRange(unreadable.Select(entry => $"a property that could not be read ({entry})"));
+                foreach (var entry in unreadable)
+                {
+                    yield return $"a property that could not be read ({entry})";
+                }
             }
 
             if (Undrawable(backup) is string refusal)
             {
-                lost.Add($"its backup would be refused when drawn back ({refusal})");
+                yield return $"its backup would be refused when drawn back ({refusal})";
             }
+        }
 
-            if (lost.Count > 0)
-            {
-                throw new PortalException(
-                    PortalErrorCode.InvalidState,
-                    $"Nothing was drawn: '{screen.Name}' holds what its backup cannot keep, so redrawing it would lose it for good: "
-                    + $"{string.Join("; ", lost.Take(MaxListed))}{(lost.Count > MaxListed ? "; …" : string.Empty)}. "
-                    + "Change those in TIA Portal first, or draw a screen of another name.");
-            }
+        private static string Listed(IReadOnlyCollection<string> lost)
+        {
+            return $"{string.Join("; ", lost.Take(MaxListed))}{(lost.Count > MaxListed ? "; …" : string.Empty)}";
         }
     }
 }

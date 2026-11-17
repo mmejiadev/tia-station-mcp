@@ -3,6 +3,7 @@ using Siemens.Engineering;
 using Siemens.Engineering.HmiUnified.UI.ScreenGroup;
 using Siemens.Engineering.HmiUnified.UI.Screens;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json.Nodes;
@@ -135,16 +136,25 @@ namespace TiaMcpServer.Siemens
             var missing = screen.LinkedTags.Where(tag => software.Tags.Find(tag) == null).ToList();
             if (missing.Count > 0)
             {
-                throw new PortalException(PortalErrorCode.InvalidState, $"Nothing was drawn: these HMI tags do not exist on the HMI: {string.Join(", ", missing)}");
+                throw new PortalException(PortalErrorCode.InvalidState, $"Nothing was changed: these HMI tags do not exist on the HMI: {string.Join(", ", missing)}");
             }
 
-            // Openness takes a list that does not exist without a word, and only the compile reports it.
-            var missingLists = screen.LinkedTextLists.Where(list => software.HmiTextLists.Find(list) == null).ToList();
+            RequireTextListsExist(software, screen.LinkedTextLists);
+        }
+
+        /// <summary>Refuses text lists the HMI does not have.</summary>
+        /// <param name="software">The WinCC Unified software.</param>
+        /// <param name="lists">The lists a change names.</param>
+        /// <exception cref="PortalException"><see cref="PortalErrorCode.InvalidState"/> naming the missing ones.</exception>
+        /// <remarks>Openness takes a list that does not exist without a word, and only the compile reports it.</remarks>
+        internal static void RequireTextListsExist(UnifiedHmiSoftware software, IEnumerable<string> lists)
+        {
+            var missingLists = lists.Where(list => software.HmiTextLists.Find(list) == null).ToList();
             if (missingLists.Count > 0)
             {
                 throw new PortalException(
                     PortalErrorCode.InvalidState,
-                    $"Nothing was drawn: these text lists do not exist on the HMI: {string.Join(", ", missingLists)}. Create them first with CreateUnifiedTextList");
+                    $"Nothing was changed: these text lists do not exist on the HMI: {string.Join(", ", missingLists)}. Create them first with CreateUnifiedTextList");
             }
         }
 
@@ -178,7 +188,7 @@ namespace TiaMcpServer.Siemens
             {
                 throw new PortalException(
                     PortalErrorCode.InvalidState,
-                    $"Nothing was drawn: the screen '{screenName}' is in the screen group '{group}', and this tool draws only screens outside a group");
+                    $"Nothing was changed: the screen '{screenName}' is in the screen group '{group}', and screens are drawn and edited here only outside a group");
             }
         }
 

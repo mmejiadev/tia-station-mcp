@@ -38,20 +38,29 @@ namespace TiaMcpServer.Siemens
         /// <returns>The screen as a description.</returns>
         public JsonObject Read(HmiScreen screen, string? startScreen)
         {
-            var items = new JsonArray();
+            var read = ReadSome(screen, screen.ScreenItems, withScreenProperties: true);
+            read["startScreen"] = string.Equals(startScreen, screen.Name, StringComparison.OrdinalIgnoreCase);
 
-            foreach (var item in screen.ScreenItems)
+            return read;
+        }
+
+        /// <summary>The properties this reader could not read so far, each as <c>path: reason</c>.</summary>
+        public IReadOnlyList<string> Unreadable => _unreadable;
+
+        /// <summary>Reads some items of a screen, as <see cref="Read"/> reads them all.</summary>
+        /// <param name="screen">The screen.</param>
+        /// <param name="items">The items, on that screen.</param>
+        /// <param name="withScreenProperties">Whether the screen's own properties are read too.</param>
+        /// <returns><c>{ name, properties?, items, unreadable? }</c>: also the backup of an edit, which touches only these.</returns>
+        public JsonObject ReadSome(HmiScreen screen, IEnumerable<HmiScreenItemBase> items, bool withScreenProperties)
+        {
+            var read = new JsonObject { ["name"] = screen.Name };
+            if (withScreenProperties)
             {
-                items.Add(ReadItem(item));
+                read["properties"] = ReadProperties(screen);
             }
 
-            var read = new JsonObject
-            {
-                ["name"] = screen.Name,
-                ["startScreen"] = string.Equals(startScreen, screen.Name, StringComparison.OrdinalIgnoreCase),
-                ["properties"] = ReadProperties(screen),
-                ["items"] = items
-            };
+            read["items"] = new JsonArray(items.Select(item => (JsonNode)ReadItem(item)).ToArray());
 
             if (_unreadable.Count > 0)
             {
