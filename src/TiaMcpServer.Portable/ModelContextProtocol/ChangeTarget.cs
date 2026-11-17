@@ -66,6 +66,22 @@ namespace TiaMcpServer.ModelContextProtocol
         /// </remarks>
         public const string ProjectLibrary = "library";
 
+        /// <summary>
+        /// Deleting from the project library whatever nothing uses, every type at once.
+        /// </summary>
+        /// <remarks>
+        /// Its own name, not <see cref="ProjectLibrary"/>: a policy allowing <c>library</c> lets a session add types, and
+        /// must not thereby let it delete versions and whole types in bulk. Like <see cref="SimulationRuntime"/>, a session
+        /// that needs it names it.
+        /// </remarks>
+        public const string ProjectLibraryCleanUp = "library-cleanup";
+
+        /// <summary>Deleting from the project library whole types nothing uses, besides their unused versions.</summary>
+        /// <remarks>Apart from <see cref="ProjectLibraryCleanUp"/>: a rule allowing old versions to be pruned must not thereby let whole types go.</remarks>
+        public const string ProjectLibraryCleanUpTypes = ProjectLibraryCleanUp + "/types";
+
+        private const string LibraryDeletionPrefix = "library-delete/";
+
         private const string SimulationPrefix = "simulation/";
         private const string LibraryPrefix = ProjectLibrary + "/";
         private const string GlobalLibraryPrefix = "global-library/";
@@ -112,6 +128,18 @@ namespace TiaMcpServer.ModelContextProtocol
         public static string LibraryType(string typeName)
         {
             return LibraryPrefix + (typeName ?? string.Empty).Trim('/');
+        }
+
+        /// <summary>Deleting or discarding from one project library type: a version, the version in work, or the whole type.</summary>
+        /// <param name="typeName">The type's name, e.g. <c>FP_Motor</c>.</param>
+        /// <returns>The target name, for example <c>library-delete/FP_Motor</c>.</returns>
+        /// <remarks>
+        /// Apart from <see cref="LibraryType"/>: a rule that lets a session edit and release a faceplate drawn by hand must
+        /// not thereby let it delete the faceplate, which has no export to bring it back from.
+        /// </remarks>
+        public static string LibraryTypeDeletion(string typeName)
+        {
+            return LibraryDeletionPrefix + (typeName ?? string.Empty).Trim('/');
         }
 
         /// <summary>A global library, by the folder that holds it: where one is created.</summary>

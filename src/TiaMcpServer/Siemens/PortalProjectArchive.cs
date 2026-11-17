@@ -99,7 +99,7 @@ namespace TiaMcpServer.Siemens
         }
 
         /// <remarks>A path that cannot be read is a mistake in the call, not an operation failure to retry.</remarks>
-        private static string FullDirectoryPath(string targetDirectory)
+        private static string FullDirectoryPath(string targetDirectory, string parameterName = "targetDirectory")
         {
             try
             {
@@ -107,8 +107,49 @@ namespace TiaMcpServer.Siemens
             }
             catch (Exception failure) when (failure is ArgumentException || failure is NotSupportedException || failure is PathTooLongException)
             {
-                throw new PortalException(PortalErrorCode.InvalidParams, $"targetDirectory '{targetDirectory}' is not a path: {failure.Message}", null, failure);
+                throw new PortalException(PortalErrorCode.InvalidParams, $"{parameterName} '{targetDirectory}' is not a path: {failure.Message}", null, failure);
             }
+        }
+
+        /// <summary>Archives the open project into a backup folder, before a change Openness cannot undo.</summary>
+        /// <param name="backupDirectory">The backup folder the archive is written to.</param>
+        /// <param name="label">What the archive is named after, e.g. the type about to be deleted.</param>
+        /// <exception cref="PortalException">No local project is open, or it has unsaved changes.</exception>
+        /// <remarks>
+        /// For deleting a library version or type, discarding one in work, or cleaning the library up: a faceplate's
+        /// content has no export (measured 2026-11-14), so the archive is the only copy that brings it back. Measured
+        /// 2026-11-15 on V21: <c>Archive</c> refuses a project with unsaved changes ("please save the project before
+        /// performing 'Archive'"), so such a project is refused before anything is touched, rather than saved on the
+        /// caller's behalf.
+        /// </remarks>
+        private void ArchiveProjectToBackup(string backupDirectory, string label)
+        {
+            if (string.IsNullOrWhiteSpace(backupDirectory))
+            {
+                throw new PortalException(PortalErrorCode.InvalidParams, "backupDirectory is required: the project is archived into it first");
+            }
+
+            var project = RequireLocalProject("the project is archived before this change, and a multiuser session is not archived here");
+
+            if (project.IsModified)
+            {
+                throw new PortalException(PortalErrorCode.InvalidState, "The project has unsaved changes, and TIA Portal archives only a saved project, which this change needs as its backup: save it first (SaveProject). Nothing was changed.");
+            }
+
+            var fileName = ProjectArchiveRule.ArchiveFileName(SnapshotFileName.For(label), Engineering.TiaMajorVersion);
+
+            TryRemoveScratch(ArchiveThroughShortPath(project, ProjectArchivationMode.DiscardRestorableDataAndCompressed, Path.Combine(FullDirectoryPath(backupDirectory, "backupDirectory"), fileName)));
+        }
+
+        /// <summary>The open local project, for an operation a multiuser session cannot do here.</summary>
+        /// <param name="why">Why a local project is needed, ending the refusal.</param>
+        /// <returns>The project.</returns>
+        /// <exception cref="PortalException"><see cref="PortalErrorCode.InvalidState"/> when none is open, or a multiuser session is.</exception>
+        private Project RequireLocalProject(string why)
+        {
+            return _session == null && CurrentProject is Project project
+                ? project
+                : throw new PortalException(PortalErrorCode.InvalidState, $"Open a local project first: {why}");
         }
 
         private (Project Project, string ArchivePath) ValidateArchiveRequest(string targetDirectory, string archiveName)
@@ -120,11 +161,7 @@ namespace TiaMcpServer.Siemens
 
             var fileName = ProjectArchiveRule.ArchiveFileName(archiveName, Engineering.TiaMajorVersion);
 
-            if (_session != null || CurrentProject is not Project project)
-            {
-                throw new PortalException(PortalErrorCode.InvalidState, "Open a local project before archiving it; a multiuser session is not archived here");
-            }
-
+            var project = RequireLocalProject("a multiuser session is not archived here");
             var archivePath = Path.Combine(FullDirectoryPath(targetDirectory), fileName);
             if (File.Exists(archivePath))
             {
