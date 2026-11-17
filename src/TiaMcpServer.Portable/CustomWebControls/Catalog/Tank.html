@@ -1,0 +1,35 @@
+<div id="root" class="tank">
+    <svg class="art" viewBox="0 0 100 160" preserveAspectRatio="xMidYMid meet">
+        <defs>
+            <clipPath id="tankInside"><rect x="16" y="14" width="68" height="132" rx="10"/></clipPath>
+            <linearGradient id="tankShell" x1="0" x2="1">
+                <stop offset="0" stop-color="#353c46"/>
+                <stop offset=".45" stop-color="#5b6571"/>
+                <stop offset="1" stop-color="#262b33"/>
+            </linearGradient>
+            <linearGradient id="tankGloss" x1="0" x2="1">
+                <stop offset="0" stop-color="#ffffff" stop-opacity="0"/>
+                <stop offset=".3" stop-color="#ffffff" stop-opacity=".16"/>
+                <stop offset=".45" stop-color="#ffffff" stop-opacity="0"/>
+            </linearGradient>
+        </defs>
+        <rect x="10" y="8" width="80" height="144" rx="14" fill="url(#tankShell)" stroke="#16191f" stroke-width="2"/>
+        <rect x="16" y="14" width="68" height="132" rx="10" fill="#12161c"/>
+        <g clip-path="url(#tankInside)">
+            <g id="liquid" class="liquid">
+                <path class="wave back" d="M0 4 Q17 -2 34 4 T68 4 T102 4 T136 4 V200 H0 Z"/>
+                <path class="wave front" d="M0 4 Q17 10 34 4 T68 4 T102 4 T136 4 V200 H0 Z"/>
+            </g>
+        </g>
+        <rect x="16" y="14" width="68" height="132" rx="10" fill="url(#tankGloss)"/>
+        <g class="scale">
+            <path d="M84 14h4M84 47h3M84 80h4M84 113h3M84 146h4"/>
+        </g>
+        <line id="high" class="limit" x1="12" x2="22" y1="40" y2="40"/>
+        <line id="low" class="limit" x1="12" x2="22" y1="120" y2="120"/>
+    </svg>
+    <div class="caption">
+        <span id="label" class="label"></span>
+        <span id="value" class="value"></span>
+    </div>
+</div>

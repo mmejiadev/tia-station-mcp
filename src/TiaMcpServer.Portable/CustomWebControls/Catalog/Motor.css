@@ -1,0 +1,25 @@
+.motor {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 100%; cursor: pointer; user-select: none; font-family: "Segoe UI", system-ui, sans-serif;
+    --state: rgb(122, 131, 143); --period: 1s;
+}
+.art { width: 96%; height: 74%; }
+.motor:active .art { transform: scale(.98); }
+.fan path { fill: #7f8995; transition: fill .3s ease; }
+.fan { transform-box: view-box; transform-origin: 22px 50px; }
+.running .fan { animation: spin var(--period) linear infinite; }
+.running .fan path { fill: #c9d1da; }
+.ring { stroke: var(--state); transition: stroke .3s ease; }
+.status { fill: var(--state); transition: fill .3s ease; }
+.running .status { filter: drop-shadow(0 0 3px var(--state)); }
+.fault .ring, .fault .status { animation: blink .8s linear infinite; }
+.caption { display: flex; gap: 6px; align-items: center; margin-top: 2vh; max-width: 96%; }
+.label, .speed {
+    font-size: min(13px, 9vh); font-weight: 600; letter-spacing: .03em; color: #e8edf3;
+    background: #2b313b; padding: 2px 9px; border-radius: 9px; white-space: nowrap;
+}
+.label { overflow: hidden; text-overflow: ellipsis; }
+.speed { color: var(--state); background: #1d2128; font-variant-numeric: tabular-nums; }
+.label:empty, .speed:empty { display: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: .2; } }

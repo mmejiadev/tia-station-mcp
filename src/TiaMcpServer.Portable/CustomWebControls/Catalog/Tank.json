@@ -1,0 +1,19 @@
+{
+  "name": "TiaStation.Tank",
+  "displayName": "Tank",
+  "description": "A tank whose liquid rises and falls with Level between Min and Max, its surface moving; the value and the limit marks turn red outside LowLimit and HighLimit.",
+  "width": 140,
+  "height": 220,
+  "properties": [
+    { "name": "Level", "type": "number", "default": 60 },
+    { "name": "Min", "type": "number", "default": 0 },
+    { "name": "Max", "type": "number", "default": 100 },
+    { "name": "LowLimit", "type": "number", "default": 10 },
+    { "name": "HighLimit", "type": "number", "default": 90 },
+    { "name": "Unit", "type": "string", "default": "%" },
+    { "name": "Decimals", "type": "integer", "default": 0 },
+    { "name": "Label", "type": "string", "default": "T1" },
+    { "name": "LiquidColor", "type": "color", "default": "33, 150, 243" }
+  ],
+  "events": []
+}

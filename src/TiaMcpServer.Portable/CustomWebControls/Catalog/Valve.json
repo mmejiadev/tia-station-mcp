@@ -1,0 +1,17 @@
+{
+  "name": "TiaStation.Valve",
+  "displayName": "Valve",
+  "description": "A valve on a pipe: its body fills with the open colour when Open, its actuator turning a quarter; on Fault the body's outline goes red and blinks. Fires Clicked.",
+  "width": 130,
+  "height": 130,
+  "properties": [
+    { "name": "Open", "type": "boolean", "default": false },
+    { "name": "Fault", "type": "boolean", "default": false },
+    { "name": "Label", "type": "string", "default": "V1" },
+    { "name": "OpenColor", "type": "color", "default": "0, 200, 83" },
+    { "name": "ClosedColor", "type": "color", "default": "122, 131, 143" }
+  ],
+  "events": [
+    { "name": "Clicked", "arguments": [ { "name": "open", "type": "boolean" } ] }
+  ]
+}

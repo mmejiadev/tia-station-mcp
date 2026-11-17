@@ -53,6 +53,19 @@
     <Reference Include="System.Drawing" />
     <!-- A framework assembly too: Windows DPAPI, which the secret store encrypts with. -->
     <Reference Include="System.Security" />
+    <!--
+      Framework assemblies too: a WinCC Unified Custom Web Control is a zip ({GUID}.zip) holding its manifest and page,
+      built and read here so its layout is tested without TIA Portal.
+    -->
+    <Reference Include="System.IO.Compression" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      The catalogue of ready-made Custom Web Controls: one definition per control, as the JSON CustomWebControlReader
+      reads, with its markup, style and script beside it. Embedded, so the server carries them wherever it is installed.
+    -->
+    <EmbeddedResource Include="CustomWebControls\Catalog\**\*" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,0 +1,18 @@
+{
+  "name": "TiaStation.PilotLight",
+  "displayName": "Pilot light",
+  "description": "A panel lamp: glows in its on colour when IsOn, blinks in its alarm colour when Alarm. Fires Clicked.",
+  "width": 120,
+  "height": 150,
+  "properties": [
+    { "name": "IsOn", "type": "boolean", "default": false },
+    { "name": "Alarm", "type": "boolean", "default": false },
+    { "name": "Label", "type": "string", "default": "Motor" },
+    { "name": "OnColor", "type": "color", "default": "0, 200, 83" },
+    { "name": "OffColor", "type": "color", "default": "90, 98, 110" },
+    { "name": "AlarmColor", "type": "color", "default": "229, 57, 53" }
+  ],
+  "events": [
+    { "name": "Clicked", "arguments": [ { "name": "isOn", "type": "boolean" } ] }
+  ]
+}

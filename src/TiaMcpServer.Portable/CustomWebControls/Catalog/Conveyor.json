@@ -1,0 +1,18 @@
+{
+  "name": "TiaStation.Conveyor",
+  "displayName": "Conveyor",
+  "description": "A belt conveyor: the belt and its rollers move while Running, faster with Speed (0-100 %), the other way when Reverse; on Fault the belt's outline goes red and blinks. Fires Clicked.",
+  "width": 260,
+  "height": 100,
+  "properties": [
+    { "name": "Running", "type": "boolean", "default": false },
+    { "name": "Reverse", "type": "boolean", "default": false },
+    { "name": "Fault", "type": "boolean", "default": false },
+    { "name": "Speed", "type": "number", "default": 60 },
+    { "name": "Label", "type": "string", "default": "C1" },
+    { "name": "RunColor", "type": "color", "default": "0, 200, 83" }
+  ],
+  "events": [
+    { "name": "Clicked", "arguments": [ { "name": "running", "type": "boolean" } ] }
+  ]
+}

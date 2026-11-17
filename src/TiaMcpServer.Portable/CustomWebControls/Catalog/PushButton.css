@@ -1,0 +1,28 @@
+.holder {
+    display: flex; align-items: center; justify-content: center; height: 100%;
+    user-select: none; font-family: "Segoe UI", system-ui, sans-serif;
+    --accent: rgb(0, 200, 83);
+}
+.button {
+    position: relative; display: flex; align-items: center; justify-content: center; gap: 8%;
+    width: 94%; height: 84%; border-radius: 12px; cursor: pointer;
+    background: linear-gradient(180deg, #4a525d 0%, #2f353e 55%, #262b33 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14), 0 3px 0 #15181d, 0 4px 8px rgba(0, 0, 0, .45);
+    border-bottom: 3px solid var(--accent);
+    transition: transform .08s ease, box-shadow .08s ease, border-color .3s ease;
+}
+.button.pressed {
+    transform: translateY(2px);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, .5), 0 1px 0 #15181d;
+}
+.light {
+    width: min(14px, 22vh); height: min(14px, 22vh); border-radius: 50%; flex: none;
+    background: #1b1f26; box-shadow: inset 0 1px 2px rgba(0, 0, 0, .6);
+    transition: background .25s ease, box-shadow .25s ease;
+}
+.active .light { background: var(--accent); box-shadow: 0 0 10px 2px var(--accent); }
+.label {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: min(16px, 30vh); font-weight: 700; letter-spacing: .08em; color: #e8edf3;
+}
+.disabled .button { cursor: default; filter: grayscale(1) brightness(.7); border-bottom-color: #4a525d; }

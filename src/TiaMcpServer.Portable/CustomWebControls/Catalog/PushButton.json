@@ -1,0 +1,17 @@
+{
+  "name": "TiaStation.PushButton",
+  "displayName": "Push button",
+  "description": "A momentary push button: fires Pressed when pushed and Released when let go (or the pointer leaves it), so a script can set a Bool while it is held; its light shows Active in its colour; Enabled false greys it out and fires nothing.",
+  "width": 150,
+  "height": 64,
+  "properties": [
+    { "name": "Label", "type": "string", "default": "START" },
+    { "name": "Active", "type": "boolean", "default": false },
+    { "name": "Enabled", "type": "boolean", "default": true },
+    { "name": "Color", "type": "color", "default": "0, 200, 83" }
+  ],
+  "events": [
+    { "name": "Pressed", "arguments": [] },
+    { "name": "Released", "arguments": [] }
+  ]
+}

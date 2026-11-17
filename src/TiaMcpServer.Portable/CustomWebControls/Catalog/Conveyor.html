@@ -1,0 +1,22 @@
+<div id="root" class="conveyor">
+    <svg class="art" viewBox="0 0 260 62" preserveAspectRatio="xMidYMid meet">
+        <defs>
+            <clipPath id="conveyorBelt"><rect x="8" y="10" width="244" height="34" rx="17"/></clipPath>
+        </defs>
+        <rect x="30" y="44" width="6" height="14" fill="#3c434d"/>
+        <rect x="224" y="44" width="6" height="14" fill="#3c434d"/>
+        <rect id="belt" class="belt" x="8" y="10" width="244" height="34" rx="17"/>
+        <g clip-path="url(#conveyorBelt)">
+            <g id="stripes" class="stripes">
+                <path d="M-20 10 l-10 34 M0 10 l-10 34 M20 10 l-10 34 M40 10 l-10 34 M60 10 l-10 34 M80 10 l-10 34 M100 10 l-10 34 M120 10 l-10 34 M140 10 l-10 34 M160 10 l-10 34 M180 10 l-10 34 M200 10 l-10 34 M220 10 l-10 34 M240 10 l-10 34 M260 10 l-10 34 M280 10 l-10 34 M300 10 l-10 34"/>
+            </g>
+        </g>
+        <g class="roller"><circle cx="25" cy="27" r="11"/><path class="spokes" d="M25 18v18M16 27h18"/></g>
+        <g class="roller"><circle cx="130" cy="27" r="11"/><path class="spokes" d="M130 18v18M121 27h18"/></g>
+        <g class="roller"><circle cx="235" cy="27" r="11"/><path class="spokes" d="M235 18v18M226 27h18"/></g>
+    </svg>
+    <div class="caption">
+        <span id="label" class="label"></span>
+        <span id="state" class="state"></span>
+    </div>
+</div>
