@@ -1,6 +1,7 @@
 ﻿# PEEK and POKE on S7-1200 and S7-1500
 
-> Study document, written 2026-11-16, **offline**: nothing here was compiled, downloaded or run.
+> Study document, written 2026-11-16 offline; **measured 2026-11-18** on TIA Portal V21 and PLCSIM Advanced V8 (see
+> "Measured" below, which settles M1-M12 and M14 and corrects three statements of the study).
 > Plan item 4 of the 2026-11-12 request. Companion to `STATUS.md`.
 >
 > Every statement is tagged:
@@ -219,6 +220,34 @@ A classroom checklist, all following from the sources above:
 5. Prefer an array or a slice if the DB does not have to change at run time.
 
 ---
+
+## Measured, 2026-11-18
+
+On a copy of the repository's test fixture (`TestProject1`, CPU 1511-1 PN V4.0 as `PLC_0`), with a CPU 1214C V4.7 added
+for compile-only checks; PLCSIM Advanced V8 in TCP/IP mode, instance `CPU1511`. The fixture below was written with
+`WriteScl`, compiled, downloaded and run; values read from the controller. Every result here replaces the
+**[INFERRED]** or **[MEASURE Mn]** it names above.
+
+| # | Result | What it settles |
+|---|---|---|
+| M1 | `PEEK` byte 16#12, `PEEK_WORD` 16#1234, `PEEK_DWORD` 16#DEADBEEF, `PEEK_BOOL` byte 3 bit 0 TRUE; from an **optimized** caller | Reads work; big-endian; the caller's access does not matter; `S7_Optimized_Access := 'FALSE'` through `WriteScl` gives a standard DB (`MemoryLayout` Standard) |
+| M2 | An optimized DB **by number**: compiles; at run time reads **0, ENO FALSE**, no fault. **By name** (`DBNUMBER := "PP_Opt"`): compile error "Global access to a data block with memory reserve is not permitted here" | Optimized DBs cannot be read this way; by number it fails quietly |
+| M3 | `POKE` of WORD 16#ABCD at offset 8: `Buf[0]` = 16#AB, `Buf[1]` = 16#CD | Big-endian writes |
+| M4 | `POKE_BOOL` byte 2 bit 4: `B2` = 16#10. The help's `POKE(` with `BITOFFSET`: compile error "The formal parameter 'BITOFFSET' is invalid" | The help's example is wrong; use `POKE_BOOL` |
+| M5 | `POKE_BLK` 4 bytes DB→M: `%MD900` = 16#DEADBEEF | Works |
+| M6 | A DB that does not exist, an offset past the end, `DBNUMBER` ≠ 0 with the M area: each returns **0 with ENO FALSE**; **`GET_ERR_ID` returns 0** after each; the CPU **stays in RUN**, also in a block without local error handling (no `GET_ERR_ID`) | **[S1] is right and [S6] is not, for these instructions on this CPU: `IF NOT ENO` catches the error; `GET_ERR_ID` does not.** No STOP, no OB 121 |
+| M7/M8 | `PEEK(AREA := 16#1)` on the 1511: 0, ENO TRUE. `POKE` to 16#1 and `PEEK` of 16#2 compile on the 1511; `PEEK(AREA := 16#1)` **compiles on the 1214C** too | The compiler does not enforce the help's "S7-1500 only" or the read/write split; run-time behaviour of those on a 1200 not measured (no 1200 in PLCSIM Advanced) |
+| M9 | `BITOFFSET := 8` as a constant compiles | Not refused at compile time; run time not measured |
+| M10 | Offset 65539 reads byte 3 (16#A5) | Only the 16 low bits of `BYTEOFFSET` are used |
+| M11 | `GetCrossReferences` on `PP_Std`, used only through `PEEK`/`POKE`: no incoming references | A reviewer reading cross-references does not see these accesses |
+| M12 | Slice access (`#w.%X3`, `#w.%B1`) compiles in an optimized FC; a `DB_ANY` given an optimized DB's name is refused as in M2 | — |
+| M13 | Not measured: it needs TIA Portal's window | — |
+| M14 | A standard DB's name as `DBNUMBER` (`DB_ANY`) compiles | The help's `DB_ANY` form works |
+
+Friction met on the way, for the MCP: `WriteScl` refused a second write because its backup could not export the fixture's
+STL `Main` while the program was uncompiled (STL has no document export, and an uncompiled block no source); compiling
+after each write avoided it. And the MCP's `Connect` attaches to a TIA Portal a person has open: the measurement ran in a
+TIA Portal of its own, started by the measuring script.
 
 ## Measurements to run in PLCSIM Advanced
 

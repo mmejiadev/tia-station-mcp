@@ -1,9 +1,51 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-11-17**
+> Last updated: **2026-11-18**
 
 ## ▶ RESUME HERE
+
+### PEEK and POKE measured, and checked when SCL is written — 2026-11-18, branch `work/v21-peek-poke`
+
+Point 4 of the plan. `docs/PEEK-POKE.md` was written offline on 2026-11-16; its measurements M1-M12 and M14 now ran on
+V21 and PLCSIM Advanced V8 (a 1511 in TCP/IP mode, a 1214C for compile-only checks), and the results table there replaces
+the inferences. What matters most: a `PEEK` of an **optimized DB by number compiles and reads 0** with ENO FALSE; every
+access error tried (missing DB, past the end, DB number with the M area) returns 0 with **ENO FALSE, `GET_ERR_ID` 0, and
+the CPU stays in RUN**; only the low 16 bits of `BYTEOFFSET` count; the help's `POKE` with `BITOFFSET` does not compile.
+
+`WriteScl` now reports those calls, after writing, in `meta.memoryAccess` and its message
+(`SclMemoryAccessRules`, `Portal.CheckSclMemoryAccess`): errors for an unknown area, a DB number with a non-DB area and
+an optimized DB by number (the program's optimized DBs read through `FindBlocks`); warnings for an offset past 65535, a
+`POKE` to outputs, and a block that reads `GET_ERR_ID` but not ENO. Constants only: a variable offset is not guessed at.
+It warns, it does not refuse: a failure to read the project is reported in `meta.memoryAccessCheckFailed`, never as a
+failed write, and the project is read only when the source calls PEEK or POKE. Literals alone are judged (`16#`, `2#`,
+`8#`, typed), never an expression holding one; comments and strings are skipped; `POKE_BLK` is judged on both sides;
+`GET_ERR_ID` counts only in the block that calls it, and a nested call's arguments are not the outer call's. Findings
+are structured in `meta.memoryAccess` (rule, isError, line, message). 1321 governance tests pass; no Openness test covers
+the `WriteScl` path yet. Open, from the two reviews:
+
+- In Workshop Mode the findings come after the write, so the plan a supervisor confirms does not show them; all but the
+  optimized-DB rule could run before, from the text.
+- A constant `DBNUMBER` naming a DB that does not exist (measured M6: fails quietly) is not reported yet; the blocks are
+  already enumerated, so it is a cheap rule to add.
+- The peripheral areas: `PEEK` of 16#2 and `POKE` to 16#1, and 16#1 on an S7-1200, compile (M8); what they do at run
+  time is not measured, and no rule warns about them.
+- Every DB's `MemoryLayout` is read when the source calls PEEK or POKE; only the numbers named as constants need it.
+
+Not measured: M13 (needs TIA Portal's window); run-time behaviour of the I/O areas on an S7-1200 (PLCSIM Advanced has no 1200).
+
+**Left in `git stash` on `work/v21-unified-scripts`** (stash "WIP 2026-11-18 …"), not committed:
+
+- **Point 3, Unified scripts** - module-call rules, shared global definitions per screen, `increaseValue`,
+  `decreaseValue`, `invertBit`, `callModule`, the start-screen fix, the test suite starting its own TIA Portal
+  (`Portal.StartPortal`). Blocked: with an `import` in a screen's global definitions, the **second** `SyntaxCheck` of the
+  rehearsal throws "Error when calling method 'SyntaxCheck'" and TIA Portal's session ends (6 of 166 Openness tests
+  failed). The last change - reading `handler.Script` again for each check instead of reusing one script object - is
+  written but **not yet run**; rerun probe or `Test75UnifiedScriptCalls` first.
+- **Point 6, `EditTagTable`** - add, change and delete single rows of a PLC tag table, with backup and undo. Missing: run
+  `Test76TagTableEdits`, a `Test16GuardedWrites` refusal, governance tests for `TagTableEditReader`, docs. Editing single
+  members of a DB was not started.
+- **Point 5, GoOnline** - not started.
 
 ### Changing some items of a Unified screen — 2026-11-17, branch `work/v21-unified-screen-edit`
 
