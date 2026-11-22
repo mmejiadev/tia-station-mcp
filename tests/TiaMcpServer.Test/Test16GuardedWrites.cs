@@ -276,6 +276,14 @@ namespace TiaMcpServer.Test
         }
 
         [TestMethod]
+        public void EditTagTable_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.EditTagTable(Settings.Project1PlcSoftwarePath0, @"{ ""table"": ""Default tag table"", ""remove"": [ ""Refused"" ] }");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
         public void CreateConstant_WithNoPolicy_IsRefused()
         {
             var response = McpServer.CreateConstant(Settings.Project1PlcSoftwarePath0, "Default tag table/CYCLE", "Int", "500");
