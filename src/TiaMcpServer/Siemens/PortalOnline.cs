@@ -100,6 +100,75 @@ namespace TiaMcpServer.Siemens
             }
         }
 
+        /// <summary>Goes online with a CPU, through a PLCSIM Advanced interface only.</summary>
+        /// <param name="plcPath">The PLC's software.</param>
+        /// <returns>The state afterwards, as Openness names it.</returns>
+        /// <exception cref="PortalException">
+        /// No project is open, the path is not a PLC, no PLCSIM interface is on offer, the connection could not be applied, or
+        /// TIA Portal could not go online.
+        /// </exception>
+        /// <remarks>
+        /// Measured 2026-11-22 on V21, through the PLCSIM Virtual Ethernet Adapter to a downloaded CPU 1511: with
+        /// <c>EnableLegacyCommunication</c> true on the online connection, its default, <c>GoOnline</c> killed TIA Portal
+        /// (the first call, twice) or refused with "The connection cannot be established"; with it false it went online,
+        /// every time. The interface is chosen and applied here rather than left to whatever was configured last, and it is
+        /// PLCSIM or nothing: this never goes online with a controller on a real network.
+        /// </remarks>
+        public string GoOnline(string plcPath)
+        {
+            _logger?.LogInformation("Going online with {PlcPath}...", plcPath);
+
+            try
+            {
+                var online = RequireOnlineProvider(plcPath);
+
+                if (online.State == OnlineState.Online)
+                {
+                    return online.State.ToString();
+                }
+
+                ConnectThroughPlcsim(online);
+                online.GoOnline();
+
+                return online.State.ToString();
+            }
+            catch (Exception ex)
+            {
+                throw DecorateOnlineFailure(ex, plcPath, "Going online");
+            }
+        }
+
+        private static void ConnectThroughPlcsim(OnlineProvider online)
+        {
+            var simulated = online.Configuration.Modes
+                .SelectMany(mode => mode.PcInterfaces)
+                .FirstOrDefault(pcInterface => PcInterfaceRule.IsSimulation(pcInterface.Name))
+                ?? throw new PortalException(
+                    PortalErrorCode.InvalidState,
+                    "No PLCSIM interface is on offer, and going online is allowed through PLCSIM only. GetPcInterfaces lists what TIA Portal offers.");
+
+            if (!ApplyPlcsimInterface(online.Configuration, simulated) || !online.Configuration.IsConfigured)
+            {
+                throw new PortalException(PortalErrorCode.InvalidState, $"The connection through '{simulated.Name}' could not be applied, so TIA Portal is not asked to go online");
+            }
+
+            online.Configuration.EnableLegacyCommunication = false;
+        }
+
+        private static bool ApplyPlcsimInterface(ConnectionConfiguration configuration, ConfigurationPcInterface pcInterface)
+        {
+            var target = pcInterface.TargetInterfaces.FirstOrDefault();
+            if (target != null)
+            {
+                return configuration.ApplyConfiguration(target);
+            }
+
+            var address = pcInterface.Subnets.SelectMany(subnet => subnet.Addresses).FirstOrDefault()
+                ?? throw new PortalException(PortalErrorCode.InvalidState, $"'{pcInterface.Name}' offers no target interface and no subnet address to connect through");
+
+            return configuration.ApplyConfiguration(address);
+        }
+
         private OnlineProvider RequireOnlineProvider(string plcPath)
         {
             var software = RequireSoftware(plcPath);

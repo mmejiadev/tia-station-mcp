@@ -276,6 +276,14 @@ namespace TiaMcpServer.Test
         }
 
         [TestMethod]
+        public void GoOnline_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.GoOnline(Settings.Project1PlcSoftwarePath0);
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
         public void EditTagTable_WithNoPolicy_IsRefused()
         {
             var response = McpServer.EditTagTable(Settings.Project1PlcSoftwarePath0, @"{ ""table"": ""Default tag table"", ""remove"": [ ""Refused"" ] }");

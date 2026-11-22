@@ -9,11 +9,11 @@ using TiaMcpServer.Siemens;
 namespace TiaMcpServer.ModelContextProtocol
 {
     /// <remarks>
-    /// Searching a network for devices, and going offline with a PLC. Part of McpServerWrites: a search changes
-    /// nothing in the project and still reaches every device on a network, so it is planned, decided by the policy
-    /// and audited like a write. There is no GoOnline: measured 2026-11-14 on TIA Portal V21, OnlineProvider.GoOnline
-    /// through the PLCSIM Virtual Ethernet Adapter to a downloaded CPU 1511 crashed TIA Portal, twice, with no
-    /// confirmation or notification raised first (docs/STATUS.md).
+    /// Searching a network for devices, and going online and offline with a PLC. Part of McpServerWrites: a search
+    /// changes nothing in the project and still reaches every device on a network, so it is planned, decided by the
+    /// policy and audited like a write. GoOnline goes through PLCSIM only: measured 2026-11-14 on TIA Portal V21,
+    /// OnlineProvider.GoOnline crashed TIA Portal, and 2026-11-22 that it does not once the online connection's
+    /// EnableLegacyCommunication is false (docs/STATUS.md).
     /// </remarks>
     public static partial class McpServer
     {
@@ -38,6 +38,29 @@ namespace TiaMcpServer.ModelContextProtocol
             catch (Exception ex) when (ex is not McpException)
             {
                 throw ToolFailure(ex, $"searching accessible devices through '{pcInterfaceName}'");
+            }
+        }
+
+        [McpServerTool(Name = "GoOnline"), Description("Go online with a PLC through PLCSIM Advanced, as TIA Portal's Go online button does. It chooses the PLCSIM Virtual Ethernet Adapter itself and refuses when TIA Portal offers none: this never goes online with a controller on a real network. It sets the online connection's 'enable legacy communication' to false first (measured on V21: with it true, which is the default, going online killed TIA Portal or was refused). The PLC has to be downloaded to a running PLCSIM Advanced instance. While online, exports and imports of that PLC are refused; GoOffline brings them back. Already online is answered with the state, not an error.")]
+        public static ResponseMessage GoOnline(
+            [Description("plcPath: the PLC's software, e.g. 'PLC_1'")] string plcPath)
+        {
+            // One Openness call at a time. See OpennessGate: two of them really do interleave.
+            using var openness = OpennessGate.Enter();
+
+            try
+            {
+                var request = new Governance.ChangeRequest("GoOnline", ChangeTarget.Program(plcPath), "online, through PLCSIM, with legacy communication off");
+
+                return GuardedTool.Run(
+                    GuardedWrites,
+                    request,
+                    () => DescribeOnlineState(plcPath, Portal.GoOnline(plcPath)),
+                    () => new ResponseMessage());
+            }
+            catch (Exception ex) when (ex is not McpException)
+            {
+                throw ToolFailure(ex, $"going online with '{plcPath}'");
             }
         }
 

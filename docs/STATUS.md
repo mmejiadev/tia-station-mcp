@@ -5,6 +5,33 @@
 
 ## ▶ RESUME HERE
 
+### `GoOnline` is back, through PLCSIM: it was the legacy communication - 2026-11-22, branch `work/v21-go-online`
+
+Point 5. The crash of 2026-11-14 is explained and avoided. Measured on V21 in a throw-away run of the fixture's CPU 1511 in
+PLCSIM Advanced (TCP/IP mode), moved to `192.168.0.7` so a person's instance at `.1` is left alone, after a download:
+
+- `OnlineProvider.Configuration` is a `ConnectionConfiguration` with **`EnableLegacyCommunication`, true by default**. With it
+  true, `GoOnline()` killed TIA Portal on its first call (reproduced again today) and, called a second time in a session that
+  had already been online, was refused with "The connection cannot be established". **With it false, `GoOnline()` returned
+  `Online`, every time** (three runs), and `GoOffline()` brought it back; setting it true again while online changed nothing
+  about the state. The suspicion of 2026-11-14, the TLS certificate trust, was not it.
+- The configuration offers every PC interface and does not say which one is selected (`IsConfigured` only), so the tool
+  chooses and applies the PLCSIM Virtual Ethernet Adapter itself - its target interface, else its subnet address - and refuses
+  when there is none (`PcInterfaceRule.IsSimulation`): going online is PLCSIM only.
+- `OnlineProvider` also has `GoOnline(ConfigurationAddress)`, `SetPlcMasterSecret` and `ResetPlcMasterSecret`; the master secret
+  call failed with no message on a CPU added through Openness and is not what this needed. Not used.
+- A CPU 1511 added through Openness on V21 does **not** compile its hardware, so cannot be downloaded: it demands a password for
+  the PLC's confidential configuration data and a communication certificate (and an access-level password). The fixture's CPU
+  compiles and downloads, which is why the tests use it. How to set those up through Openness is not measured.
+
+**`GoOnline`** (tool and `Portal.GoOnline`): applies the PLCSIM interface, sets `EnableLegacyCommunication` false on the online
+connection and leaves it so (the safer setting), goes online, answers the state; already online answers the state. Governed like
+every state change (`Test16GuardedWrites`). `Test79GoOnline` (3, with its own PLCSIM instance): online and offline again, online
+twice, and an export refused while online and allowed after. Taking the line that sets the property out makes the first fail.
+
+Not measured: a CPU other than an S7-1500 (an older one may speak only legacy communication, which this turns off), a real
+controller (never reached by this tool), what the online connection allows besides exports and imports being refused.
+
 ### Editing one member of a global DB: what importing it back does - 2026-11-22, branch `work/v21-db-member-edits`
 
 Point 6, second half. Measured on V21 in a throw-away project: a 1511 with a global DB `Cell` (number 10, optimized; an
@@ -116,8 +143,7 @@ So `TagTableEditReader` checks the address itself: an input, output or memory bi
 long word, upper-cased. `CreateTag` does not check it yet. Governance tests for the reader, `Test76TagTableEdits` (4) and
 a `Test16GuardedWrites` refusal pass.
 
-Not done: editing single members of a global DB (export, change, import with Override - still to measure whether it keeps
-the values and the number). Point 5, GoOnline, was not started.
+Editing single members of a global DB was done afterwards (`EditDbMembers`, above), and point 5, GoOnline, too.
 
 ### PEEK and POKE measured, and checked when SCL is written — 2026-11-18, branch `work/v21-peek-poke`
 
