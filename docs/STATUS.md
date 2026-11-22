@@ -9,11 +9,14 @@
 
 `/code-review high` over the branch found one important fault and eight smaller ones.
 
-- **Fixed: `DrawUnifiedScreen` wrote TIA Portal's default over a screen's own global definitions** when no drawn item
-  had an event: the area is the screen's, shared by its own events' handlers, which survive a redraw. It is now written
-  only when an item holds an event (`UnifiedScreenGlobals.HoldsEvents`, as `EditUnifiedScreen` already did). Four
-  governance tests. No Openness test covers the redraw with a screen's own event yet, and the new tests check the rule,
-  not the call in `Redraw`.
+- **The review's important finding did not hold, as measured the same day.** It said `DrawUnifiedScreen` writes TIA
+  Portal's default over a screen's own global definitions when no drawn item has an event. It never gets that far: the
+  backup does not keep a screen's own `EventHandlers`, so `UnifiedBackupCheck` refuses the redraw before it deletes or
+  writes anything (`Test77UnifiedScreenOwnEvents`, which creates the handler through Openness, the description having no
+  events of a screen's own). What was changed anyway is harmless and kept: the area is written only when an item holds an
+  event (`UnifiedScreenGlobals.HoldsEvents`, as `EditUnifiedScreen` already did), with four governance tests. The
+  Openness test checks the refusal and that the definitions stay, not the rule; the test project now references the
+  Openness packages, to set up state the MCP tools cannot write.
 - **Fixed: `UnifiedScreenEditor` was 302 lines**, over the 300 the class limit allows; reading the existing globals moved
   to `UnifiedExistingGlobals` (287 lines now).
 - **Open, smaller:** the undo of a removed tag in `EditTagTable` restores only name, type, address and comment, not Retain,
