@@ -299,6 +299,40 @@ namespace TiaMcpServer.Siemens
             }
         }
 
+        /// <summary>
+        /// Starts a TIA Portal of this instance's own, never attaching to one already running.
+        /// </summary>
+        /// <param name="withUserInterface">Whether the new TIA Portal shows its user interface.</param>
+        /// <returns>Always true; failures are reported by throwing.</returns>
+        /// <exception cref="PortalException">TIA Portal could not be started.</exception>
+        /// <remarks>
+        /// For the test suite and for probes run while a person has TIA Portal open: <see cref="ConnectPortal"/>
+        /// would attach to that person's TIA Portal, take its open project as current and wait on its dialogs.
+        /// Here the person's TIA Portal is not looked at at all, and the one started is closed by
+        /// <see cref="DisconnectPortal"/>.
+        /// </remarks>
+        public bool StartPortal(bool withUserInterface = false)
+        {
+            _logger?.LogInformation("Starting a TIA Portal of its own (withUserInterface={WithUserInterface})...", withUserInterface);
+
+            try
+            {
+                ReleasePortal();
+                StartOwnPortal(withUserInterface, PortalProcessChoiceReason.StartedOnRequest);
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                var pex = ex as PortalException ?? new PortalException(PortalErrorCode.ConnectFailed, $"Failed to start TIA Portal: {ex.Message}", null, ex);
+
+                pex.Data["withUserInterface"] = withUserInterface;
+
+                _logger?.LogError(pex, "StartPortal failed (withUserInterface={WithUserInterface})", withUserInterface);
+                throw pex;
+            }
+        }
+
         public bool IsConnected()
         {
             return _portal != null;

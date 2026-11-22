@@ -19,6 +19,9 @@
         /// Connect was called again while the server held a TIA Portal it started, and kept it:
         /// letting it go would close its project without saving.
         /// </summary>
-        KeptOwnPortal
+        KeptOwnPortal,
+
+        /// <summary>A TIA Portal of its own was started on request, whether or not others ran (<c>Portal.StartPortal</c>).</summary>
+        StartedOnRequest
     }
 }

@@ -169,7 +169,7 @@ namespace TiaMcpServer.Siemens
             return true;
         }
 
-        private void StartOwnPortal(bool withUserInterface)
+        private void StartOwnPortal(bool withUserInterface, PortalProcessChoiceReason reason = PortalProcessChoiceReason.NoneRunning)
         {
             var mode = withUserInterface ? TiaPortalMode.WithUserInterface : TiaPortalMode.WithoutUserInterface;
 
@@ -178,7 +178,7 @@ namespace TiaMcpServer.Siemens
             _portal = new TiaPortal(mode);
             OwnsPortalProcess = true;
             _attachedProcess = new PortalProcessInfo(_portal.GetCurrentProcess().Id, withUserInterface, string.Empty);
-            AttachedProcessReason = PortalProcessChoiceReason.NoneRunning;
+            AttachedProcessReason = reason;
             _logger?.LogInformation("Started {Process}", AttachedProcess);
         }
 

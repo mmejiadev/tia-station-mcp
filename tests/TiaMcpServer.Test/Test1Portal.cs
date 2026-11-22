@@ -30,9 +30,18 @@ namespace TiaMcpServer.Test
             });
         }
 
+        /// <remarks>
+        /// These tests connect as the server does, which attaches to a running TIA Portal: beside the suite's own, a
+        /// person's would be the one chosen, as it has a window, so they wait until only the suite's runs.
+        /// </remarks>
         [TestInitialize]
         public void TestInit()
         {
+            if (Portal.GetRunningPortalCount() > 1)
+            {
+                Assert.Inconclusive("Another TIA Portal runs beside the suite's own; connecting would attach to it. Close it to run these tests.");
+            }
+
             _portal = new Portal(_loggerFactory.CreateLogger<Portal>());
         }
 
