@@ -284,6 +284,14 @@ namespace TiaMcpServer.Test
         }
 
         [TestMethod]
+        public void EditDbMembers_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.EditDbMembers(Settings.Project1PlcSoftwarePath0, @"{ ""block"": ""Refused"", ""remove"": [ ""Count"" ] }");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
         public void CreateConstant_WithNoPolicy_IsRefused()
         {
             var response = McpServer.CreateConstant(Settings.Project1PlcSoftwarePath0, "Default tag table/CYCLE", "Int", "500");
