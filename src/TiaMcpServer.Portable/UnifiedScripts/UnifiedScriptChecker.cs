@@ -33,9 +33,12 @@ namespace TiaMcpServer.UnifiedScripts
             }
 
             var tokens = UnifiedScriptLexer.Tokenize(given);
+            var preludeTokens = UnifiedScriptLexer.Tokenize(prelude);
+            var known = context ?? UnifiedScriptContext.None;
 
-            return UnifiedScriptSyntaxRules.Check(tokens, UnifiedScriptLexer.Tokenize(prelude))
-                .Concat(UnifiedScriptTagRules.Check(tokens, context ?? UnifiedScriptContext.None))
+            return UnifiedScriptSyntaxRules.Check(tokens, preludeTokens)
+                .Concat(UnifiedScriptTagRules.Check(tokens, known))
+                .Concat(UnifiedScriptCallRules.Check(tokens, preludeTokens, known))
                 .GroupBy(finding => (finding.Rule, finding.Line, finding.Message))
                 .Select(group => group.First())
                 .OrderBy(finding => finding.Line)

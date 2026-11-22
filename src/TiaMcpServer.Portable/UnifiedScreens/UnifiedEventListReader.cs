@@ -27,11 +27,11 @@ namespace TiaMcpServer.UnifiedScreens
 
         private static readonly string[] ScriptOnly = { "globalDefinitions" };
 
-        private static readonly string[] FunctionOnly = { "tag", "value", "screen", "window" };
+        private static readonly string[] FunctionOnly = { "tag", "value", "screen", "window", "module", "call", "arguments" };
 
         private static readonly HashSet<string> Fields = new HashSet<string>(StringComparer.Ordinal)
         {
-            "event", "script", "globalDefinitions", "function", "tag", "value", "screen", "window"
+            "event", "script", "globalDefinitions", "function", "tag", "value", "screen", "window", "module", "call", "arguments"
         };
 
         /// <summary>Reads the events of an item, which it may have none of.</summary>
@@ -65,7 +65,10 @@ namespace TiaMcpServer.UnifiedScreens
             if (scripts.Count == 0)
             {
                 RequireNone(entries, ScriptOnly, "belongs to an event given as a 'script'");
-                return new UnifiedEventScript(eventName, string.Join(Environment.NewLine, entries.Select(pair => UnifiedEventFunctions.Write(pair.Entry, pair.What))), null);
+                var imports = entries.Select(pair => UnifiedEventFunctions.Globals(pair.Entry, pair.What)).OfType<string>().Distinct(StringComparer.Ordinal).ToList();
+                var functions = string.Join(Environment.NewLine, entries.Select(pair => UnifiedEventFunctions.Write(pair.Entry, pair.What)));
+
+                return new UnifiedEventScript(eventName, functions, imports.Count == 0 ? null : string.Join(Environment.NewLine, imports));
             }
 
             if (entries.Count > 1 || scripts[0].Entry.TryGetProperty("function", out _))

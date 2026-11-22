@@ -55,7 +55,11 @@ namespace TiaMcpServer.Siemens
                 var backup = BackUpUnifiedScreen(existing, software, language, backupDirectory);
 
                 var target = existing ?? software.Screens.Create(requested.Name);
-                Redraw(target, requested, language, backup);
+
+                // The screen's own events keep their place, and share the one area its items' events are written with.
+                var shared = new UnifiedScreenDescription(requested.Name, requested.IsStartScreen, requested.Properties,
+                    UnifiedScreenGlobals.Shared(requested.Items, (UnifiedEventWriter.ScreenGlobals(target, withItems: false), null)));
+                Redraw(target, shared, language, backup);
 
                 if (requested.IsStartScreen)
                 {
@@ -239,6 +243,13 @@ namespace TiaMcpServer.Siemens
             foreach (var item in screen.Items)
             {
                 DrawOrExplain(items, target, item, backup);
+            }
+
+            // Once, with its imports: each script was checked and written without them (UnifiedEventWriter.Errors).
+            // Only when an item has an event: with none the area is the screen's own events', and stays (review of 2026-11-22).
+            if (UnifiedScreenGlobals.HoldsEvents(screen.Items))
+            {
+                UnifiedEventWriter.WriteScreenGlobals(target, UnifiedScreenGlobals.EventDefinitions(screen.Items));
             }
         }
 

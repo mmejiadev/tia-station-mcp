@@ -49,7 +49,7 @@ namespace TiaMcpServer.UnifiedScreens
             }
 
             var isStartScreen = root.TryGetProperty("startScreen", out var start) && start.ValueKind == JsonValueKind.True;
-            var items = ReadItems(root);
+            var items = UnifiedScreenGlobals.Shared(ReadItems(root), (null, null));
 
             return new UnifiedScreenDescription(name!.Trim(), isStartScreen, ReadProperties(root, $"Screen '{name}'"), items);
         }

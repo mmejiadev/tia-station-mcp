@@ -196,7 +196,8 @@ namespace TiaMcpServer.Siemens
             dynamization.ScriptCode = script.Script;
             if (script.GlobalDefinitions != null)
             {
-                dynamization.GlobalDefinitionAreaScriptCode = script.GlobalDefinitions;
+                // Only when it differs: see UnifiedEventWriter.WriteGlobals.
+                UnifiedEventWriter.WriteGlobals(dynamization, script.GlobalDefinitions);
             }
 
             dynamization.Trigger.Type = script.Trigger == UnifiedScriptAnimation.AutomaticTrigger ? TriggerType.AutomaticTags : Named<TriggerType>(script.Trigger);

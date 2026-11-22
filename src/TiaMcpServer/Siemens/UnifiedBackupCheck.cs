@@ -52,7 +52,8 @@ namespace TiaMcpServer.Siemens
         public static void RequireRestorable(HmiScreen screen, JsonObject backup)
         {
             var lost = ScreenLosses(screen);
-            lost.AddRange(screen.ScreenItems.SelectMany(ItemLosses));
+            var holdsImport = UnifiedEventWriter.HoldsImport(screen);
+            lost.AddRange(screen.ScreenItems.SelectMany(item => ItemLosses(item, holdsImport)));
             lost.AddRange(BackupLosses(backup));
 
             if (lost.Count > 0)
@@ -72,7 +73,8 @@ namespace TiaMcpServer.Siemens
         /// <remarks>Only those items: an item the edit leaves alone - a faceplate, a Custom Web Control - stays as it is, and needs no backup.</remarks>
         public static void RequireItemsRestorable(HmiScreen screen, IReadOnlyList<HmiScreenItemBase> items, JsonObject backup)
         {
-            var lost = items.SelectMany(ItemLosses).Concat(BackupLosses(backup)).ToList();
+            var holdsImport = UnifiedEventWriter.HoldsImport(screen);
+            var lost = items.SelectMany(item => ItemLosses(item, holdsImport)).Concat(BackupLosses(backup)).ToList();
 
             if (lost.Count > 0)
             {
@@ -95,7 +97,9 @@ namespace TiaMcpServer.Siemens
             return lost;
         }
 
-        private static IEnumerable<string> ItemLosses(HmiScreenItemBase item)
+        /// <param name="item">The item.</param>
+        /// <param name="skipSyntaxCheck">Whether its scripts' syntax is not checked, its screen's area holding an import (UnifiedEventWriter.Problems).</param>
+        private static List<string> ItemLosses(HmiScreenItemBase item, bool skipSyntaxCheck)
         {
             var lost = new List<string>();
 
@@ -110,7 +114,7 @@ namespace TiaMcpServer.Siemens
             }
 
             lost.AddRange(UnifiedBackupCoverage.Lost(item, $"'{item.Name}'", eventsKept: true));
-            lost.AddRange(UnifiedEventWriter.Problems(item, item.Name));
+            lost.AddRange(UnifiedEventWriter.Problems(item, item.Name, skipSyntaxCheck));
             lost.AddRange(UnifiedAnimationReader.Problems(UnifiedScreenReader.Dynamizations(item), item.Name));
 
             return lost;
