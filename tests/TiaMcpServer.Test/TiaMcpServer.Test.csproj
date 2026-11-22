@@ -35,6 +35,19 @@
     <ProjectReference Include="..\..\src\TiaMcpServer\TiaMcpServer.csproj" />
   </ItemGroup>
 
+  <!--
+    Openness, to set up what the server cannot: a test that needs a screen's own event handler, or any state the
+    MCP tools have no way to write, creates it through the API. The same packages as the server, for the version
+    it is built for; they only give the test project the types to compile against.
+  -->
+  <ItemGroup Condition="'$(TiaVersion)' == '20'">
+    <PackageReference Include="Siemens.Collaboration.Net.TiaPortal.Packages.Openness" Version="20.0.1744190253" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TiaVersion)' == '21'">
+    <PackageReference Include="Siemens.Collaboration.Net.TiaPortal.Packages.Openness" Version="21.0.1765349347" />
+  </ItemGroup>
+
   <ItemGroup>
     <!-- The faceplate library asset is a zipped folder: a global library is a folder, not one file. -->
     <Reference Include="System.IO.Compression" />
