@@ -58,11 +58,12 @@ namespace TiaMcpServer.Siemens
                 var software = RequireUnifiedSoftware(hmiPath);
                 var existing = software.Scripts.Select(held => held.Name).ToList();
                 UnifiedScriptModuleRules.Check(module!, existing);
-                var findings = CheckScriptModuleCode(software, module!);
+                // The backup first: it exports every module, and the check reads them from it rather than exporting them all again.
+                SaveScriptModulesBackup(software, backupDirectory);
+                var findings = CheckScriptModuleCode(software, module!, ScriptModulesIn(software, backupDirectory));
                 var isReplacing = UnifiedScriptModuleRules.Holds(existing, module!.Name);
                 var named = NamedAsHeld(module, existing);
 
-                SaveScriptModulesBackup(software, backupDirectory);
                 ImportScriptModule(software, named, backupDirectory, isReplacing);
 
                 return new JsonObject
@@ -88,9 +89,19 @@ namespace TiaMcpServer.Siemens
 
         /// <summary>Refuses code TIA Portal would import and compile without a word.</summary>
         /// <returns>The checker's warnings; its errors and any syntax error refuse the write.</returns>
-        private static IReadOnlyList<UnifiedScriptFinding> CheckScriptModuleCode(UnifiedHmiSoftware software, UnifiedScriptModuleWrite module)
+        /// <param name="software">The HMI.</param>
+        /// <param name="module">The module about to be written.</param>
+        /// <param name="held">The modules the HMI holds, whose functions this one may call; this one counts as written.</param>
+        private static IReadOnlyList<UnifiedScriptFinding> CheckScriptModuleCode(UnifiedHmiSoftware software, UnifiedScriptModuleWrite module, Dictionary<string, string> held)
         {
-            var findings = UnifiedScriptChecker.Check(module.Code, new UnifiedScriptContext(TagTypes(software)));
+            // Review of 2026-11-18: a replace in another case left the old code beside the new.
+            foreach (var replaced in held.Keys.Where(name => string.Equals(name, module.Name, StringComparison.OrdinalIgnoreCase)).ToList())
+            {
+                held.Remove(replaced);
+            }
+
+            held[module.Name] = module.Code;
+            var findings = UnifiedScriptChecker.Check(module.Code, ScriptContext(software, held));
             var errors = findings.Where(finding => finding.Severity == UnifiedScriptSeverity.Error).ToList();
             var syntax = SyntaxErrorsOf(software, module.Code);
 
@@ -110,22 +121,24 @@ namespace TiaMcpServer.Siemens
         /// </remarks>
         private static List<string> SyntaxErrorsOf(UnifiedHmiSoftware software, string code)
         {
-            var scratch = software.Screens.Create(ScriptModuleScratchPrefix + Guid.NewGuid().ToString("N"));
+            using var scratch = UnifiedScratchScreen.Create(software, ScriptModuleScratchPrefix + Guid.NewGuid().ToString("N"));
 
-            try
-            {
-                var script = scratch.ScreenItems.Create<HmiButton>("Check").EventHandlers.Create(HmiButtonEventType.Tapped).Script;
-                script.ScriptCode = UnifiedScriptModuleRules.SyntaxCheckBody(code);
+            var script = scratch.Screen.ScreenItems.Create<HmiButton>("Check").EventHandlers.Create(HmiButtonEventType.Tapped).Script;
+            script.ScriptCode = UnifiedScriptModuleRules.SyntaxCheckBody(code);
 
-                // A check that gave no answer is not a check that passed.
-                var errors = script.SyntaxCheck()?.Errors ?? throw new PortalException(PortalErrorCode.WriteFailed, "TIA Portal's syntax check gave no answer; nothing was written");
+            // A check that gave no answer is not a check that passed.
+            var errors = script.SyntaxCheck()?.Errors ?? throw new PortalException(PortalErrorCode.WriteFailed, "TIA Portal's syntax check gave no answer; nothing was written");
 
-                return errors.ToList();
-            }
-            finally
-            {
-                scratch.Delete();
-            }
+            return errors.ToList();
+        }
+
+        /// <summary>Each module's code as the backup just exported it.</summary>
+        private static Dictionary<string, string> ScriptModulesIn(UnifiedHmiSoftware software, string backupDirectory)
+        {
+            return software.Scripts.ToDictionary(
+                module => module.Name,
+                module => File.ReadAllText(Path.Combine(backupDirectory, module.Name + UnifiedScriptModuleRules.ScriptExtension)),
+                StringComparer.Ordinal);
         }
 
         private void SaveScriptModulesBackup(UnifiedHmiSoftware software, string backupDirectory)

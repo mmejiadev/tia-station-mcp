@@ -33,6 +33,10 @@ namespace TiaMcpServer.Siemens
         private readonly UnifiedScreenItemWriter _items;
         private readonly UnifiedScreenEditValues _values = new UnifiedScreenEditValues();
 
+        /// <summary>The items to draw, given the screen's global definitions once <see cref="Check"/> has read them.</summary>
+        /// <remarks>Mutable as it needs TIA Portal read, which the constructor does not do.</remarks>
+        private IReadOnlyList<UnifiedItemDescription> _drawn;
+
         /// <summary>Creates the editor of one screen.</summary>
         /// <param name="screen">The screen, outside any screen group.</param>
         /// <param name="edit">The change, its drawing already through the checks a drawing goes through.</param>
@@ -44,6 +48,7 @@ namespace TiaMcpServer.Siemens
             _language = language;
             _properties = new UnifiedPropertyWriter(language);
             _items = new UnifiedScreenItemWriter(_properties);
+            _drawn = edit.Draw;
         }
 
         /// <summary>Checks what a drawing's checks do not cover: the items named, and the properties set in place.</summary>
@@ -65,6 +70,7 @@ namespace TiaMcpServer.Siemens
             }
 
             Portal.RequireTextListsExist(software, _edit.SetTextLists);
+            _drawn = UnifiedScreenGlobals.Shared(_edit.Draw, UnifiedExistingGlobals.Of(_screen));
         }
 
         /// <summary>Writes the backup, refusing an edit whose backup would not put back what it changes.</summary>
@@ -96,7 +102,7 @@ namespace TiaMcpServer.Siemens
         /// <remarks>After the backup's checks, which are cheaper and may refuse the edit first.</remarks>
         public void Rehearse(UnifiedHmiSoftware software)
         {
-            UnifiedRehearsal.Run(software, _screen.Name, _edit.Draw);
+            UnifiedRehearsal.Run(software, _screen.Name, _drawn);
         }
 
         /// <summary>Applies the edit; undoes what was done of it when TIA Portal refuses a step.</summary>
@@ -152,10 +158,31 @@ namespace TiaMcpServer.Siemens
             }
         }
 
-        /// <remarks>The undo goes on the list before the item is touched: a draw refused half-way leaves an item to delete.</remarks>
+        /// <remarks>
+        /// The undo goes on the list before the item is touched: a draw refused half-way leaves an item to delete. The
+        /// screen's global definitions are written once at the end, imports included (see UnifiedEventWriter.Errors), and
+        /// put back as they were on an undo.
+        /// </remarks>
         private void Draw(UnifiedScreenDescription redrawn, List<(string Name, Action Undo)> done)
         {
-            foreach (var item in _edit.Draw)
+            var scripted = UnifiedScreenGlobals.HoldsEvents(_drawn);
+            if (scripted)
+            {
+                var before = UnifiedEventWriter.ScreenGlobals(_screen, withItems: true);
+                done.Add(("the screen's global definitions", () => UnifiedEventWriter.WriteScreenGlobals(_screen, before)));
+            }
+
+            DrawEach(redrawn, done);
+
+            if (scripted)
+            {
+                UnifiedEventWriter.WriteScreenGlobals(_screen, UnifiedScreenGlobals.EventDefinitions(_drawn));
+            }
+        }
+
+        private void DrawEach(UnifiedScreenDescription redrawn, List<(string Name, Action Undo)> done)
+        {
+            foreach (var item in _drawn)
             {
                 var existed = Find(item.Name) != null;
                 done.Add(($"'{item.Name}'", existed ? () => DrawBack(redrawn, item.Name) : () => Find(item.Name)?.Delete()));

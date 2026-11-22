@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using System.Text.Json;
 using TiaMcpServer.Siemens;
 using TiaMcpServer.UnifiedScreens;
@@ -79,6 +80,39 @@ namespace TiaMcpServer.Governance.Tests
         public void Read_Ambiguous_ThrowsInvalidParams(string events)
         {
             var failure = Assert.ThrowsException<PortalException>(() => Read(events));
+
+            Assert.AreEqual(PortalErrorCode.InvalidParams, failure.Code);
+        }
+
+        [TestMethod]
+        [DataRow(@"{ ""event"": ""tapped"", ""function"": ""increaseValue"", ""tag"": ""Speed"", ""value"": 5 }", "Tags(\"Speed\").Write(Tags(\"Speed\").Read() + 5);")]
+        [DataRow(@"{ ""event"": ""tapped"", ""function"": ""decreaseValue"", ""tag"": ""Speed"", ""value"": 0.5 }", "Tags(\"Speed\").Write(Tags(\"Speed\").Read() - 0.5);")]
+        [DataRow(@"{ ""event"": ""tapped"", ""function"": ""invertBit"", ""tag"": ""Lamp"" }", "Tags(\"Lamp\").Write(!Tags(\"Lamp\").Read());")]
+        public void Read_AValueFunction_WritesTheTagFromItsOwnValue(string entry, string expected)
+        {
+            var events = Read($"[ {entry} ]");
+
+            Assert.AreEqual(expected, events.Single().Script);
+            Assert.IsNull(events.Single().GlobalDefinitions);
+        }
+
+        /// <remarks>The TIA Portal V21 help: a module is reached through an import in the global definitions, then called through its alias.</remarks>
+        [TestMethod]
+        public void Read_CallModule_CallsThroughAnImportInTheGlobalDefinitions()
+        {
+            var events = Read(@"[ { ""event"": ""tapped"", ""function"": ""callModule"", ""module"": ""Lib"", ""call"": ""start"", ""arguments"": [ 1, ""M1"", true ] } ]");
+
+            Assert.AreEqual("Lib.start(1, \"M1\", true);", events.Single().Script);
+            Assert.AreEqual("import * as Lib from 'Lib';", events.Single().GlobalDefinitions);
+        }
+
+        [TestMethod]
+        [DataRow(@"{ ""event"": ""tapped"", ""function"": ""callModule"", ""module"": ""Lib');x('"", ""call"": ""f"" }", DisplayName = "a module that is not a name")]
+        [DataRow(@"{ ""event"": ""tapped"", ""function"": ""callModule"", ""module"": ""Lib"", ""call"": ""f"", ""arguments"": [ { ""a"": 1 } ] }", DisplayName = "an argument that is not a value")]
+        [DataRow(@"{ ""event"": ""tapped"", ""function"": ""increaseValue"", ""tag"": ""Speed"" }", DisplayName = "a step missing")]
+        public void Read_AFunctionEntryNotWritable_ThrowsInvalidParams(string entry)
+        {
+            var failure = Assert.ThrowsException<PortalException>(() => Read($"[ {entry} ]"));
 
             Assert.AreEqual(PortalErrorCode.InvalidParams, failure.Code);
         }

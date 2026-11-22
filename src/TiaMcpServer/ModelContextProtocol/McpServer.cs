@@ -289,6 +289,7 @@ namespace TiaMcpServer.ModelContextProtocol
                 PortalProcessChoiceReason.HasUserInterface => $"Attached to {process}, the one with a window",
                 PortalProcessChoiceReason.WithoutUserInterface => $"Attached to {process}; no TIA Portal with a window was running",
                 PortalProcessChoiceReason.KeptOwnPortal => $"Still connected to {process}, which the server started; it is kept so its project is not closed unsaved",
+                PortalProcessChoiceReason.StartedOnRequest => $"Started {process} of its own, beside any TIA Portal already running",
                 _ =>throw new McpException($"Unrecognised reason for choosing a TIA Portal: {Portal.AttachedProcessReason}", McpErrorCode.InternalError)
             };
         }

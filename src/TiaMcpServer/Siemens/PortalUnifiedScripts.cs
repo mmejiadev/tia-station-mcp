@@ -20,8 +20,8 @@ namespace TiaMcpServer.Siemens
     {
         /// <summary>Checks the scripts of one WinCC Unified screen, or of every screen of the HMI.</summary>
         /// <param name="hmiPath">Full path to the Unified HMI software.</param>
-        /// <param name="screenName">The screen, or null or empty for every screen, those in screen groups included.</param>
-        /// <returns><c>{ screens, scripts, findings: [{ screen, item, where, line, rule, severity, message }] }</c>.</returns>
+        /// <param name="screenName">The screen, or null or empty for every screen, those in screen groups included, and every global script module.</param>
+        /// <returns><c>{ screens, modules, scripts, findings: [{ screen, item, where, line, rule, severity, message }] }</c>; a module's findings have no screen.</returns>
         /// <exception cref="PortalException">The path is not a WinCC Unified HMI, or the screen does not exist.</exception>
         public JsonObject CheckUnifiedScripts(string hmiPath, string? screenName)
         {
@@ -29,20 +29,37 @@ namespace TiaMcpServer.Siemens
             {
                 var software = RequireUnifiedSoftware(hmiPath);
                 var screens = string.IsNullOrWhiteSpace(screenName) ? AllScreens(software) : new List<HmiScreen> { FindUnifiedScreen(software, hmiPath, screenName!) };
-                var context = new UnifiedScriptContext(TagTypes(software));
+                var modules = ScriptModulesOf(software);
+                var context = ScriptContext(software, modules);
                 var sources = screens.SelectMany(screen => ScriptsOf(screen).Select(source => (Screen: screen.Name, Source: source))).ToList();
+                var checkedModules = string.IsNullOrWhiteSpace(screenName) ? modules : new Dictionary<string, string>();
 
                 return new JsonObject
                 {
                     ["screens"] = screens.Count,
+                    ["modules"] = checkedModules.Count,
                     ["scripts"] = sources.Count,
-                    ["findings"] = new JsonArray(sources.SelectMany(entry => Findings(entry.Screen, entry.Source, context)).ToArray())
+                    ["findings"] = new JsonArray(sources.SelectMany(entry => Findings(entry.Screen, entry.Source, context))
+                        .Concat(checkedModules.SelectMany(module => UnifiedScriptChecker.Check(module.Value, context).Select(finding => Describe(string.Empty, module.Key, "script module", finding))))
+                        .ToArray())
                 };
             }
             catch (Exception ex)
             {
                 throw DecorateHmiFailure(ex, "CheckUnifiedScripts", hmiPath, screenName ?? string.Empty);
             }
+        }
+
+        /// <summary>Each global script module of the HMI with its code, as TIA Portal holds it.</summary>
+        private Dictionary<string, string> ScriptModulesOf(UnifiedHmiSoftware software)
+        {
+            return software.Scripts.ToDictionary(module => module.Name, ReadScriptModule, StringComparer.Ordinal);
+        }
+
+        /// <remarks>The modules' functions too: TIA Portal compiles a call to one a module does not have without a word (measured 2026-11-18).</remarks>
+        private static UnifiedScriptContext ScriptContext(UnifiedHmiSoftware software, IReadOnlyDictionary<string, string> modules)
+        {
+            return new UnifiedScriptContext(TagTypes(software), modules.ToDictionary(module => module.Key, module => UnifiedScriptExports.Functions(module.Value), StringComparer.Ordinal));
         }
 
         /// <remarks>A script with global definitions is checked knowing them, and the definitions are checked as a script of their own.</remarks>

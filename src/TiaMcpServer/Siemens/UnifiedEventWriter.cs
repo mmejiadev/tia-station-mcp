@@ -24,6 +24,8 @@ namespace TiaMcpServer.Siemens
     {
         private const string EventHandlersProperty = "EventHandlers";
 
+        private static readonly System.Text.RegularExpressions.Regex Imports = new System.Text.RegularExpressions.Regex(@"\bimport\s[^;\n]*;?", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
         /// <summary>The text TIA Portal puts in a new script's global definition area, left out when read back.</summary>
         private const string DefaultGlobalDefinitions = "//Insert definitions for events here";
 
@@ -50,9 +52,9 @@ namespace TiaMcpServer.Siemens
                 return Array.Empty<string>();
             }
 
-            var code = scratch.ScreenItems.Create<HmiButton>("Check").EventHandlers.Create(HmiButtonEventType.Tapped).Script;
+            var handler = scratch.ScreenItems.Create<HmiButton>("Check").EventHandlers.Create(HmiButtonEventType.Tapped);
 
-            return scripts.Select(entry => Errors(code, entry.Script, entry.Item)).OfType<string>().ToList();
+            return scripts.Select(entry => Errors(handler.Script, entry.Script, entry.Item)).OfType<string>().ToList();
         }
 
         /// <summary>Writes an event's script onto a new item and checks its syntax again.</summary>
@@ -83,11 +85,77 @@ namespace TiaMcpServer.Siemens
             return read.Length == 0 ? null : new JsonArray(read);
         }
 
+        /// <summary>Writes a screen's global definitions through one script, unless they already read so.</summary>
+        /// <param name="code">The script.</param>
+        /// <param name="globals">The definitions.</param>
+        /// <remarks>
+        /// Measured 2026-11-18 on V21: the area is the screen's, so the second item's script already reads what the first
+        /// wrote. Written only when it differs, so drawing many items does not rewrite it once per item.
+        /// </remarks>
+        internal static void WriteGlobals(IHmiScript code, string globals)
+        {
+            if (!string.Equals((code.GlobalDefinitionAreaScriptCode ?? string.Empty).Trim(), globals.Trim(), StringComparison.Ordinal))
+            {
+                code.GlobalDefinitionAreaScriptCode = globals;
+            }
+        }
+
+        /// <summary>Writes the global definitions a screen's events share, imports included, once its items are drawn.</summary>
+        /// <param name="screen">The screen.</param>
+        /// <param name="globals">The whole area; null for none.</param>
+        /// <remarks>Through the first event script of the screen or its items: the area is the screen's (see <see cref="Errors"/>).</remarks>
+        public static void WriteScreenGlobals(HmiScreen screen, string? globals)
+        {
+            var code = Owners(screen, withItems: true)
+                .SelectMany(Handlers)
+                .Select(ScriptOf)
+                .FirstOrDefault(script => script != null);
+
+            if (code != null)
+            {
+                WriteGlobals(code, globals ?? DefaultGlobalDefinitions);
+            }
+        }
+
+        /// <summary>Whether a screen's events' global definitions hold an import, which a syntax check does not survive.</summary>
+        /// <param name="screen">The screen.</param>
+        /// <returns>True when they do.</returns>
+        public static bool HoldsImport(HmiScreen screen)
+        {
+            return ScreenGlobals(screen, withItems: true) is string globals && Imports.IsMatch(globals);
+        }
+
+        private static string WithoutImports(string? globals)
+        {
+            var stripped = Imports.Replace(globals ?? string.Empty, string.Empty);
+
+            return stripped.Trim().Length == 0 ? DefaultGlobalDefinitions : stripped;
+        }
+
+        /// <summary>The global definitions a screen's events share, as its own events or its items' read them.</summary>
+        /// <param name="screen">The screen.</param>
+        /// <param name="withItems">Whether its items' events are read too, or only its own (the items are about to be redrawn).</param>
+        /// <returns>The definitions; null when none holds any.</returns>
+        /// <remarks>Measured 2026-11-18: one area per screen for all its events (see <c>UnifiedScreenGlobals</c>).</remarks>
+        public static string? ScreenGlobals(HmiScreen screen, bool withItems)
+        {
+            return Owners(screen, withItems)
+                .SelectMany(owner => (Read(owner) ?? new JsonArray()).OfType<JsonObject>())
+                .Select(handler => handler["globalDefinitions"]?.GetValue<string>())
+                .FirstOrDefault(globals => globals != null);
+        }
+
         /// <summary>What in an item's events its backup could not draw back: an empty script, or one TIA Portal finds broken.</summary>
         /// <param name="item">The item about to be deleted by a redraw.</param>
         /// <param name="itemName">The item, as a reason names it.</param>
+        /// <param name="skipSyntaxCheck">Whether the scripts are not syntax-checked.</param>
         /// <returns>One reason per event that would not come back; empty when all would.</returns>
-        public static IReadOnlyList<string> Problems(object item, string itemName)
+        /// <remarks>
+        /// With <paramref name="skipSyntaxCheck"/>, the scripts are not syntax-checked: on a screen whose area holds an
+        /// import, a syntax check ends TIA Portal's session (see <see cref="Errors"/>). The drawing's own rehearsal checks
+        /// them, imports left out, before anything is deleted.
+        /// </remarks>
+        public static IReadOnlyList<string> Problems(object item, string itemName, bool skipSyntaxCheck = false)
         {
             var problems = new List<string>();
 
@@ -102,7 +170,7 @@ namespace TiaMcpServer.Siemens
                     continue;
                 }
 
-                if (code.SyntaxCheck()?.Errors?.Any() == true)
+                if (!skipSyntaxCheck && code.SyntaxCheck()?.Errors?.Any() == true)
                 {
                     problems.Add($"'{itemName}' has a '{eventName}' script TIA Portal finds broken, which a redraw cannot put back");
                 }
@@ -115,8 +183,13 @@ namespace TiaMcpServer.Siemens
         private static string? Errors(IHmiScript code, UnifiedEventScript script, string itemName)
         {
             code.ScriptCode = script.Script;
-            code.GlobalDefinitionAreaScriptCode = script.GlobalDefinitions ?? DefaultGlobalDefinitions;
 
+            // Checked with the imports left out; the whole area is written once, after the screen's items are drawn
+            // (WriteScreenGlobals). Measured 2026-11-19 on V21, with a script module in the HMI: with an import in the
+            // screen's area, SyntaxCheck throws "Error when calling method 'SyntaxCheck'" and TIA Portal's session ends -
+            // already the first check. With the area at its default, two checks in a row pass. An import does not change
+            // whether a script parses; what it names is CheckUnifiedScripts' to check.
+            WriteGlobals(code, WithoutImports(script.GlobalDefinitions));
             var errors = code.SyntaxCheck()?.Errors?.ToList() ?? new List<string>();
 
             return errors.Count == 0 ? null : $"the '{script.EventName}' script of '{itemName}' is not valid JavaScript: {string.Join("; ", errors)}";
@@ -134,6 +207,18 @@ namespace TiaMcpServer.Siemens
             }
 
             return described;
+        }
+
+        /// <remarks>
+        /// The screen, then its items when asked. <c>Enumerable.Concat</c> by name: measured 2026-11-19, the extension
+        /// <c>new object[] { screen }.Concat(items)</c> bound in this assembly to an overload that appends its argument as
+        /// one element - the item collection itself, not its items - so no item's events were ever found.
+        /// </remarks>
+        private static List<object> Owners(HmiScreen screen, bool withItems)
+        {
+            var items = withItems ? screen.ScreenItems.Cast<object>() : Enumerable.Empty<object>();
+
+            return Enumerable.Concat(new object[] { screen }, items).ToList();
         }
 
         private static IEnumerable<object> Handlers(object item)
