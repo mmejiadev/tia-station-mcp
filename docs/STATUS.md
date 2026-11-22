@@ -5,6 +5,39 @@
 
 ## ▶ RESUME HERE
 
+### Editing one member of a global DB: what importing it back does - 2026-11-22, branch `work/v21-db-member-edits`
+
+Point 6, second half. Measured on V21 in a throw-away project: a 1511 with a global DB `Cell` (number 10, optimized; an
+`Int`, a `Real`, a `Bool` and a `String[10]`, each with a start value) and an SCL FC reading two of its members. The DB is
+exported, one member changed in the XML, and imported again through `ImportBlock` with no Override flag (an existing DB of
+the name is replaced).
+
+- **Number, name and the other members' start values are kept**, as long as they are in the XML that is imported: changing
+  `Count`'s start value from 5 to 9 and adding `Extra` (start 7) came back exactly so, number still 10.
+- **The DB is a new object**: its creation date changes, and it is **inconsistent until the software is compiled** - so is
+  every block that uses it (`UseCell`). An export then fails with "Block is inconsistent"; compile first.
+- **Removing a member a block reads is not refused**: the import succeeds, and the compile reports
+  `Tag "Cell".Count not defined` in the block that reads it. Cross references list a block as using the DB, with a line
+  and column but not the member, so which member is read cannot be told from them.
+- **Not measured:** the values a DB holds in a CPU. Importing recreates the block, and what a download does with the actual
+  values of a DB whose structure changed is TIA Portal's rule, to be measured with PLCSIM Advanced; structs, arrays and UDT
+  members; renaming a member (it reads as a removal plus an addition, so it breaks the same references).
+
+So the editor exports first, checks the compile after the import, and puts the DB back from its export when the compile
+finds more errors than before.
+
+**`EditDbMembers`**, built on that: `{ block, remove: [names], set: [{ name, dataType?, startValue? }], add: [{ name, dataType,
+startValue? }] }`. `DbMemberEditReader` and `DbMemberXml` (portable, 22 governance tests) read the JSON and change the exported
+XML - a member is named once, case aside; a new data type with no start value drops the old one; a struct, or an array with
+start values per element, is refused. `Portal.EditDbMembers` backs the program up, exports the block, compiles for the errors
+before, imports the changed block, compiles again, and imports the original back when the errors went up or TIA Portal refused
+it (`edit-db/original` and `edit-db/changed` stay in the backup folder). Governed like every write
+(`Test16GuardedWrites`); `Test78DbMemberEdits` (4): a changed start value and an added member keep the number and the other
+values; removing a member a block reads is undone and refused; a member that is not there, and a type that does not exist,
+change nothing. Taking the undo out makes the removal test fail, which is how it was checked.
+
+Not done: comments on members; members inside a struct; what a download does with the values a CPU holds.
+
 ### Code review of 2026-11-22 on `work/v21-unified-scripts`, and what it fixed
 
 `/code-review high` over the branch found one important fault and eight smaller ones.
