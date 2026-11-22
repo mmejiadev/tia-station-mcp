@@ -1,9 +1,87 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-11-18**
+> Last updated: **2026-11-22**
 
 ## ▶ RESUME HERE
+
+### Code review of 2026-11-22 on `work/v21-unified-scripts`, and what it fixed
+
+`/code-review high` over the branch found one important fault and eight smaller ones.
+
+- **Fixed: `DrawUnifiedScreen` wrote TIA Portal's default over a screen's own global definitions** when no drawn item
+  had an event: the area is the screen's, shared by its own events' handlers, which survive a redraw. It is now written
+  only when an item holds an event (`UnifiedScreenGlobals.HoldsEvents`, as `EditUnifiedScreen` already did). Four
+  governance tests. No Openness test covers the redraw with a screen's own event yet, and the new tests check the rule,
+  not the call in `Redraw`.
+- **Fixed: `UnifiedScreenEditor` was 302 lines**, over the 300 the class limit allows; reading the existing globals moved
+  to `UnifiedExistingGlobals` (287 lines now).
+- **Open, smaller:** the undo of a removed tag in `EditTagTable` restores only name, type, address and comment, not Retain,
+  Accessible or the other flags; `EditTagTable` refuses addresses with `:P` (peripheral), which TIA Portal may accept -
+  measure first; a refused `WriteUnifiedScriptModule` leaves a backup entry; `CheckUnifiedScripts` exports the modules on
+  every call and fails whole if one export fails; the module-call rules can error on valid code (an arrow function's
+  parameter, a non-exported `const` function); a multi-line `import` in given globals leaves its tail behind;
+  `UnifiedScratchScreen` may throw on dispose when the HMI had no start screen; `callModule` refuses a module name with a
+  hyphen or space.
+- 1365 governance tests, 133 Spec and 33 OpcUa pass; the server builds with 0 warnings. The Openness tests were not run
+  after the fixes.
+
+### WinCC Unified scripts on V21: module calls, shared definitions, value functions — 2026-11-18/19, branch `work/v21-unified-scripts`
+
+Point 3 of the plan. `Test60`, `Test52` and `Test46` (modules, script checks, events) pass on V21 as they were (24 of 24).
+Measured on V21 first, then built:
+
+- **TIA Portal compiles broken calls into modules without a word.** A module `Lib` exporting `f`, and buttons calling
+  `Lib.g(1)`, `Nope.f(1)` and `f(1)`: the HMI compiled with no error and no warning about any of them. The V21 help says a
+  module is reached only through `import * as alias from 'Module';` in the global definitions, then `alias.f()` - so
+  `Lib.f()` without the import is undefined in runtime too. `CheckUnifiedScripts` now reads the imports
+  (`UnifiedScriptImports`) and the modules' functions (`UnifiedScriptExports`: every top-level function, as TIA Portal
+  exports them all) and finds `missing-module-function`, `module-not-imported` and, as a warning, `missing-module`; without
+  a screen named it checks the modules' own code too, and `WriteUnifiedScriptModule` checks a module's calls into the others.
+- **A screen has one global definition area per script context, not one per item.** Two buttons given `let a = 1;` and
+  `let b = 2;` both read back `let b = 2;`; a button drawn after with none wiped the area for all; script animations share
+  theirs the same way. So `DrawUnifiedScreen` had been keeping only the last item's definitions, without a word. Now
+  `UnifiedScreenGlobals` merges a screen's definitions - those already there first, each part once - and every event and
+  script animation is written with the whole; `EditUnifiedScreen` merges with what the screen has.
+- **Writing a module to an HMI with no screen broke its compile.** The syntax check's throw-away screen, the first of the
+  HMI, became its start screen, and its deletion left "The object 'TiaMcp_ModuleCheck_…' at the 'Start screen' property does
+  not exist". `UnifiedScratchScreen` puts the start screen back.
+- **New event functions:** `increaseValue`, `decreaseValue` (tag and step), `invertBit`, and `callModule` (module, call,
+  arguments), which writes the import into the event's global definitions and the call as the help shows.
+- **The test suite starts its own TIA Portal** (`Portal.StartPortal`) instead of refusing to run while one is open - it used
+  to, to avoid attaching to a person's session; now it never attaches. `Test1Portal`, which tests attaching, waits when
+  another TIA Portal runs. Probes use the same.
+
+- **With an `import` in a screen's global definitions, a syntax check ends TIA Portal's session** (measured 2026-11-19,
+  with a module in the HMI: "Error when calling method 'SyntaxCheck'", already on the first check; with the area at its
+  default, two checks in a row pass). So every script is checked with the imports left out, and the area is written
+  whole once, after the items are drawn; the backup check of a screen holding an import skips the syntax check.
+  Two bugs hid this for a day: the regex that leaves the imports out held a backspace instead of `\b`, and matched
+  nothing; and `new object[] { screen }.Concat(items)` bound to an overload that appends the collection as one element,
+  so writing the area at the end found no item - now `Enumerable.Concat` by name.
+
+`Test75UnifiedScriptCalls` 8/8; `Test16`, `Test44`, `Test46`, `Test47`, `Test52`, `Test60`, `Test74` and `Test76` pass
+(163 of 164 before the `Test76` fix below; that one since).
+
+Not measured: that a module function called this way runs in runtime (it needs the runtime open; with the Custom Web
+Controls' runtime check, a session at the screen).
+
+### Changing single rows of a PLC tag table — 2026-11-19, branch `work/v21-table-and-db-rows`
+
+Point 6 of the plan. **`EditTagTable`**: `{ table, remove: [names], set: [{ name, dataType?, address?, comment? }], add:
+[{ name, dataType, address, comment? }] }` - remove, change in place only what is given, add; every other row is left as
+it is. A tag is named once (case aside); every tag named is checked to be there, or not there for `add`; the program's
+tag tables are exported to the backup registry; if TIA Portal refuses a step, what was done is undone - a tag deleted is
+created again as it was. Comments go in the editing language; an empty comment clears it.
+
+**Measured 2026-11-19 on V21: `PlcTagTable.Tags.Create` takes any text as an address** - `nonsense`, `%Q0.8`, `%M0.0.0`,
+`%DB1.DBX0.0`, `%Q9999999.9` - and a name holding a quote; what it refuses is a name another table of the program has.
+So `TagTableEditReader` checks the address itself: an input, output or memory bit (0 to 7), byte, word, double word or
+long word, upper-cased. `CreateTag` does not check it yet. Governance tests for the reader, `Test76TagTableEdits` (4) and
+a `Test16GuardedWrites` refusal pass.
+
+Not done: editing single members of a global DB (export, change, import with Override - still to measure whether it keeps
+the values and the number). Point 5, GoOnline, was not started.
 
 ### PEEK and POKE measured, and checked when SCL is written — 2026-11-18, branch `work/v21-peek-poke`
 
@@ -33,19 +111,6 @@ the `WriteScl` path yet. Open, from the two reviews:
 - Every DB's `MemoryLayout` is read when the source calls PEEK or POKE; only the numbers named as constants need it.
 
 Not measured: M13 (needs TIA Portal's window); run-time behaviour of the I/O areas on an S7-1200 (PLCSIM Advanced has no 1200).
-
-**Left in `git stash` on `work/v21-unified-scripts`** (stash "WIP 2026-11-18 …"), not committed:
-
-- **Point 3, Unified scripts** - module-call rules, shared global definitions per screen, `increaseValue`,
-  `decreaseValue`, `invertBit`, `callModule`, the start-screen fix, the test suite starting its own TIA Portal
-  (`Portal.StartPortal`). Blocked: with an `import` in a screen's global definitions, the **second** `SyntaxCheck` of the
-  rehearsal throws "Error when calling method 'SyntaxCheck'" and TIA Portal's session ends (6 of 166 Openness tests
-  failed). The last change - reading `handler.Script` again for each check instead of reusing one script object - is
-  written but **not yet run**; rerun probe or `Test75UnifiedScriptCalls` first.
-- **Point 6, `EditTagTable`** - add, change and delete single rows of a PLC tag table, with backup and undo. Missing: run
-  `Test76TagTableEdits`, a `Test16GuardedWrites` refusal, governance tests for `TagTableEditReader`, docs. Editing single
-  members of a DB was not started.
-- **Point 5, GoOnline** - not started.
 
 ### Changing some items of a Unified screen — 2026-11-17, branch `work/v21-unified-screen-edit`
 
