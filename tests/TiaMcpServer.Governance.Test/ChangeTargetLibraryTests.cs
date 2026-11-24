@@ -154,6 +154,40 @@ namespace TiaMcpServer.Governance.Tests
         }
 
         [TestMethod]
+        public void MasterCopyDeletion_AMasterCopyInAFolder_IsUnderItsOwnPrefix()
+        {
+            Assert.AreEqual("master-copy-delete/Motors/FB_Motor", ChangeTarget.MasterCopyDeletion(" /Motors/FB_Motor/ "));
+        }
+
+        /// <remarks>The deletion finds <c>Protected / FB_Motor</c> as <c>Protected/FB_Motor</c>, so a deny rule on that must hold.</remarks>
+        [TestMethod]
+        public void MasterCopyDeletion_BlanksAroundTheNames_AreCaughtByADenyRuleOnThePath()
+        {
+            var target = ChangeTarget.MasterCopyDeletion(" Protected / FB_Motor ");
+
+            Assert.IsTrue(TargetPattern.Parse("master-copy-delete/Protected/*").Matches(target), target);
+        }
+
+        [TestMethod]
+        public void MasterCopyDeletion_AnEmptyName_IsRefusedAsInvalidParams()
+        {
+            var refusal = Assert.ThrowsException<PortalException>(() => ChangeTarget.MasterCopyDeletion("Motors//FB_Motor"));
+
+            Assert.AreEqual(PortalErrorCode.InvalidParams, refusal.Code);
+        }
+
+        /// <remarks>Adding master copies must not grant deleting them, which archives the project as their only copy.</remarks>
+        [TestMethod]
+        public void MasterCopyDeletion_RulesForTheLibraryAndForDeletingTypes_DoNotAllowIt()
+        {
+            var target = ChangeTarget.MasterCopyDeletion("FB_Motor");
+
+            Assert.IsFalse(TargetPattern.Parse(ChangeTarget.ProjectLibrary).Matches(target));
+            Assert.IsFalse(TargetPattern.Parse("library/*").Matches(target));
+            Assert.IsFalse(TargetPattern.Parse("library-delete/*").Matches(target));
+        }
+
+        [TestMethod]
         public void GlobalLibraryFile_NotAPath_IsRefusedAsInvalidParams()
         {
             var refusal = Assert.ThrowsException<PortalException>(() => ChangeTarget.GlobalLibraryFile("C:\\Kit\u0001\\Kit.al20"));

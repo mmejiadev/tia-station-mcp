@@ -149,6 +149,25 @@ namespace TiaMcpServer.Library
                 .ToList();
         }
 
+        /// <summary>Throws unless a master copy folder about to be deleted holds nothing.</summary>
+        /// <param name="folderPath">The folder, as the refusal names it.</param>
+        /// <param name="masterCopies">The master copies directly in it.</param>
+        /// <param name="folders">The folders directly in it.</param>
+        /// <exception cref="PortalException"><see cref="PortalErrorCode.InvalidState"/> naming what it holds.</exception>
+        /// <remarks>
+        /// Measured 2026-11-24 on TIA Portal V21: <c>MasterCopyUserFolder.Delete</c> deletes a folder with everything in it, without a
+        /// word. One deletion names one thing, so what is inside is deleted first, each by its own path.
+        /// </remarks>
+        public static void RequireEmptyFolder(string folderPath, IEnumerable<string> masterCopies, IEnumerable<string> folders)
+        {
+            var held = (masterCopies ?? Enumerable.Empty<string>()).Concat((folders ?? Enumerable.Empty<string>()).Select(folder => folder + "/")).ToList();
+
+            if (held.Count > 0)
+            {
+                throw new PortalException(PortalErrorCode.InvalidState, $"The master copy folder '{folderPath}' holds {List(held)}, which TIA Portal would delete with it without a word; delete those first, each by its path. Nothing was deleted");
+            }
+        }
+
         /// <summary>The one kind a master copy can be created as, from what it holds.</summary>
         /// <param name="masterCopyName">The master copy, as the refusal names it.</param>
         /// <param name="contents">Each item it holds: its type's name, and its kind, or null for one these tools do not create.</param>
