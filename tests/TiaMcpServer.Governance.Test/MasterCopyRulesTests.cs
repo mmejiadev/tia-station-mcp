@@ -163,6 +163,22 @@ namespace TiaMcpServer.Governance.Tests
         }
 
         [TestMethod]
+        public void RequireEmptyFolder_NothingInIt_Passes()
+        {
+            MasterCopyRules.RequireEmptyFolder("Motors", Array.Empty<string>(), Array.Empty<string>());
+        }
+
+        /// <remarks>TIA Portal V21 deletes a folder with everything in it without a word (measured 2026-11-24).</remarks>
+        [TestMethod]
+        public void RequireEmptyFolder_AMasterCopyAndAFolderInIt_IsRefusedNamingBoth()
+        {
+            var refusal = Assert.ThrowsException<PortalException>(() => MasterCopyRules.RequireEmptyFolder("Motors", new[] { "FB_Motor" }, new[] { "Pumps" }));
+
+            Assert.AreEqual(PortalErrorCode.InvalidState, refusal.Code);
+            StringAssert.Contains(refusal.Message, "FB_Motor, Pumps/", StringComparison.Ordinal);
+        }
+
+        [TestMethod]
         public void RequireSingleKind_AnItemOfAnotherKind_IsRefusedNamingItsType()
         {
             var refusal = Assert.ThrowsException<PortalException>(() => MasterCopyRules.RequireSingleKind("Watch", new (string, MasterCopySourceKind?)[] { ("PlcWatchTable", null) }));
