@@ -53,6 +53,25 @@
             Assignment = assignment.Trim();
         }
 
+        /// <summary>Reads the definition of a tag, whose assignment must be an input, output or memory address.</summary>
+        /// <param name="path">Full path, for example <c>Cell/IO/Start</c>.</param>
+        /// <param name="dataTypeName">The data type, for example <c>Bool</c>.</param>
+        /// <param name="address">The logical address, for example <c>%I0.0</c>; it is kept in upper case.</param>
+        /// <returns>The definition.</returns>
+        /// <exception cref="PortalException">
+        /// The path names no table, the data type or the address is missing, or the address is not a tag address.
+        /// </exception>
+        /// <remarks>
+        /// Apart from the constructor because a constant uses the same field for its value, which is no address: only a
+        /// tag's is checked. TIA Portal does not check it at all (measured, see <see cref="PlcTagAddress"/>).
+        /// </remarks>
+        public static TagDefinition ForTag(string path, string dataTypeName, string address)
+        {
+            var read = new TagDefinition(path, dataTypeName, address);
+
+            return new TagDefinition(path, dataTypeName, PlcTagAddress.Parse(read.Assignment, read.Name));
+        }
+
         /// <summary>The full path, as this server reads it.</summary>
         public string Path { get; }
 

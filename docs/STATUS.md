@@ -1,9 +1,41 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-11-22**
+> Last updated: **2026-11-24**
 
 ## ▶ RESUME HERE
+
+### `CreateTag` checks the address; PEEK/POKE open items closed - 2026-11-24, branch `work/v21-tag-address-and-peek-poke`
+
+Built with 0 warnings; 1431 governance tests pass (2 skipped, as before). Against TIA Portal V21, `Test83SclMemoryAccess`,
+`Test25Tags`, `Test76TagTableEdits` and `Test16GuardedWrites`: 133/133.
+
+- **`CreateTag` refuses an address that is not one** (measured 2026-11-19: `Tags.Create` takes any text). The regex of
+  `TagTableEditReader` is now `PlcTagAddress` (Portable), used by `EditTagTable` and by `TagDefinition.ForTag`, which the
+  `CreateTag` tool builds its definition with: an input, output or memory bit (0 to 7), byte, word, double word or long
+  word, kept in upper case; anything else is `InvalidParams` naming the tag. `[0-9]` instead of `\d`, which in .NET also
+  matches digits of other scripts. `CreateConstant` keeps the plain constructor: its value is not an address.
+- **`peek-poke-missing-db`** (error): a constant `DBNUMBER` with `AREA` 16#84 that no DB of the program has (M6: returns 0,
+  ENO FALSE, CPU in RUN). Judged only when the program's DBs were read: `ProgramDataBlocks` (Portable) carries the numbers
+  of every DB and of the optimized ones, and `ProgramDataBlocks.Unknown` says nothing is missing.
+- **`peek-poke-peripheral`** (warning): 16#2 in PEEK or PEEK_BOOL, 16#1 in POKE or POKE_BOOL, either in POKE_BLK - not in
+  the help's list for that instruction; it compiles (M8), and the message says run time is not measured.
+- **Only the DBs named as constants have their `MemoryLayout` read**; every DB's number is still read, for the missing
+  rule. A source that names no DB by a constant does not read the project at all.
+- **Workshop Mode sees the findings before the write.** `WriteScl` runs the rules that need only the text
+  (`SclMemoryAccessRules.CheckText`) before the guard and appends them, rule and line, to the change request's value
+  (`SclMemoryAccessSummary.ForPlan`), which the plan shows and the audit trail keeps. Nothing in `Governance/` changed.
+  After the write every rule runs against the program, as before. The value also feeds the documentation lookup, so a
+  plan with findings now asks the index about those rule names too.
+
+Each new rule has a governance test that fails when the rule is taken out (checked by removing each one: missing DB,
+peripheral, address pattern, `ForTag`'s check, the plan suffix, the named-DB list). `Test83SclMemoryAccess` (3, on a
+retrieved copy of the fixture: DB 60000 reported missing, an optimized DB written by `WriteScl` reported optimized, a
+standard one not) passes.
+
+Still open from the 2026-11-18 list: `peek-poke-peripheral-on-1200` (needs the CPU family) and
+`poke-blk-dbnumber-types`; and no Openness test drives the `WriteScl` tool itself, so the plan suffix is checked only
+through `ChangePlan` in the governance tests.
 
 ### Libraries, master copies and types closed (roadmap 2.2) - 2026-11-24, branch `work/v21-library-closing`
 
