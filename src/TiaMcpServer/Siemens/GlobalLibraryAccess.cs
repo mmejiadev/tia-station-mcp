@@ -128,13 +128,18 @@ namespace TiaMcpServer.Siemens
             }
         }
 
+        /// <summary>Archives an open global library into one compressed file in a folder.</summary>
+        /// <param name="opened">The library, with nothing unsaved: TIA Portal refuses to archive one with unsaved changes (measured 2026-11-24).</param>
+        /// <param name="file">The library's file, which names the archive.</param>
+        /// <param name="backupDirectory">The folder the archive is written to.</param>
+        /// <returns>The archive's full path.</returns>
         /// <remarks>
         /// Archived to a short folder and moved: TIA Portal refuses an archive path over 143 characters (measured
         /// 2026-11-02), and a backup folder under the registry's default root is often longer than that on its own.
         /// A full path, as Openness refuses a relative one (see CreateGlobalLibrary). A file already at the backup
         /// fails the move, before anything is written to the library.
         /// </remarks>
-        private static void Archive(UserGlobalLibrary opened, FileInfo file, string backupDirectory)
+        public static string Archive(UserGlobalLibrary opened, FileInfo file, string backupDirectory)
         {
             var directory = Path.GetFullPath(backupDirectory);
             var scratch = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
@@ -156,13 +161,18 @@ namespace TiaMcpServer.Siemens
             }
 
             Directory.Delete(scratch, recursive: true);
+
+            return Path.Combine(directory, Path.GetFileName(written[0]));
         }
 
+        /// <summary>The name an archive of a library is written under.</summary>
+        /// <param name="file">The library's file.</param>
+        /// <returns>The archive's file name.</returns>
         /// <remarks>
         /// On V21 the name carries its extension, see <see cref="LibraryArchiveRule"/>. On V20 it stays bare, as it was
         /// measured to work there, and what extension TIA Portal V20 adds was not recorded.
         /// </remarks>
-        private static string ArchiveName(FileInfo file)
+        public static string ArchiveName(FileInfo file)
         {
             var name = Path.GetFileNameWithoutExtension(file.Name);
 #if TIA_V21

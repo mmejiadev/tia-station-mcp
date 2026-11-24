@@ -90,29 +90,40 @@ namespace TiaMcpServer.Siemens
             }
         }
 
-        /// <summary>Starts a new version in work of a project library type, from its newest released version.</summary>
-        /// <param name="typeName">A type Openness has no class for, such as a WinCC Unified faceplate.</param>
+        /// <summary>Starts a new version in work of a project library type Openness has no class for, such as a faceplate.</summary>
+        /// <param name="typeName">The type.</param>
         /// <param name="backupDirectory">Where the type's versions before are written.</param>
         /// <returns>The type, read back; the new version is numbered by TIA Portal.</returns>
-        /// <exception cref="PortalException">The type does not exist, has a version in work already, has none released, or is a PLC type.</exception>
+        /// <exception cref="PortalException">See <see cref="EditLibraryType(string, string, string)"/>.</exception>
+        public JsonObject EditLibraryType(string typeName, string backupDirectory)
+        {
+            return EditLibraryType(typeName, string.Empty, backupDirectory);
+        }
+
+        /// <summary>Starts a new version in work of a project library type, from its newest released version.</summary>
+        /// <param name="typeName">The type: a faceplate, or a block or PLC data type type.</param>
+        /// <param name="softwarePath">For a block or PLC data type type, the PLC software holding its instance; ignored otherwise.</param>
+        /// <param name="backupDirectory">Where the type's versions before are written.</param>
+        /// <returns>The type, read back; the new version is numbered by TIA Portal.</returns>
+        /// <exception cref="PortalException">
+        /// The type does not exist, has a version in work already or none released, is of a kind not taken, or - a block or data
+        /// type type - the program holds no instance of its newest released version.
+        /// </exception>
         /// <remarks>
         /// Measured 2026-10-30 and 2026-11-01: a faceplate's new version takes one call and two at once are refused
-        /// ("Parallel editing is not supported"); a PLC data type refuses it, needing a test instance, which is edited
-        /// in TIA Portal. The new version holds what the released one held: its content is still changed by hand.
+        /// ("Parallel editing is not supported"). Measured 2026-11-24 on V21: a block or PLC data type type refuses <c>Edit()</c>
+        /// and takes <c>Edit</c> with one of its instances, which moves onto the new version (see <see cref="LibraryInstanceRules"/>).
+        /// The new version holds what the released one held: a faceplate is still changed by hand, a block or data type through
+        /// <see cref="CreateLibraryTypeVersionFromDocument"/> with replaceInWork, as V21 refuses WriteScl and a document import over
+        /// an instance in work (measured 2026-11-24).
         /// </remarks>
-        public JsonObject EditLibraryType(string typeName, string backupDirectory)
+        public JsonObject EditLibraryType(string typeName, string softwarePath, string backupDirectory)
         {
             _logger?.LogInformation("Starting a new version of library type {Type}...", typeName);
 
             try
             {
                 var found = RequireLibraryType(typeName);
-
-                if (found.Type.GetType().Name != PlainTypeKind)
-                {
-                    throw new PortalException(PortalErrorCode.InvalidState, $"'{found.Type.Name}' is a {found.Type.GetType().Name}; a new version of it needs a test instance, so edit it in TIA Portal");
-                }
-
                 var versions = LibraryTypeReader.Versions(found.Type);
                 if (versions.Any(version => !version.IsReleased))
                 {
@@ -121,7 +132,7 @@ namespace TiaMcpServer.Siemens
 
                 var newest = LibraryPublishRules.ReleasedVersion(found.Type.Name, versions, null);
                 SaveLibraryBackup(backupDirectory, $"{SnapshotFileName.For(found.Type.Name)}.json", LibraryTypeReader.Describe(found.Folder, found.Type));
-                FindVersion(found.Type, newest).Edit();
+                StartNewVersion(found.Type, softwarePath, newest);
 
                 return LibraryTypeReader.Describe(found.Folder, found.Type);
             }
@@ -172,6 +183,22 @@ namespace TiaMcpServer.Siemens
             {
                 throw DecorateLibraryFailure(AsLibraryFailure(ex, "CreatePlcTypeFromLibrary", PortalErrorCode.WriteFailed), "CreatePlcTypeFromLibrary", softwarePath, typeName ?? string.Empty);
             }
+        }
+
+        private void StartNewVersion(LibraryType type, string softwarePath, Version newest)
+        {
+            if (type.GetType().Name == PlainTypeKind)
+            {
+                FindVersion(type, newest).Edit();
+                return;
+            }
+
+            if (!IsPlcLibraryType(type))
+            {
+                throw new PortalException(PortalErrorCode.InvalidState, $"'{type.Name}' is a {type.GetType().Name}, which this tool does not start a version of; edit it in TIA Portal");
+            }
+
+            EditThroughInstance(type, softwarePath, newest);
         }
 
         /// <remarks>

@@ -784,6 +784,104 @@ namespace TiaMcpServer.Test
         }
 
         [TestMethod]
+        public void CreatePlcBlockFromLibrary_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.CreatePlcBlockFromLibrary("Refused", "Refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void UpdatePlcLibraryInstances_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.UpdatePlcLibraryInstances("Refused", "Refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        /// <remarks>Through an instance it moves the program's instance too, so a policy allowing only the type must not let it through.</remarks>
+        [TestMethod]
+        public void EditLibraryType_ThroughAnInstanceWithAPolicyAllowingOnlyTheType_IsRefused()
+        {
+            var policy = Path.Combine(AssemblyHooks.CreateTestDirectory(), "type-only.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(policy)!);
+            File.WriteAllText(policy, "{ \"study\": { \"allow\": [ \"library/Refused\" ], \"deny\": [] } }");
+            McpServer.SetServiceProvider(BuildDenyEverythingServices(policy));
+
+            try
+            {
+                var response = McpServer.EditLibraryType("Refused", "PLC_Refused");
+
+                Assert.AreEqual("Refused", response.Meta?["outcome"]?.GetValue<string>(), response.Message);
+            }
+            finally
+            {
+                McpServer.SetServiceProvider(BuildDenyEverythingServices(Path.Combine(AssemblyHooks.WorkingRoot, "no-such-policy.json")));
+            }
+        }
+
+        [TestMethod]
+        public void UpdateGlobalLibraryTypes_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.UpdateGlobalLibraryTypes(@"C:\Refused\Refused.al21", RefusedTypes);
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void ArchiveGlobalLibrary_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.ArchiveGlobalLibrary(@"C:\Refused\Refused.al21", @"C:\Refused\Archives");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void RetrieveGlobalLibrary_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.RetrieveGlobalLibrary(@"C:\Refused\Refused.zal21", @"C:\Refused\Restored");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void CreateLibraryTypeFolder_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.CreateLibraryTypeFolder("Refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        [TestMethod]
+        public void DeleteMasterCopy_WithNoPolicy_IsRefused()
+        {
+            var response = McpServer.DeleteMasterCopy("Refused");
+
+            AssertRefused(response.Message, response.Meta?["outcome"]?.GetValue<string>());
+        }
+
+        /// <remarks>A policy letting a session add master copies must not let it delete them.</remarks>
+        [TestMethod]
+        public void DeleteMasterCopyFolder_PolicyAllowingTheLibrary_IsRefused()
+        {
+            var policy = Path.Combine(AssemblyHooks.CreateTestDirectory(), "library-only.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(policy)!);
+            File.WriteAllText(policy, "{ \"study\": { \"allow\": [ \"library\", \"library/*\" ], \"deny\": [] } }");
+            McpServer.SetServiceProvider(BuildDenyEverythingServices(policy));
+
+            try
+            {
+                var response = McpServer.DeleteMasterCopyFolder("Refused");
+
+                Assert.AreEqual("Refused", response.Meta?["outcome"]?.GetValue<string>(), response.Message);
+            }
+            finally
+            {
+                McpServer.SetServiceProvider(BuildDenyEverythingServices(Path.Combine(AssemblyHooks.WorkingRoot, "no-such-policy.json")));
+            }
+        }
+
+        [TestMethod]
         public void WriteUnifiedScriptModule_WithNoPolicy_IsRefused()
         {
             var response = McpServer.WriteUnifiedScriptModule("HMI_MTP700/HMI_RT_1", "Refused", "export function refused() {}");

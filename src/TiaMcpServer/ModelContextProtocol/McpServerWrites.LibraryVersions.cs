@@ -54,9 +54,10 @@ namespace TiaMcpServer.ModelContextProtocol
             }
         }
 
-        [McpServerTool(Name = "EditLibraryType"), Description("Start a new version in work of a project library type, from its newest released version; TIA Portal numbers it. For a type Openness has no class for, such as a WinCC Unified faceplate; a PLC data type or block needs a test instance, so it gets a new version from a document with CreateLibraryTypeVersionFromDocument. A type with a version in work already is refused, as TIA Portal edits one at a time. The new version holds what the released one held: a faceplate's content is still changed by hand in TIA Portal, then ReleaseLibraryType releases it, and UpdateUnifiedFaceplates moves its instances.")]
+        [McpServerTool(Name = "EditLibraryType"), Description("Start a new version in work of a project library type, from its newest released version; TIA Portal numbers it. A WinCC Unified faceplate needs nothing else; its content is still changed by hand in TIA Portal, and UpdateUnifiedFaceplates moves its instances after the release. A block or PLC data type type is edited, as TIA Portal V21 requires, through its instance in a program: give softwarePath, the PLC software holding an instance of the newest released version (CreatePlcBlockFromLibrary or CreatePlcTypeFromLibrary creates one, UpdatePlcLibraryInstances moves an older one), and that instance moves onto the new version. Its content is then written with CreateLibraryTypeVersionFromDocument and replaceInWork (TIA Portal V21 refuses WriteScl and ImportBlocksFromDocuments over an instance in work), or by hand in TIA Portal; compile, then ReleaseLibraryType. A type with a version in work already is refused, as TIA Portal edits one at a time.")]
         public static ResponseLibraryTypes EditLibraryType(
-            [Description("typeName: the type, exactly as GetLibraryTypes names it")] string typeName)
+            [Description("typeName: the type, exactly as GetLibraryTypes names it")] string typeName,
+            [Description("softwarePath: for a block or PLC data type type, full path to the PLC software holding its instance, e.g. 'PLC_1'; empty for a faceplate")] string softwarePath = "")
         {
             // One Openness call at a time. See OpennessGate: two of them really do interleave.
             using var openness = TiaMcpServer.Siemens.OpennessGate.Enter();
@@ -64,11 +65,12 @@ namespace TiaMcpServer.ModelContextProtocol
             try
             {
                 var name = (typeName ?? string.Empty).Trim();
-                var target = ChangeTarget.LibraryType(name);
+                // Through an instance it moves the program's instance too, and a policy has to allow both.
+                var target = string.IsNullOrWhiteSpace(softwarePath) ? ChangeTarget.LibraryType(name) : GuardedWrites.TargetToPropose(ChangeTarget.Program(softwarePath), ChangeTarget.LibraryType(name));
                 var backupDirectory = Backups.Allocate("EditLibraryType", target);
                 var request = new Governance.ChangeRequest("EditLibraryType", target, "a new version in work").WithBackup(backupDirectory);
 
-                return GuardedTool.Run(GuardedWrites, request, () => DescribeLibraryChange(Portal.EditLibraryType(name, backupDirectory), $"A new version of '{name}' is in work. Save the project to keep it."), () => new ResponseLibraryTypes(new JsonObject()));
+                return GuardedTool.Run(GuardedWrites, request, () => DescribeLibraryChange(Portal.EditLibraryType(name, softwarePath ?? string.Empty, backupDirectory), $"A new version of '{name}' is in work. Save the project to keep it."), () => new ResponseLibraryTypes(new JsonObject()));
             }
             catch (Exception ex) when (ex is not McpException)
             {
@@ -76,7 +78,7 @@ namespace TiaMcpServer.ModelContextProtocol
             }
         }
 
-        [McpServerTool(Name = "CreatePlcTypeFromLibrary"), Description("Bring a project library PLC data type (UDT) into a program, as an instance linked to the type, in the program's root; a version named must be released, and the newest released is the default. A program already holding a type of that name, in any group, or one it depends on, is refused, as TIA Portal would answer with it and no error. Block types are not taken yet. Nothing existing changes.")]
+        [McpServerTool(Name = "CreatePlcTypeFromLibrary"), Description("Bring a project library PLC data type (UDT) into a program, as an instance linked to the type, in the program's root; a version named must be released, and the newest released is the default. A program already holding a type of that name, in any group, or one it depends on, is refused, as TIA Portal would answer with it and no error. CreatePlcBlockFromLibrary takes a block type. Nothing existing changes.")]
         public static ResponseLibraryTypes CreatePlcTypeFromLibrary(
             [Description("softwarePath: full path to the PLC software, e.g. 'PLC_1'")] string softwarePath,
             [Description("typeName: the PLC data type, exactly as GetLibraryTypes names it")] string typeName,
