@@ -1,14 +1,14 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-11-22**
+> Last updated: **2026-11-24**
 
 ## ▶ RESUME HERE
 
 ### `CreateTag` checks the address; PEEK/POKE open items closed - 2026-11-24, branch `work/v21-tag-address-and-peek-poke`
 
-Written while another session had TIA Portal open on this laptop, so **nothing here ran against TIA Portal**: built with
-0 warnings, 1431 governance tests pass (2 skipped, as before), and the one new Openness test class is written and unrun.
+Built with 0 warnings; 1431 governance tests pass (2 skipped, as before). Against TIA Portal V21, `Test83SclMemoryAccess`,
+`Test25Tags`, `Test76TagTableEdits` and `Test16GuardedWrites`: 133/133.
 
 - **`CreateTag` refuses an address that is not one** (measured 2026-11-19: `Tags.Create` takes any text). The regex of
   `TagTableEditReader` is now `PlcTagAddress` (Portable), used by `EditTagTable` and by `TagDefinition.ForTag`, which the
@@ -29,13 +29,91 @@ Written while another session had TIA Portal open on this laptop, so **nothing h
   plan with findings now asks the index about those rule names too.
 
 Each new rule has a governance test that fails when the rule is taken out (checked by removing each one: missing DB,
-peripheral, address pattern, `ForTag`'s check, the plan suffix, the named-DB list). Not run: `Test83SclMemoryAccess` (3,
-on a retrieved copy of the fixture: DB 60000 reported missing, an optimized DB written by `WriteScl` reported optimized, a
-standard one not). Run it, `Test25Tags` and `Test76TagTableEdits` when TIA Portal is free.
+peripheral, address pattern, `ForTag`'s check, the plan suffix, the named-DB list). `Test83SclMemoryAccess` (3, on a
+retrieved copy of the fixture: DB 60000 reported missing, an optimized DB written by `WriteScl` reported optimized, a
+standard one not) passes.
 
 Still open from the 2026-11-18 list: `peek-poke-peripheral-on-1200` (needs the CPU family) and
 `poke-blk-dbnumber-types`; and no Openness test drives the `WriteScl` tool itself, so the plan suffix is checked only
 through `ChangePlan` in the governance tests.
+
+### Libraries, master copies and types closed (roadmap 2.2) - 2026-11-24, branch `work/v21-library-closing`
+
+Item 2.2 of the roadmap, checked against what existed first: choosing a type's default version and deleting a type were
+already built and tested (2026-11-15, `Test72`), so they were not touched. Measured on TIA Portal V21 (Update 2) before
+building, by probes on copies of the class project 0967_1 run as throw-away tests (not kept):
+
+- **A block or PLC data type type cannot get a new version without an instance.** `LibraryTypeVersion.Edit()` is refused for
+  both, with an instance in the program or without one ("A test environment is required ... at least one instance of the type
+  or version must be available in the project"). `Edit(LibraryTypeInstanceInfo)`, with an instance from `FindInstances`,
+  starts the next version in work and moves that instance onto it (the block is inconsistent until compiled). So "a version
+  without a test instance" is not possible on V21; the server makes it one tool call away instead (below).
+- **`UpdateProject` removes PLC instances instead of updating them.** `LibraryType.UpdateProject`, `ProjectLibrary.UpdateProject`
+  and `GlobalLibrary.UpdateProject`, every overload, compiled or not, in the root or a group, out of date or up to date, in the
+  first PLC or a second one: the instance was gone from the program afterwards, without an error (seven runs). Not used.
+- `PlcBlockComposition.CreateFrom(CodeBlockLibraryTypeVersion)` creates a block from a type; on a program already holding the
+  instance it answers with that one for the same version, and creates `FC_Kit_1` without a word for another. A global
+  library's version instantiates directly too.
+- `LibraryTypeVersion.CompareTo` (and `LibraryType.CompareTo`, `MasterCopy.CompareTo`) compare only what describes the object:
+  GUID, number, default, author, comment, time, library - never the content. `ExportAsDocuments(dir, name, "SimaticSD", None)`
+  writes a version's content as `.s7dcl` for a block type and a data type alike (`"s7dcl"` as the format is refused).
+- `ProjectLibrary.UpdateLibrary` on a type a global library already holds adds the project's released versions it lacks, with
+  their GUIDs (types and versions keep their GUID in a global library), and makes the newest the default; a version in work is
+  not taken.
+- `UserGlobalLibrary.Archive` refuses a library with unsaved changes and a target already holding the name; `Retrieve` into an
+  empty folder unpacks the library into a folder of its own and opens it, into a folder holding anything it is cancelled.
+- `MasterCopy.Delete` works; `MasterCopyUserFolder.Delete` deletes the folder with everything in it, without a word.
+  `MasterCopyComposition.CreateFrom` into a folder holding the name renames to `FC_Kit_1`. A watch table, although an
+  `IMasterCopySource`, is refused as a master copy on V21; a block group, a tag table group and a device are taken; creating
+  from a block group master copy with `ThrowIfExists` over a name the program holds fails with "A required argument was null".
+- `LibraryTypeUserFolderComposition.Create` makes type folders, nested too. Nothing moves a type between folders.
+- Found by the end-to-end test's runs: over a library type's instance in work, `WriteScl` (`GenerateBlocksFromSource`) is
+  refused, and so is `ImportBlocksFromDocuments` with Override ("an object with the name 'FC_Kit' already exists in the plc");
+  the content of a version in work is written through the type, with `CreateLibraryTypeVersionFromDocument` and
+  `replaceInWork`. For a type in a global library, `GetSupportedExportFormats` ("Cannot get supported export formats for a type
+  in the global library") and `ExportAsDocuments` ("Cannot export a version of a type in the global library") are both refused,
+  so a global library's versions are compared on what describes them, and by content once copied into a project.
+
+**Built** (nine tools, one extended):
+
+- `CreatePlcBlockFromLibrary` - a block type into a program, in a group; a name held (or a dependency's) is refused first,
+  and a rename is caught and undone.
+- `EditLibraryType` takes `softwarePath`: a block or data type type is edited through its instance there; with no instance
+  the refusal names `CreatePlcBlockFromLibrary`/`CreatePlcTypeFromLibrary`, with an older one `UpdatePlcLibraryInstances`
+  (`LibraryInstanceRules`). Governed as program plus type.
+- `UpdatePlcLibraryInstances` - moves a program's instances to a released version by deleting each and creating it again from
+  that version in its group; compiles before and after and puts every instance back when the errors go up; a function block
+  is refused (its instance DBs were not measured), and so is an instance on a version in work (the test instance that version
+  is edited through). Program backup first.
+- `CompareLibraryTypeVersions` (read) - TIA Portal's comparison plus a content comparison of both versions' documents
+  (`LibraryDocumentComparer`: identical, different with the first line, or on one side only); in a global library, or for a
+  faceplate, `contentIdentical` is null and `contentNote` gives TIA Portal's refusal.
+- `UpdateGlobalLibraryTypes` - new released versions to a global library that holds the type; refused when it lacks the type,
+  holds a version the project never had (by GUID), has nothing new, or a new version depends on a version it lacks
+  (`GlobalLibraryUpdateRules`). Archive, save and close as `PublishLibraryTypes`.
+- `ArchiveGlobalLibrary` and `RetrieveGlobalLibrary` - archive opened read-only (works), retrieve into an empty folder only.
+- `GetLibraryTypes` lists every type folder (`folders`, empty ones too); `CreateLibraryTypeFolder`.
+- `DeleteMasterCopy` and `DeleteMasterCopyFolder` (empty only) - new target family `master-copy-delete/<path>`, archive of the
+  saved project first. `ChangeTarget` split into a partial `ChangeTarget.Library.cs` (it went past 300 lines).
+
+**Second review (same day), fixed:** `UpdatePlcLibraryInstances` moved the test instance of a version in work onto an older
+released version (now refused, `LibraryInstanceRules.RequireNoneInWork`); a compile failing after the move left the instances
+moved (now put back); a failed re-creation of a deleted instance was reported as "every instance is back" and a refusal of the
+server's own inside the loop skipped the put-back (both now reported and undone). The `master-copy-delete/` target is spelled
+as the deletion reads the path, so `Protected / FB_Motor` no longer steps around a deny rule on `Protected/*`. The unused
+`LibraryInstanceRules.VersionsToMove` was removed.
+
+**Tests:** Governance **1408** passed, 2 skipped (23 new: `GlobalLibraryUpdateRulesTests` 8, `LibraryDocumentComparerTests` 4,
+`LibraryInstanceRulesTests` 5, two `MasterCopyRules`, four `ChangeTargetLibrary`). Against TIA Portal V21:
+`Test80LibraryClosing` 12/12, `Test82LibraryFiles` 8/8, `Test81LibraryWorkflow` 3/3 (the done criterion: a block type created,
+released, published to a new global library, given a version in work through its instance, its content written, released,
+brought to the global library, then in a fresh project copied from it, instantiated on 0.0.2 and compared, through the MCP tools
+alone; and a global library's comparison noting why it has no content), `Test16GuardedWrites` 119/119 (nine new
+refusals). Build: 0 warnings.
+
+**Still open:** master copies of the other source kinds (block and tag table groups, devices) are measured and not built, as
+the names inside a group master copy are not in its description and TIA Portal's refusal over a held name says nothing;
+moving a function block's instances (instance DBs not measured); a type created straight into a library folder.
 
 ### `GoOnline` is back, through PLCSIM: it was the legacy communication - 2026-11-22, branch `work/v21-go-online`
 

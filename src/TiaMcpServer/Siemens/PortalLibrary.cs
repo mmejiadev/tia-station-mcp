@@ -25,7 +25,7 @@ namespace TiaMcpServer.Siemens
 
         /// <summary>Reads the types of the project library, or of a global library.</summary>
         /// <param name="globalLibraryPath">A global library file, opened read-only; empty for the open project's library.</param>
-        /// <returns><c>{ library, types: [ { name, folder, kind, versions: [...] } ] }</c>.</returns>
+        /// <returns><c>{ library, folders, types: [ { name, folder, kind, versions: [...] } ] }</c>; <c>folders</c> is every type folder, empty ones too, e.g. <c>Motors/Pumps/</c>.</returns>
         /// <exception cref="PortalException">No project is open, or the global library file is not there.</exception>
         public JsonObject GetLibraryTypes(string globalLibraryPath)
         {
@@ -33,11 +33,10 @@ namespace TiaMcpServer.Siemens
             {
                 if (string.IsNullOrWhiteSpace(globalLibraryPath))
                 {
-                    return new JsonObject { ["library"] = ProjectLibraryName, ["types"] = LibraryTypeReader.Read(RequireProjectLibrary()) };
+                    return ReadTypeTree(RequireProjectLibrary(), ProjectLibraryName);
                 }
 
-                var (read, warning) = GlobalLibraryAccess.Use(RequirePortal(), globalLibraryPath, global =>
-                    new JsonObject { ["library"] = global.Path?.FullName, ["types"] = LibraryTypeReader.Read(global.TypeFolder) });
+                var (read, warning) = GlobalLibraryAccess.Use(RequirePortal(), globalLibraryPath, global => ReadTypeTree(global.TypeFolder, global.Path?.FullName));
 
                 return WithWarning(read, warning);
             }
