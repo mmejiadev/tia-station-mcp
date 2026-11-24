@@ -54,7 +54,7 @@ namespace TiaMcpServer.ModelContextProtocol
             }
         }
 
-        [McpServerTool(Name = "CreateTag"), Description("Create a PLC tag bound to a logical address. The path is the table's path plus the tag's name, as GetTagTables and GetTags print them. Creating the same tag twice reports the one that is there; a name already taken by a different tag or constant is refused rather than overwritten. WATCH THE DATA TYPE: TIA Portal stores a type that does not exist without complaining, and compiling the software does not catch it either, so copy the spelling from GetTags of a tag that already works. The tag tables are exported to the backup registry first.")]
+        [McpServerTool(Name = "CreateTag"), Description("Create a PLC tag bound to a logical address. The path is the table's path plus the tag's name, as GetTagTables and GetTags print them. Creating the same tag twice reports the one that is there; a name already taken by a different tag or constant is refused rather than overwritten. WATCH THE DATA TYPE: TIA Portal stores a type that does not exist without complaining, and compiling the software does not catch it either, so copy the spelling from GetTags of a tag that already works. The address is checked here, because TIA Portal takes any text: an input, output or memory bit (bit 0 to 7), byte, word, double word or long word, kept in upper case. The tag tables are exported to the backup registry first.")]
         public static ResponseMessage CreateTag(
             [Description("softwarePath: full path to the plc software, e.g. 'PLC_0'")] string softwarePath,
             [Description("tagPath: table path plus tag name, e.g. 'Default tag table/Start' or 'Cell/IO/Start'")] string tagPath,
@@ -68,7 +68,7 @@ namespace TiaMcpServer.ModelContextProtocol
             {
                 return CreateTagTableEntry(
                     softwarePath,
-                    new TagDefinition(tagPath, dataType, address),
+                    TagDefinition.ForTag(tagPath, dataType, address),
                     "CreateTag",
                     Portal.CreateTag);
             }

@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Text.RegularExpressions;
 
 namespace TiaMcpServer.Siemens
 {
@@ -26,8 +25,6 @@ namespace TiaMcpServer.Siemens
             CommentHandling = JsonCommentHandling.Skip,
             AllowTrailingCommas = true
         };
-
-        private static readonly Regex TagAddress = new Regex(@"^%[IQM](?:\d{1,5}\.[0-7]|[BWDL]\d{1,5})$", RegexOptions.CultureInvariant);
 
         private static readonly HashSet<string> RowFields = new HashSet<string>(StringComparer.Ordinal) { "name", "dataType", "address", "comment" };
 
@@ -75,20 +72,12 @@ namespace TiaMcpServer.Siemens
                 : throw new PortalException(PortalErrorCode.InvalidParams, $"'set' for '{name}' changes nothing: give 'dataType', 'address' or 'comment'");
         }
 
-        /// <remarks>
-        /// Measured 2026-11-19 on V21: <c>PlcTagTable.Tags.Create</c> takes any text as an address without a word -
-        /// <c>nonsense</c>, <c>%Q0.8</c>, <c>%M0.0.0</c>, <c>%DB1.DBX0.0</c> - and the table then holds it. So the address is
-        /// checked here: an input, output or memory bit, byte, word, double word or long word.
-        /// </remarks>
+        /// <remarks>TIA Portal takes any text as an address (measured), so <see cref="PlcTagAddress"/> checks it.</remarks>
         private static string? Address(JsonObject row, string name)
         {
-            var address = Text(row, "address")?.ToUpperInvariant();
-            if (address != null && !TagAddress.IsMatch(address))
-            {
-                throw new PortalException(PortalErrorCode.InvalidParams, $"'{address}' for '{name}' is not a tag address: an input, output or memory bit (%I0.0, bit 0 to 7), or a byte, word, double word or long word (%QB1, %MW10, %ID4, %ML8)");
-            }
+            var address = Text(row, "address");
 
-            return address;
+            return address == null ? null : PlcTagAddress.Parse(address, name);
         }
 
         private static JsonObject ParseObject(string json)
