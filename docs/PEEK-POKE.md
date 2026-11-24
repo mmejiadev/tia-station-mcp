@@ -375,7 +375,8 @@ After each run: compile messages verbatim, values read, CPU operating state
 
 ## Proposal: how the MCP could support it
 
-Nothing here is implemented. Ordered by value for the time spent.
+Ordered by value for the time spent. Item 2 is built inside `WriteScl` (no standalone `CheckScl` tool),
+and item 3's plan finding with it; item 1 is not built.
 
 ### 1. Knowledge entries, citing and not authoring
 
@@ -402,15 +403,22 @@ Rules, each tied to a source:
 | `peek-poke-dbnumber-not-zero` | A constant `AREA` other than 16#84 with a non-zero constant `DBNUMBER` | Error | [S1] |
 | `peek-poke-unknown-area` | A constant `AREA` outside the table | Error | [S1] |
 | `peek-poke-peripheral-on-1200` | `16#1`/`16#2` on an S7-1200 | Error | [S1]; M8 |
-| `peek-poke-peripheral-direction` | `16#2` in PEEK or `16#1` in POKE | Warning until M8 | [S1] |
+| `peek-poke-peripheral` (built 2026-11-24; proposed as `peek-poke-peripheral-direction`) | `16#2` in PEEK or PEEK_BOOL, `16#1` in POKE or POKE_BOOL, either in POKE_BLK | Warning: M8 shows they compile; run time not measured | [S1]; M8 |
+| `peek-poke-missing-db` (built 2026-11-24) | A constant `DBNUMBER` with `AREA` 16#84 that no DB of the program has | Error | M6 |
 | `peek-poke-offset-over-16-bit` | A constant offset ≥ 65536 | Warning | [S1] |
 | `peek-poke-eno-check` | `IF NOT ENO` after one of the five | Warning, if M6 confirms [S6] | [S6] |
 | `poke-writes-outputs` | POKE, POKE_BOOL or POKE_BLK with a constant `AREA` of 16#82 or 16#2 | Warning | [S2] |
 | `poke-blk-dbnumber-types` | `DBNUMBER_SRC` and `DBNUMBER_DEST` of different types | Error | [S1] |
 
-Only `peek-poke-optimized-db` needs the project. It runs in the adapter: the `Portal` layer reads each
-DB's number and `MemoryLayout` (already exposed by `GetBlockInfo`) and hands the checker a plain map
-from DB number and name to layout. No Openness type crosses into `Portable`.
+Only `peek-poke-optimized-db` and `peek-poke-missing-db` need the project. They run in the adapter: the
+`Portal` layer reads every DB's number, and the `MemoryLayout` of only the DBs the source names by a
+constant, and hands the checker a `ProgramDataBlocks` of plain numbers. No Openness type crosses into
+`Portable`. When the source names no DB by a constant, the project is not read at all.
+
+As built (2026-11-24), `WriteScl` runs the rules that need only the text **before** the write and
+names their findings (rule and line) in the change plan's value, so a supervisor confirming it in
+Workshop Mode sees them; after the write it runs every rule against the program and answers with all
+the findings. `peek-poke-peripheral-on-1200` and `poke-blk-dbnumber-types` are not built.
 
 When `DBNUMBER` is a variable, the checker says it cannot tell, never "fine". The absence of a
 decision is not a pass.
