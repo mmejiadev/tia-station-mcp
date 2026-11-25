@@ -68,14 +68,24 @@ namespace TiaMcpServer.ModelContextProtocol
             return opensPlcs ? GuardedWrites.TargetToPropose(stationTarget, ChangeTarget.Project) : stationTarget;
         }
 
+        /// <returns>The name TIA Portal gave the station, and its path: <c>Group/Name</c> in a device group.</returns>
+        private static (string Name, string Path) AddDeviceInGroup(string typeIdentifier, string deviceName, string group)
+        {
+            var added = Portal.AddDevice(typeIdentifier, deviceName, group);
+
+            return (added, ProjectPath.Join(group, added));
+        }
+
         /// <remarks>
         /// The station was added whatever happens to its PLC's protection, so this answers that it was, with a warning
         /// when the protection could not be changed. Throwing instead would record the AddDevice plan as failed in the
         /// audit trail while the station is in the project, and have the caller add it again under a taken name. What
         /// happened goes in the meta as well as the text, so a client can tell without reading prose.
         /// </remarks>
-        private static ResponseMessage DescribeAddedDevice(string added, string typeIdentifier, bool opensPlcs, string backupDirectory)
+        private static ResponseMessage DescribeAddedDevice((string Name, string Path) station, string typeIdentifier, bool opensPlcs, string backupDirectory)
         {
+            var added = station.Name;
+
             if (!opensPlcs)
             {
                 return DescribeAddedStation(added, typeIdentifier);
@@ -83,7 +93,7 @@ namespace TiaMcpServer.ModelContextProtocol
 
             try
             {
-                var opened = Portal.SetFullAccessOfAddedDevice(added, backupDirectory);
+                var opened = Portal.SetFullAccessOfAddedDevice(station.Path, backupDirectory);
                 var response = DescribeAddedStation(added, typeIdentifier, opened.Plcs.Count == 0 ? string.Empty : $". {DescribePlcAccessChanges(opened)}");
 
                 response.Meta!["plcs"] = PlcAccessJson(opened.Plcs);

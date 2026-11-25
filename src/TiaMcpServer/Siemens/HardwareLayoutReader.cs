@@ -41,7 +41,7 @@ namespace TiaMcpServer.Siemens
 
             foreach (var device in devices)
             {
-                var root = ProjectPath.AddressableDeviceName(device.Name);
+                var root = DevicePathRoot.Of(device);
 
                 foreach (var deviceItem in device.DeviceItems)
                 {

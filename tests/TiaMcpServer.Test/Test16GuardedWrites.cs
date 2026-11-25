@@ -500,6 +500,34 @@ namespace TiaMcpServer.Test
         }
 
         /// <remarks>
+        /// A station in a device group is named by the group too: a rule naming the station alone, as one written before
+        /// groups did, must not let it be created in a group, where every later path of it starts with the group.
+        /// </remarks>
+        [TestMethod]
+        public void AddDevice_InAGroupThePolicyDoesNotName_IsRefusedOnGroupAndStation()
+        {
+            var policy = Path.Combine(AssemblyHooks.CreateTestDirectory(), "station-only.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(policy)!);
+            File.WriteAllText(policy, "{ \"study\": { \"allow\": [ \"project\", \"PLC_Refused\", \"PC_Refused\" ], \"deny\": [] } }");
+            McpServer.SetServiceProvider(BuildDenyEverythingServices(policy));
+
+            try
+            {
+                var device = McpServer.AddDevice("OrderNumber:6ES7 511-1AL03-0AB0/V4.0", "PLC_Refused", "Cell");
+                var station = McpServer.AddPcStation("PC_Refused", "OrderNumber:6AV2 155-xxxxx-xxxx/20.0.0.2", "Cell");
+
+                Assert.AreEqual("Refused", device.Meta?["outcome"]?.GetValue<string>(), device.Message);
+                StringAssert.Contains(device.Message ?? string.Empty, "Cell/PLC_Refused", StringComparison.Ordinal);
+                Assert.AreEqual("Refused", station.Meta?["outcome"]?.GetValue<string>(), station.Message);
+                StringAssert.Contains(station.Message ?? string.Empty, "Cell/PC_Refused", StringComparison.Ordinal);
+            }
+            finally
+            {
+                McpServer.SetServiceProvider(BuildDenyEverythingServices(Path.Combine(AssemblyHooks.WorkingRoot, "no-such-policy.json")));
+            }
+        }
+
+        /// <remarks>
         /// The second tool that removes something a person would have to rebuild, after UnplugModule.
         /// </remarks>
         [TestMethod]
@@ -952,6 +980,31 @@ namespace TiaMcpServer.Test
 
                 Assert.AreEqual("Refused", response.Meta?["outcome"]?.GetValue<string>(), response.Message);
                 StringAssert.Contains(response.Message ?? string.Empty, "global-library", StringComparison.Ordinal);
+            }
+            finally
+            {
+                McpServer.SetServiceProvider(BuildDenyEverythingServices(Path.Combine(AssemblyHooks.WorkingRoot, "no-such-policy.json")));
+            }
+        }
+
+        /// <remarks>
+        /// It puts a stored secret into the PLCs, so a policy allowing the project and the library must not let it use a
+        /// secret the policy does not name: the store may hold the workshop's passwords too.
+        /// </remarks>
+        [TestMethod]
+        public void CreateDevicesFromTemplate_PolicyNotNamingTheSecret_IsRefusedOnTheSecret()
+        {
+            var policy = Path.Combine(AssemblyHooks.CreateTestDirectory(), "no-secret.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(policy)!);
+            File.WriteAllText(policy, "{ \"study\": { \"allow\": [ \"project\", \"global-library/*\" ], \"deny\": [] } }");
+            McpServer.SetServiceProvider(BuildDenyEverythingServices(policy));
+
+            try
+            {
+                var response = McpServer.CreateDevicesFromTemplate("C:\\Refused\\Refused.al20", "Refused", "Refused", "Workshop_Plc");
+
+                Assert.AreEqual("Refused", response.Meta?["outcome"]?.GetValue<string>(), response.Message);
+                StringAssert.Contains(response.Message ?? string.Empty, "secret/Workshop_Plc", StringComparison.Ordinal);
             }
             finally
             {

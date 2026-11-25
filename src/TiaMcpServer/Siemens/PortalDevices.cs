@@ -161,11 +161,12 @@ namespace TiaMcpServer.Siemens
         /// <c>OrderNumber:6ES7 511-1AK02-0AB0/V3.1</c>.
         /// </param>
         /// <param name="deviceName">Name for the device, for example <c>PLC_1</c>.</param>
+        /// <param name="groupName">A device group at the top of the project to create it in, made when it is not there; empty for the top of the project.</param>
         /// <returns>The name the device ended up with.</returns>
-        /// <exception cref="PortalException">No project is open, or the identifier is not known to TIA.</exception>
-        public string AddDevice(string typeIdentifier, string deviceName)
+        /// <exception cref="PortalException">No project is open, the name is taken or holds '/', the group name is not usable, or the identifier is not known to TIA.</exception>
+        public string AddDevice(string typeIdentifier, string deviceName, string groupName = "")
         {
-            _logger?.LogInformation("Adding device {DeviceName} ({TypeIdentifier})...", deviceName, typeIdentifier);
+            _logger?.LogInformation("Adding device {DeviceName} ({TypeIdentifier}) to group {GroupName}...", deviceName, typeIdentifier, groupName);
 
             try
             {
@@ -173,6 +174,8 @@ namespace TiaMcpServer.Siemens
                 {
                     throw new PortalException(PortalErrorCode.InvalidParams, "typeIdentifier and deviceName are required");
                 }
+
+                StationNameRule.RequireStationName(nameof(deviceName), deviceName);
 
                 if (IsProjectNull())
                 {
@@ -186,7 +189,7 @@ namespace TiaMcpServer.Siemens
 
                 // Three arguments, not two: the device gets a name and so does the item inside it.
                 // Create() without an item makes an empty station with no CPU in it.
-                var device = CurrentProject!.Devices.CreateWithItem(typeIdentifier, deviceName, deviceName);
+                var device = CreateInDeviceGroup(groupName, devices => devices.CreateWithItem(typeIdentifier, deviceName, deviceName));
 
                 return device.Name;
             }
@@ -196,8 +199,9 @@ namespace TiaMcpServer.Siemens
 
                 pex.Data["typeIdentifier"] = typeIdentifier;
                 pex.Data["deviceName"] = deviceName;
+                pex.Data["groupName"] = groupName;
 
-                _logger?.LogError(pex, "AddDevice failed for {DeviceName} ({TypeIdentifier})", deviceName, typeIdentifier);
+                _logger?.LogError(pex, "AddDevice failed for {DeviceName} ({TypeIdentifier}) in group {GroupName}", deviceName, typeIdentifier, groupName);
                 throw pex;
             }
         }

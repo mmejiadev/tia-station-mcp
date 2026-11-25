@@ -17,6 +17,11 @@ namespace TiaMcpServer.Siemens
     /// A PLC and an HMI with their integrated connection, as a device group template in a global library. See
     /// <see cref="DeviceTemplateRules"/>. A secret's value goes from the store to TIA Portal and nowhere else: it is
     /// never a parameter of anything here that is logged, recorded in <c>Exception.Data</c> or returned.
+    ///
+    /// Measured 2026-11-24 on TIA Portal V21: a placed copy keeps its integrated connection, valid, and a copy placed a
+    /// second time is connected to its own PLC (<c>HMI_Connection_2</c> to <c>PLC_2</c>), not to the first copy's. The
+    /// subnet does not come with the group: the nodes arrive on no subnet, whether or not they were on one in the
+    /// template, which is why every device is joined here.
     /// </remarks>
     public partial class Portal
     {
@@ -261,15 +266,6 @@ namespace TiaMcpServer.Siemens
                 ["plcsAlreadyProtected"] = connected.Plcs.AlreadyProtected,
                 ["compile"] = new JsonArray(devices.Select(device => (JsonNode)DescribeCompilation(device)).ToArray())
             };
-        }
-
-        private sealed class PlcProtection
-        {
-            public JsonArray Protected { get; } = new JsonArray();
-
-            public JsonArray WithoutPassword { get; } = new JsonArray();
-
-            public JsonArray AlreadyProtected { get; } = new JsonArray();
         }
 
         private static JsonObject DescribeCompilation(Device device)

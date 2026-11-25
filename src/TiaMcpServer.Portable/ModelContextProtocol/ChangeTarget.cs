@@ -10,7 +10,7 @@
     /// and an unmatched target is refused, so the mistake would show up as an inexplicable refusal
     /// rather than as a typo.
     ///
-    /// Ten families, and nothing else:
+    /// These families, and nothing else:
     /// <list type="bullet">
     /// <item><description><c>PLC_0/Blocks/FB_Station</c> — a place in the project tree.</description></item>
     /// <item><description><c>simulation/Station_1</c> — a virtual controller, which is not in the project.</description></item>
@@ -23,6 +23,7 @@
     /// <item><description><c>library</c> and <c>library/FP_Motor</c> — the project library, and one type in it.</description></item>
     /// <item><description><c>global-library/C:/Libraries/Faceplates</c> — a global library by its folder, which is outside the project.</description></item>
     /// <item><description><c>master-copy-delete/Motors/FB_Motor</c> — deleting a master copy or a master copy folder of the project library.</description></item>
+    /// <item><description><c>secret/Plc_Cell</c> — a stored secret a write puts into the project, by its name and never its value.</description></item>
     /// </list>
     /// </remarks>
     public static partial class ChangeTarget
@@ -93,6 +94,7 @@
         private const string NetworkPrefix = "network/";
         private const string GitPrefix = "git/";
         private const string GitRemotePrefix = "git-remote/";
+        private const string SecretPrefix = "secret/";
 
         /// <summary>A place in the project tree.</summary>
         /// <param name="softwarePath">Full path to the PLC software, for example <c>PLC_0</c>.</param>
@@ -197,6 +199,20 @@
         public static string GitRemote(string workspaceName)
         {
             return GitRemotePrefix + (workspaceName ?? string.Empty).Trim();
+        }
+
+        /// <summary>A stored secret that a write puts into the project, by its name.</summary>
+        /// <param name="secretName">The secret's name, as <c>ListSecrets</c> gives it, e.g. <c>Plc_Cell</c>.</param>
+        /// <returns>The target name, for example <c>secret/Plc_Cell</c>.</returns>
+        /// <remarks>
+        /// A target of its own, and not covered by the project's: the store holds every password a person has kept on this
+        /// machine, and a policy that lets a session build devices must not thereby let it protect them with any of those
+        /// it names - one kept for the workshop's PLCs among them. So each secret a session may use is listed. The store
+        /// compares names case aside, and so do rules, so <c>secret/plc_cell</c> is the same target.
+        /// </remarks>
+        public static string Secret(string secretName)
+        {
+            return SecretPrefix + (secretName ?? string.Empty).Trim();
         }
     }
 }
