@@ -5,6 +5,35 @@
 
 ## ▶ RESUME HERE
 
+### Drives and servomotors: what Openness V21 offers, studied offline - 2026-11-24, branch `work/drives-and-servos-study`
+
+A study, no product code: **`docs/DRIVES-AND-SERVOS.md`**, built like `PEEK-POKE.md` (every statement sourced or tagged
+INFERRED / MEASURE). Sources are the installed API XML, the V21 help packages, the PLCSIM Advanced V8.0 manuals and the
+registry, read as files; TIA Portal was not started. **Nothing in it is measured yet.**
+
+- **Startdrive is installed**: SINAMICS Startdrive Advanced V21.0 Upd1 (G120 family and S120/S200/S210/G220…). The V90 PN is
+  not a Startdrive device: it comes as hardware support package HSP0185. Its license was not checked.
+- **Technology objects are in `Siemens.Engineering.Step7.dll`**: `PlcSoftware.TechnologicalObjectGroup.TechnologicalObjects
+  .Create(name, "TO_PositioningAxis", version)`, `Find`, `Import`, `Export`, `Parameters.Find(name).Value` (most TO DB tags,
+  plus `_`-prefixed connection parameters), compile through `ICompilable`, hardware connection through
+  `AxisHardwareConnectionProvider` (`Connect(DeviceItem)`, bit addresses, DB member, analog tag).
+- **Drives are in `Siemens.Engineering.Startdrive.dll`** (`Siemens.Engineering.MC.Drives`): `DriveObjectContainer` →
+  `DriveObject` → `Parameters`, `Telegrams` (`InsertMainTelegram`, `CanChangeTelegram`), online parameters, factory reset,
+  safety acceptance. **V21 moved `Connect(Telegram)`** to `AxisEncoderHardwareConnectionSDRInterface` in that DLL. The
+  Openness NuGet package references every DLL in `PublicAPI\V21\net48`, so the server already builds against it here.
+- **The technology version is bounded by the CPU firmware**: the V21 help's newest is V10.0, which needs FW V4.1; the
+  fixture's 1511 V4.0 can run V7.0–V9.0 at most, V9.0 only on article *10-0AB0.
+- **No drive needed for the "done" criterion**: `<TO>.Simulation.Mode = 1` simulates the axis inside the CPU (MC_Power enables
+  at once, MC_Home completes at once). PLCSIM Advanced simulates no SINAMICS drive and no PROFINET device; unlike classic
+  PLCSIM it leaves the TO's real/simulation choice to the project.
+- Proposed (not built): read tools for TOs and drive telegrams, guarded `CreateTechnologyObject` /
+  `SetTechnologyObjectParameters` / `ConnectAxisToDrive`, an `SclMotionRules` checker (`Execute` as constant, `Velocity` 0,
+  move without home or power, unread `ErrorID`…), and the download plan showing which axes are real. No online drive writes.
+
+**Next:** measurements M1–M17 of the document, on a copy of the fixture in PLCSIM Advanced, when TIA Portal is free. Open
+questions there: the Startdrive license, whether the PLCSIM API can read a TO's `ActualPosition`, the fixture CPU's article
+number, and whether `Siemens.Engineering.Startdrive.dll` exists on a V21 machine without Startdrive.
+
 ### `CreateTag` checks the address; PEEK/POKE open items closed - 2026-11-24, branch `work/v21-tag-address-and-peek-poke`
 
 Built with 0 warnings; 1431 governance tests pass (2 skipped, as before). Against TIA Portal V21, `Test83SclMemoryAccess`,
