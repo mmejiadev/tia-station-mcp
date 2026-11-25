@@ -348,7 +348,7 @@ namespace TiaMcpServer.ModelContextProtocol
 
         private const string UnknownVersion = "unknown";
 
-        /// <summary>The server's version, as the project file sets it: <c>0.0.20</c>. Read once.</summary>
+        /// <summary>The server's version, as the project file sets it: <c>0.0.21</c>. Read once.</summary>
         /// <remarks>
         /// Reported so that a measurement can name the build behind it. The harness used to record
         /// only the executable's path, and two runs separated by a rebuild in the same folder were
