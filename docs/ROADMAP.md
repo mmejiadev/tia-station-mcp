@@ -1,10 +1,493 @@
 ﻿# Roadmap — from "it works" to "it is trustworthy"
 
-> Agreed on 2026-08-17. Companion to `STATUS.md`, which records where the work stopped;
-> this document records where it is going and why.
+> Agreed on 2026-08-17; reorganised on 2026-11-22 as what is built, what is missing, class material and reference.
+> Companion to `STATUS.md`, which records where the work stopped; this document records what exists, what does not and why.
 
 The goal is a system that is **safe, measurable and demonstrable**, in that order. Where
 those three pull against each other, safety wins without discussion.
+
+
+## How to read this document
+
+It has four parts, in this order:
+
+1. **What is built** — everything that exists and was run, by area, each with what it is and what it settled.
+2. **What is missing** — everything that has been asked for or planned and does not exist yet, by area, each with its
+   "done when". Nothing in it is optional and nothing has a date.
+3. **Class material** — the exercises of the course and the corpus around them. They are useful as test cases and as
+   knowledge, and they are **not** part of the construction of the server: no item in part 2 depends on one.
+4. **Reference** — the starting point, the two modes, the architecture, the prior art and the decisions taken. They did
+   not change; they were moved here so the plan reads as built / missing.
+
+Where each fact is recorded in full is `STATUS.md`, by date; `HMI-COVERAGE.md` is the checklist for screens;
+`KNOWLEDGE-LAYER.md` is the brief for the knowledge layer; `PEEK-POKE.md` and `WEB-PLATFORM.md` are the two measured
+studies. This file says what exists and what does not, and `STATUS.md` says how it got there.
+
+The phase numbers (0 to 11) and the waves (A to L) that `STATUS.md` and the code comments cite are those of the previous
+version of this file, in git history before 2026-11-22; they are not renumbered here.
+
+**State on 2026-11-22:** 179 MCP tools; three assemblies (`TiaMcpServer.Portable`, `TiaMcpServer.OpcUa`, `TiaMcpServer`);
+1,387 governance tests, 133 specification tests and 33 OPC UA tests that run on any machine, and an Openness suite of
+several hundred tests that needs TIA Portal. The development PC is on **TIA Portal V21** and PLCSIM Advanced V8; V20 is
+uninstalled and still builds with `-p:TiaVersion=20`.
+
+**Rules that hold for everything below**, carried over from the earlier roadmap:
+
+- **Order, not dates.** An item ends when what it promised exists and is tested, and not before.
+- **Done means measured.** An item that touches TIA Portal, PLCSIM or a CPU is done when it ran against the real thing,
+  not when its tests pass against a double. Anything built and never run counts for less than half.
+- **Every item ships the same way**: its own branch, a test that failed before the fix, `/code-review high` (and a second
+  round when it touches governance or security), `STATUS.md` updated, and a commit the user makes herself.
+- **Workshop Mode comes last**, under supervision, whatever else is added: new code that commands machinery must not be
+  the newest code in the repository. The knowledge layer's stages each start on the user's explicit word.
+
+---
+
+# Part 1 — What is built
+
+## 1.1 Governance: nothing writes without a plan, a whitelist, a backup and an audit entry
+
+**What it is.** Two operation modes (Study on PLCSIM Advanced by default; Workshop for physical hardware, unreachable in
+the default build). Every change is a single-action plan, decided by a deny-by-default policy file, confirmed by
+`ApplyChange`, backed up first into a registry the caller cannot forget, and appended to an audit trail that is never
+rewritten. One execution path: `GuardedTool.Run`, with targets built in one place (`ChangeTarget`). Jobs (`runAsJob`) for
+the calls that take long. `OpennessGate` so only one Openness call runs at a time. A single error model
+(`PortalException`, `Result` for expected refusals).
+
+**Conclusion.** The absence of a decision is a refusal, never a permission. `Test16GuardedWrites` runs every write tool
+under a policy that does not exist and asserts each one refuses, which is the property that matters and the one a new
+tool can silently lose; it found two real defects the first time it ran. A job once reported success for work that never
+happened, and two Openness calls really do interleave: both are covered by tests now.
+
+## 1.2 The shape of the code, and the rule that is a build error
+
+**What it is.** Three assemblies: the portable core (governance, knowledge, specifications, jobs, the error model), the OPC
+UA client, and the Openness adapter. The portable core cannot reference the adapter, so the safety tests run on any
+machine, with no TIA Portal. Openness types never cross into the MCP layer. `McpServer`, `Portal`, `McpServerWrites` and
+the responses were split by area (one class per file); continuous integration runs the portable suites.
+
+**Conclusion.** A rule that depends on being remembered stops holding; the split makes the dependency rule fail the build.
+The first CI run proved both of us wrong in two different ways (2026-09-05), which is why it was worth having.
+
+## 1.3 Getting a program onto PLCSIM Advanced (phase 0, closed)
+
+**What it is.** Compile, download to a PLCSIM Advanced virtual controller and reach RUN, through `CompileSoftware`,
+`CompileHardware`, `EnableSimulationSupport`, `DownloadToSimulation`, `DescribeSimulationConnection` and the simulation
+instance tools (create, start, stop, delete, list, read and write tags). `UseTcpIpNetworkMode` puts the runtime where TIA
+Portal can find a controller.
+
+**Conclusion.** The download that blocked the project for thirteen hours was **six faults, not one**, found by fixing the
+diagnostics first and not by reasoning: an exception that lost its message across an app domain, a controller that no
+longer existed because nothing held it, and a discovered device that kills the process if it is passed to `Download`.
+Measured rules came out of it: one download per open project and address, and the TCP/IP mode must be set in the process
+that uses it.
+
+## 1.4 Cell patterns (phase 2, closed)
+
+**What it is.** `FB_Station` with a fixed interface and a handshake, a coordinator and a handover expander generated from a
+specification written as data; `ExpandCellScl` returns the SCL without touching a project. A four-station cell exists as
+three specifications.
+
+**Conclusion.** A numbered piece goes through two stations in PLCSIM, asserted by a test and not watched by hand
+(`Test20CellRuns`). The template language is deliberately not a language (two constructs, no conditionals), which is what
+keeps the output deterministic: same cell, same SCL, same diff.
+
+## 1.5 The harness (phase 3, closed)
+
+**What it is.** `harness/`, Node and TypeScript: generate, write, compile, download, start and check the cell, with a
+SQLite store that records every run, the path it took and the server version it measured through. Workshop gate and
+specifications included. The model generator is written and was deliberately left unexecuted (the API is billed apart from a
+subscription); the pattern expander is the main generator.
+
+**Conclusion.** The first rate was reported with its sample size: 18 of 18 specification runs passed on a simulated CPU
+(3 repetitions of 6 specifications). Chasing a failure produced the rule the day had been circling: one download per
+session.
+
+## 1.6 The dashboard and the pitch (phases 4 and 5, closed)
+
+**What it is.** An API over the harness data, bound to `127.0.0.1` on purpose, six views, a live stream by server-sent
+events and the plant copilot's chat. The README was rewritten for the pitch on 2026-08-28.
+
+**Conclusion.** Writing the pitch caught three false claims, and running the front end found defects no test could (charts
+that draw nothing in a screenshot, behaviour on real data): execute before believing.
+
+## 1.7 The knowledge layer, stages 1 and 3
+
+**What it is.** Retrieval over the manufacturers' documents, with citations, and the gate that measures it. A
+`hardware-lookup` skill returns verbatim excerpts with document, version and page, or says nothing was found. The system
+cites and never authors.
+
+**Conclusion.** There are no semantic embeddings; the word "hybrid" in the brief does less than it looks, and the gate found
+a defect on its first use. Method skills (GRAFCET) sit outside the layer and never answer hardware or safety questions.
+
+## 1.8 The `grafcet` skill
+
+**What it is.** Read, check, draw and program sequential charts: transcribe a chart or a photo, find design faults, draw it
+cleanly, recover the chart a TIA Portal LAD program really runs, and generate set/reset LAD for an S7-1200, with edges
+(`↑A`, `↓A` as P and N contacts). 276 tests.
+
+**Conclusion.** Not a tool of the server and not part of the knowledge layer, by decision. Its open part is GEMMA (see part
+2).
+
+## 1.9 Reading and writing a program
+
+**What it is.** Blocks, types and their groups: read, find, export (SimaticML and SIMATIC SD documents), import, delete.
+`WriteScl` (including a `TYPE`), checked after writing for PEEK and POKE faults. `GetCrossReferences` answers who calls a
+block. `ExportSourceSnapshot` and a full program backup before every write. **`EditTagTable`** changes single rows of a tag
+table; **`EditDbMembers`** changes single members of a global DB; tag tables, tags and constants are created and read.
+
+**Conclusions, each measured.**
+
+- A bulk export or import reports what it could not do; it used to answer success and say nothing (Batch 2, five items).
+- A block that does not compile **is** exported as a document; the earlier code hid it.
+- `Tags.Create` accepts any text as an address, so `EditTagTable` checks it itself.
+- A global DB imported again keeps its number and the start values its XML holds, but becomes a new object, inconsistent
+  until the software is compiled, and removing a member a block reads is refused only by the compile — so `EditDbMembers`
+  imports the original back when the errors went up.
+- A `PEEK` of an optimized DB by number compiles and reads 0; every access error returns 0 with ENO false and the CPU stays
+  in RUN, so the checker warns after writing.
+
+## 1.10 Hardware and networks (phases 6 and 7, closed)
+
+**What it is.** Addresses, subnets and PROFINET names; tag tables; a rack built, read, addressed and taken apart (plug,
+unplug, move, copy modules, I/O addresses, module address); device parameters read and set; a node's subnet mask and router;
+connections between PLCs (S7, TCP, ISO-on-TCP) and PUT/GET; users and roles (an S7-1200 compiles without passwords once the
+anonymous user is active); `CreateProject`, `AddDevice`, `AddPcStation`; since 2026-11-24 (PR #87) devices created in a
+device group, whose network paths start at the group, and a PLC with its HMI and their connection placed from a device group
+template, each copy connected to its own PLC.
+
+**Conclusions.** A device could be created from an order number and nothing could be done to it afterwards; now it can be
+built and taken apart, and what a backup cannot restore is written down. Running the first slice found two older defects, and
+one of them turned up a second time in the next slice. Every fact recorded from V20 was measured again on V21 before it was
+trusted.
+
+## 1.11 Going online, and watch and force tables
+
+**What it is.** `GetPcInterfaces`, `ScanAccessibleDevices` (decided by the policy as `network/<interface>`, because it reaches
+every device on a network), `GetOnlineState`, **`GoOnline`** and `GoOffline`; watch and force tables with row-level writes.
+
+**Conclusion.** `GoOnline` killed TIA Portal until 2026-11-22, when the cause turned out to be the online connection's
+**`EnableLegacyCommunication`, true by default**: with it false, going online works every time. The tool applies the PLCSIM
+interface itself and refuses when there is none: it never goes online with a controller on a real network.
+
+## 1.12 Version control
+
+**What it is.** TIA Portal's Version Control Interface (workspaces, export, import, synchronisation, branches) and nine Git
+tools on the repository in a VCI workspace's folder (commit, branches, pull, changes as patches; no push, which was not asked for). A local
+secret store encrypted with Windows DPAPI: no tool takes or returns a secret value.
+
+**Conclusion.** Git is always run with hooks, filesystem monitors and submodules switched off, and a repository with
+`.gitmodules` or `commondir` is refused: project content is data, never instructions.
+
+## 1.13 HMI, classic WinCC
+
+**What it is.** HMI devices; read tools (`GetHmiInfo`, `ExportHmi`); import of screens, HMI tag tables and text lists with
+their links checked; `GenerateHmiTags`; a screen generator with animations on every item, button and field events, symbolic
+and date/time fields and text lists; `CompareHmiScreens` (the XML half); PC stations with the class's network card; a device
+group template that carries the integrated connection.
+
+**Conclusion.** Classic HMI has no object model for screen items in Openness, so the route is XML: screens, tag tables and
+text lists export and import linked by name, and a hand-written screen compiled with 0 errors. The integrated HMI
+connection cannot be created by Openness; a template copied from a device group is the way that worked.
+
+## 1.14 WinCC Unified
+
+**What it is.** `CompileSoftware` on a Unified HMI returning every nested message; tags with comments, limits, scaling and
+arrays; text lists; alarms (classes, discrete and analog); logging (data logs, alarm logs, logging tags, log settings,
+trends); animations (range tables, flashing, script, movement, rotation, bar and gauge); events as named functions or
+scripts, with `increaseValue`, `decreaseValue`, `invertBit` and `callModule`; **`DrawUnifiedScreen`** and
+**`EditUnifiedScreen`** (change some items and leave the rest); faceplates (instantiate, release, update); script modules;
+`CheckUnifiedScripts`; Custom Web Controls (a catalogue, install, place).
+
+**Conclusions.** TIA Portal compiles broken calls into modules without a word, so the checker finds them. A screen has one
+global definition area per script context, not one per item, so the definitions are merged. With an `import` in a screen's
+global definitions a syntax check ends TIA Portal's session, so scripts are checked with the imports left out. A "Compiling
+aborted" with no text was the encrypted-transfer password, which Openness lists.
+
+## 1.15 Libraries and master copies
+
+**What it is.** Project and global libraries: read, copy types from a global library, release a version, publish to a global
+library of one's own, a new version in work, move faceplates between versions, create a PLC data type from a library, create
+a library type or a new version from a SIMATIC SD document, find who uses a type, keep the library tidy; master copies of
+blocks, tag tables and PLC data types (read, folders, made, created from); library backups named for V21. **Closed
+2026-11-24 (PR #84):** block types into a program, a new version of a block or data type through its instance, instances
+moved to another version, versions compared by content, new versions to a global library, a global library archived and
+retrieved, type folders, master copies and their folders deleted; a type created, versioned and instantiated in a project and
+a global library through the MCP alone (`Test81LibraryWorkflow`).
+
+**Conclusion.** Creating a faceplate **type** cannot be done through Openness (V20 or V21); it is drawn by hand once and
+everything after it is generated. A tag repeated in a table is renamed `X(1)` silently even when told not to, so it is
+detected and the table deleted. On V21, `UpdateProject` removes a program's instances instead of updating them, and a block
+or data type gets a new version only through an instance in a program: both measured, both worked around.
+
+## 1.16 Reading a running controller over OPC UA (phase 9, opened)
+
+**What it is.** `BrowseOpcUaServer` and `ReadOpcUaValues`, in their own assembly, with certificate pins; policy decides which
+server may be contacted. They read and nothing else: no write, no method call, no subscription.
+
+**Conclusion.** Reading a live value from a physical PLC cannot be done through Openness at all; it needs a separate
+protocol component, and that is why this is its own assembly.
+
+## 1.17 Working with the user's TIA Portal open, and V21
+
+**What it is.** `Connect` takes the process that holds the project, then one with a window, and says which and why; it never
+closes the user's project. The repository builds for V21 by default; the whole Openness API was compared V20 against V21 by
+reflection (322 types added, 16 removed).
+
+**Conclusion.** A TIA Portal the server starts and leaves running when it is killed is kept on purpose: killing it can break
+the project. A probe that disposes a process from `GetProcesses()` closes that TIA Portal.
+
+## 1.18 Deployment and release
+
+**What it is.** A versioned release artefact with its SHA-256, a precondition check that fails closed, `INSTALL.md`, host
+wiring for Claude Code and Claude Desktop, and the server reporting its own version (0.0.20; installed from the artefact and
+registered).
+
+**Conclusion.** The blocking criterion (a clean machine following only `INSTALL.md`) was not run; see part 2.
+
+## 1.19 The web platform, phases 1 to 4 (steps 1 to 3)
+
+**What it is.** A Postgres and Drizzle database, sign-in with Google (tried in a browser), a workspace (who sees what, by
+organisation), every change recording its project, and the control-room screens. PR #41.
+
+**Conclusion.** It is optional and local-first: the C# server is local either way, and the platform only reads what the
+server already wrote. What was fragile was around the web, not the web.
+
+## 1.20 Debt paid
+
+**What it is.** The audit findings F1 to F4, F6 and F7 and half of F5 closed; `McpServer`, `Portal` and `McpServerWrites`
+split (2,176 lines against a limit of 300); responses one per file; the bulk tools with one progress reporter; the imports
+that used to swallow their failures; the methods over 30 lines measured (91 on 2026-09-27) and split in batches.
+
+**Conclusion.** Most of the debt was visible only by running the tool, so every closed item has a test that failed first.
+
+---
+
+# Part 2 — What is missing
+
+Everything asked for, planned or found open, by area. Each item says when it is done. **The order the user fixed:** HMI and
+libraries first; then the knowledge layer; among the other branches of TIA Portal, communication between controllers and the
+CPU's OPC UA server first, **multiuser and safety last**; Workshop Mode after everything.
+
+## 2.1 HMI, the full list ("everything everything")
+
+The checklist is `HMI-COVERAGE.md`, whose rows are **Measured**, **Built** (ran offline only) or **Open**. The open rows and
+the milestones of the old plan:
+
+- **Classic WinCC:** the symbol-library graphics and groups in the generator; the runtime screenshot compared with a reference
+  picture, under a threshold fixed before measuring; an ISA-101 style option; simulating the panel against PLCSIM so a press
+  reaches the PLC. Documentation read and cited (the WinCC Comfort/Advanced manuals and the Openness HMI chapter), each fact
+  carrying its source.
+- **WinCC Unified:** the Unified panel against PLCSIM, so a press reaches a PLC tag; download to the simulated runtime
+  reporting the result, reading the runtime's own log when TIA Portal says only "Action canceled"; runtime settings with a
+  password that never reaches a log, an audit entry or a backup in clear; users and roles; the audit viewer and which of these
+  need an option or a licence; the Unified system manual cited; that a script-module function called from an event runs **in
+  runtime** (not measured: it needs the runtime open).
+- **Both:** ~~the connection between a PLC and an HMI created on V21 without a template; the HMI connection template measured
+  again on V21~~ - **done**: `CreateHmiConnection` makes the integrated connection on V21 and the template works there
+  (2026-11-11, PR #69); devices in a group and the secret in the template's policy added 2026-11-24 (PR #87). Left: a device
+  group of more than one level, and the runtime password and start screen a new Unified runtime needs. Faceplate **templates**, several
+  together (each a global library drawn once by hand, a tool that assembles the motors from a specification, and a behaviour test
+  on PLCSIM), when she asks.
+- **Done when**, for the whole area: every row of `HMI-COVERAGE.md` is Measured.
+
+## 2.2 Libraries, master copies and types - met 2026-11-24
+
+- **Done (PR #84):** deleting a master copy and its folder; updating PLC instances and block types after a new version; a
+  global library archived and retrieved; the library tree; comparing library type versions; a type's default version and
+  deleting a type (2026-11-15). A version without a test instance is **not possible on V21** (measured): it is made through an
+  instance, one tool call away.
+- **Left:** master copies of the other source kinds (block and tag table groups, devices: measured, not built, as the names
+  inside a group master copy are not readable); moving a function block's instances (instance DBs not measured); a type
+  created straight into a library folder.
+- **Done when:** a type is created, versioned and instantiated, in a project and a global library, through the MCP alone -
+  **met** by `Test81LibraryWorkflow`.
+
+## 2.3 Programs and blocks
+
+- **Generator features learned from building a program end to end** (they are generator work, not exercise work): a global
+  `IEC_TIMER` DB written with the program; calls from `Main` generated; network and block titles and comments through
+  `.s7res`; one block per state of a chart; the S7-1500 `time_type` template on TON calls.
+- Block operations still missing: add, update and remove interface members; update block content; compile a single block;
+  rename and move; block folders; external sources and their folders; export a block's source; block snapshots; load block start
+  values; block protection (protect, unprotect, status); a block namespace; import SCL from a file.
+- Software Units (all of them), PLC tag operations (delete, rename, update), tag tables and constants (delete, rename, folders,
+  update), tags imported and exported as CSV or XLSX, UDT create, update, delete and folders.
+- **EditDbMembers:** comments on members; members inside a struct; what a download does with the values a CPU holds when the
+  DB's structure changed (TIA Portal's rule, to be measured on PLCSIM Advanced).
+- **Review nits still open:** the undo of `EditTagTable.remove` restores name, type, address and comment but not the other
+  flags; `EditTagTable` and now `CreateTag` (2026-11-24, PR #85: TIA Portal takes any text as an address) refuse addresses
+  ending `:P`, which TIA Portal may accept (measure first); a refused
+  `WriteUnifiedScriptModule` leaves a backup entry; `CheckUnifiedScripts` exports the modules on every call and fails whole if
+  one export fails; the module-call rules can error on valid code (an arrow function's parameter, a non-exported `const`
+  function); a multi-line `import` in given globals leaves its tail behind; `UnifiedScratchScreen` may throw on dispose when the
+  HMI had no start screen; `callModule` refuses a module name with a hyphen or a space.
+- **PEEK and POKE:** closed 2026-11-24 (PR #85): the text findings are in the plan before the write, a missing DB is an
+  error, the peripheral areas a warning, and only the DBs named are read. Left: what the peripheral areas do at run time (not
+  measured), the I/O areas on an S7-1200 (PLCSIM Advanced has none, so `peek-poke-peripheral-on-1200` needs the CPU family),
+  `poke-blk-dbnumber-types`, and an Openness test driving `WriteScl` itself.
+- **How to really program with TIA Portal's instructions, asked for 2026-11-25.** Go beyond generating code that compiles:
+  study, with the V21 help cited and each behaviour measured in PLCSIM Advanced, the instructions a real program uses, and turn
+  what is learned into generator knowledge and SCL checks (as `SclMemoryAccessRules` did for PEEK and POKE). First
+  **`NORM_X` and `SCALE_X`** (and the classic `SCALE`/`UNSCALE`): an analog input normalised and scaled to engineering units
+  and back to an output, the raw ranges of each module (27648 for a standard S7-1200/1500 channel, the over- and underrange
+  values, live-zero 4-20 mA), types and the error output; then, one family at a time: timers and counters (IEC, multi-instance,
+  `time_type` on S7-1500), edges, comparison and math (`CALCULATE`, `LIMIT`, `MIN`/`MAX`, rounding and conversions with their
+  silent truncations), move and block move (`MOVE_BLK`, `FILL_BLK`, `Serialize`/`Deserialize`), strings and date/time (`DTL`,
+  `RD_SYS_T`), program control and error handling (`GET_ERR_ID`, ENO), PID (`PID_Compact` and its tuning), and the
+  communication instructions. Each family: a study sheet with sources, measurements in PLCSIM, the mistakes a student makes and
+  a rule that finds them. **Done when** every family has its sheet, its measurements and, where a mistake can be read from the
+  source, its rule.
+- **Other languages:** FBD and STL imported as documents; S7-GRAPH on an S7-1500; the graphical languages have no authoring API
+  and are generated as SimaticML.
+- **Done when:** one block of each language compiles, and each tool above has its test and its refusal test.
+
+## 2.4 Hardware, CPU and drives
+
+- A CPU added through Openness on V21 does **not** compile its hardware: it demands a password for the confidential PLC
+  configuration data, a communication certificate and an access-level password. How to set them through Openness is not
+  measured, and until it is no new CPU can be downloaded without a fixture.
+- CPU properties (read and configure, change the CPU type, analog channels), delete and rename a device, delete a subnet,
+  hardware export and import, EPLAN AML, GSD/GSDML devices (a third-party device plugged and compiled), compatible slots, the
+  parking lot, the engineering views, the cycle clock memory byte on an S7-1200 (unreachable on V20; **not measured on V21**),
+  PG/PC access points and their mapping (these touch the Windows registry: a copy of the key first and a confirmation on each
+  change).
+- OPC UA and web server users on the CPU, and their configuration; **the CPU's OPC UA server configured through the MCP** (it
+  is only read from today) — done when a server interface with chosen tags is created, downloaded to PLCSIM Advanced and
+  browsed.
+- **Drives and servomotors, asked for 2026-11-24:** work with them the way a class or a machine does - a SINAMICS drive (G120,
+  S120, V90) added, networked over PROFINET and given its telegram (standard telegram 1 for speed, 3 or 105 for a servo axis);
+  its drive parameters read and set through Startdrive's Openness where it has one; and the technology objects that drive it
+  (`TO_SpeedAxis`, `TO_PositioningAxis`, `TO_SynchronousAxis`, cams, PID) created, configured and linked to the drive. Then
+  the program side: `MC_Power`, `MC_Home`, `MC_MoveAbsolute`, `MC_MoveRelative`, `MC_MoveVelocity`, `MC_Halt`, `MC_Reset` in
+  SCL, and an axis run in simulation (PLCSIM Advanced with a simulated drive, or the TO's own simulation mode). Measured first,
+  as everything else: what Openness exposes of technology objects and of Startdrive on V21, whether a V90 is reachable without
+  V-ASSISTANT, and what runs without a real drive. Done when a positioning axis is created on a 1511 with a simulated drive,
+  homed and moved to a position from SCL in PLCSIM Advanced, and the MCP reads back its position. Physical drives stay behind
+  Workshop Mode: a servo moves metal. **Studied 2026-11-24 (PR #86, `DRIVES-AND-SERVOS.md`, offline):** Startdrive Advanced
+  V21 is installed; technology objects and drives are both in Openness V21; the CPU firmware bounds the technology version (the
+  fixture's 1511 V4.0 at most V7-V9); an axis in `Simulation.Mode = 1` runs with no drive, so the done criterion needs none.
+  Next: its measurements M1-M17, then the proposed tools and the `SclMotionRules` checker.
+- PROFINET in depth (device names, topology, I-Device, IO-Link masters and ports), PROFIBUS and AS-i networks.
+- Communication between controllers: PUT/GET exists; S7 connections, open user communication (TSEND and TRCV) and Modbus TCP,
+  client and server — done when two simulated CPUs exchange a value over each.
+- Going online: a CPU other than an S7-1500 (an older one may speak only legacy communication, which `GoOnline` turns off);
+  what an online connection allows besides exports and imports being refused. Physical hardware stays behind Workshop Mode.
+- **PLCSIM Advanced beyond the basics:** batch read and write, power, run and stop, memory reset, instance and network
+  configuration, persistence, repair and diagnostics.
+
+## 2.5 Diagnostics, protection, alarms and tests
+
+- Diagnostics: the diagnostic buffer, module state, the CPU web server — a fault provoked in PLCSIM is read back with its text.
+- Protection: block know-how protection, CPU access levels, copy protection, user management. **A password never reaches a log,
+  the audit trail or a backup in clear**, and a test fails if it appears in any written file.
+- Secrets: the local DPAPI store is built; the wider set of ten secret tools she chose on 2026-11-05 is not (encrypted only,
+  the value never returned or logged, a security review before merging).
+- PLC alarms (program alarms, ProDiag, text lists, the instance texts in XLSX) — an alarm raised in PLCSIM appears on the panel.
+- Tests as a tool: test cases written once and run automatically against PLCSIM, reporting pass or fail per case, and the
+  reports a customer asks for (FAT, SAT, evidence, project report as PDF or Excel).
+- Safety: **read and explain only.** The MCP never generates or writes safety logic, in any mode. She recovered four tools
+  (create and delete a safety runtime group, log in and out of the safety program), offline only, with explicit confirmation
+  on each write, no download to a physical F-CPU and the password per call.
+
+## 2.6 Project, history and orchestration
+
+- Project: archive a project (`ArchiveProject`, so a project can be handed in as an archive; today it can only be retrieved),
+  attach, detach and shut down a portal, export and import project texts, project languages, history, overview, files, sync.
+- Compare two versions of a project; snapshots that can be restored (today there are backups and no restore).
+- Multiuser engineering — **last**: two sessions check in changes to one server project without conflict.
+- Add-Ins, which run inside TIA Portal: a small read-only one and its trade-off against attaching, written down.
+- Orchestration (work plans, pipelines) and pattern tools (list, search, instantiate) beyond `ExpandCellScl`.
+
+## 2.7 The knowledge layer, and the technologies she asked to learn
+
+Each stage starts on her explicit word.
+
+- **Stages 0, 2, 2b, 4 and 5** of `KNOWLEDGE-LAYER.md`, each meeting its "done when" there.
+- **Technologies to learn and add as layers, apuntadas 2026-11-20 and 2026-11-22:** OPC UA, S7 communication, MQTT, **Node-RED**
+  and **UaExpert**, each with its sources cited; and, added 2026-11-24, **drives and servomotors** (SINAMICS, telegrams,
+  technology objects and the PLCopen motion instructions; the building side is in 2.4); and, added 2026-11-25, **TIA Portal's instructions as they are really programmed**, starting with `NORM_X` and
+  `SCALE_X` (the building side, with its families and checks, is in 2.3). What OPC UA already measured: PLCSIM Advanced in Softbus mode is not reachable
+  from Windows, in TCP/IP mode it is; variables of a global DB and of the tag table appear as `ns=3;s="DB"."Var"` and
+  `ns=3;s="tag"`; a Real is a `Float` in a Node-RED item; `red.js start` makes a flow file called `start`.
+- **GEMMA:** learn the guide (stops, starts and failures of an automaton) from cited documentation and not from memory, and
+  have the skill read, check and draw it — the GEMMA model, its checks (every used state reachable, D1 reachable from every
+  state, a way back to A1), the standard layout (zones A, F and D; renvois for jumps; no overlapping labels), forcing orders in
+  the notation, and the `transient-evolution` false positives. The clean drawings of 2026-10-15 came from a throw-away script,
+  not from the skill.
+- **The original S7-PLCSIM** (not only PLCSIM Advanced): measured only as metadata. V20 is uninstalled on the development PC,
+  so what to do about classic simulation of an S7-1200 has to be decided again.
+- Tips (eleven, local, nothing sent out without her approval each time), the product's own documentation tools, licence and
+  approval-registry tools, and a catalogue of the MCP's own tools — the 22 she recovered on 2026-11-05.
+- Documentation read and cited for each generator: WinCC Unified system manual and its Openness chapter.
+- Study sheets per topic, each fact with its source, built from what the work above measured.
+- A local model for customers who cannot send code out, with the harness gate run against it.
+
+## 2.8 Quality, security and the enterprise
+
+- Technical debt: audit findings F8 to F12 and the second half of F5 (pure rules out of `SclBlockGenerator` and
+  `SourceSnapshotExporter`); the `NoWarn` ledger emptied; methods over 30 lines; dependency scan and an SBOM in CI; project
+  content always treated as data by the model (a test feeds an instruction hidden in a block comment).
+- A style-guide check of generated code against Siemens' programming style guide, with the rule each finding breaks.
+- Four eyes (a plan confirmed by a second person in the web platform), an IEC 62443 self-assessment, a product-law review
+  (Cyber Resilience Act, Openness terms, AI Act, MIT notice) by someone qualified, and a written support process.
+- Anything the review of `ENTERPRISE-READINESS.md` lists beyond these.
+
+## 2.9 Other people's machines, and the web platform
+
+- **The blocking criterion of phase 5b:** installed from the release artefact alone, on a machine that never built the project,
+  following only `INSTALL.md`, up to reading a PLCSIM tag. A virtual machine counts; a second copy of the working tree does not.
+  Until then the instructions are a guess. Open questions about the institut's PCs (licence, proxy, IP segment) are unconfirmed.
+- **Local first**: the daily screens run at `127.0.0.1` with no Docker and no sign-in; the shared part stays optional.
+- Web platform phase 4, the optional shared part (the teacher signs in from another machine and reads a project) and phase 5
+  (descriptions, images, snapshots, metrics, the diff). Sign-in with GitHub is configured and was not tried.
+- A user guide a classmate can follow without help.
+- Remote access to the dashboard and any shared store stay **out of scope**: exposing the API beyond loopback publishes a record
+  of everything the server changed.
+
+## 2.10 Beating T-IA Connect
+
+She set the goal on 2026-11-04: a project much better than the commercial reference. Counting by name on 2026-11-11, of 492
+advertised tools 69 are out of scope and 105 of the rest are covered by function; the missing categories are the ones listed
+above (project, hardware, PG/PC, CPU services, blocks, generation, Software Units, tags, UDTs, observation and forcing,
+alarms, HMI, online, PLCSIM, tests and delivery, libraries, motion and drives, safety, security, history, VCI, orchestration,
+patterns, knowledge, discovery). **The figures are what their site claims, not proof that anything works.** The aim is not a
+number of tools: it is that what is generated works and is shown with data. Three of their claims contradict what was measured
+here and must be measured again before anything is copied (an integrated HMI connection, the cycle clock memory on an S7-1200,
+a library type version from a block).
+
+## 2.11 Workshop Mode, last and supervised
+
+The five measured conditions, an in-person design review (`workshop-review.md`), and a teacher or workshop supervisor present
+with the emergency stop in reach. It comes after everything above. **No software enforces the supervisor and none can.**
+
+---
+
+# Part 3 — Class material (not part of the construction)
+
+By the user's decision on 2026-11-22 the exercises of the course do not count as items of the construction. They stay because
+they are good regression cases and a good source of facts, and because they found real defects; none of the items in part 2
+waits for them.
+
+- **The exercises**: 0965 (the warehouse), 0967 (Unified HMI, the flour-mill motors, two PLCs and a Unified panel) and 0968 (the
+  hopper with its GEMMA, the planning, the cabinet and the budget, and the final project), and every later one. Each is kept as
+  a statement, a solution and its checks, so that every release solves it again with 0 errors.
+- **The hopper exercise regenerated end to end through the MCP** (0 errors, 13 PLCSIM cases, nothing added by hand), and the
+  same cases on an S7-1200 and not on the S7-1500 stand-in.
+- **The teacher's style**, as drawn in his notebook: the selection remembered by lamps with S and R, stored actions as a row of
+  S and R boxes, production branching on the lamp; and the layout of one FC per GEMMA state numbered in call order, Main only
+  calling, outputs in one block, a watchdog timer per step, names in Catalan.
+- **The class corpus** (63 projects and their documents, kept on this machine, never in the repository): a private recipe with
+  hashes; ingestion of the other formats; the retrieval gate extended; the projects searchable block by block; generators
+  writing in the class style by default; static checks learned from it (the comparison of a value with itself that resets a
+  counter every cycle); study sheets per module.
+
+---
+
+# Part 4 — Reference
+
+What follows did not change when the plan was reorganised: the starting point, the two modes, the architecture, the prior art
+and the decisions taken.
 
 ## The starting point, stated honestly
 
@@ -210,612 +693,6 @@ Three concepts worth taking, agreed on 2026-08-17:
   companion to reading and writing tags on a simulated controller.
 - **Tag table import from CSV and Excel.** Real projects define their tags in spreadsheets.
   SCL that references tags is useless if the tags cannot be declared.
-
-## Phases
-
-### Phase 0 — Unblock the download to PLCSIM
-
-Nothing downstream works without it: no tests, no reliability metrics, no end-to-end
-recording.
-
-The cheapest lead is already recorded in `STATUS.md`: `Configuration.IsConfigured` stays
-`False` through every attempt, which suggests the connection has to be **established by
-navigating** the configuration (`Modes.Find`, `PcInterfaces.Find`, `TargetInterfaces.Find`)
-rather than assembled by passing leaf objects to `Download`. The subnet correction
-(`PN/IE_1` rather than `1 X1`) is described in the code comments but **is not what the code
-currently does** — `ResolveSimulationTarget` still returns a target interface.
-
-The API surface is verified by reflecting over the real `Siemens.Engineering.dll` before any
-hypothesis is acted on, as was done for `ProjectComposition.Retrieve`. Measure the system,
-do not reason about it.
-
-**Timebox: two sessions.** If it does not fall, the fallback runs without further debate:
-metrics are limited to "compiles / does not compile", the README says so plainly, and the
-download moves to the roadmap. The six twenty-minute cycles of August are not repeated.
-
-Touches `SimulationDownloader.cs` and `Test11Download.cs`.
-
-### Phase 1 — Governance and modes
-
-The layer described above, plus the documentation of the security model in the README and
-`CLAUDE.md`, including the supervision requirement.
-
-**What this phase does not do: write a single line that downloads to hardware.**
-
-### Phase 2 — FB_Station and multi-station — **done, 2026-08-18**
-
-In `spec/`, as data rather than as server code:
-
-```
-spec/patterns/station.scl.tmpl       FB_Station
-spec/patterns/coordinator.scl.tmpl   FB_Coordinator
-spec/cells/two-station-demo.json
-spec/cells/four-station-cell.json
-```
-
-`FB_Station` is the interface already designed in `STATUS.md`: `IN Start, Reset, Enable,
-ModeAuto, ModeManual`; `OUT Busy, Done, Error, ErrorId, Ready`; `IN_OUT PieceId`.
-
-The minimal honest coordination is the `Ready` / `Done` / `PieceId` handshake between
-station N and N+1, and what N does when N+1 is in a fault state. **Two stations that work
-are worth more than four in a diagram.**
-
-In `src/`: `SclTemplateExpander.cs`, which instantiates a template from a JSON
-specification. No knowledge of any particular cell inside the server.
-
-### Phase 3 — Metrics and harness
-
-`harness/`, Node and TypeScript, outside the solution:
-
-```
-harness/src/mcpClient.ts   MCP client over stdio against TiaMcpServer.exe
-harness/src/loop.ts        generate -> write -> compile -> read -> fix, bounded
-harness/src/generator.ts   SCL generation through the Anthropic API
-harness/src/telemetry.ts   phase events to SQLite (WebSocket deferred to phase 4, see below)
-harness/src/gate.ts        evaluates the five workshop criteria
-harness/src/run.ts         CLI: runs the whole specification set
-harness/specs/             5-10 cases of increasing complexity
-```
-
-Shared SQLite schema with the audit trail: `runs`, `iterations`, `phase_timings`, `audit`.
-
-**The WebSocket half was deferred to phase 4 on 2026-08-26, on the user's decision.** Its only
-consumer is the dashboard, and this repository has now been bitten three times by code that was
-written, never executed, and believed. SQLite already records everything the stream would carry, so
-the deferral costs the dashboard nothing but a reader it has to write anyway.
-
-Outputs: mean iterations to a clean compilation per specification, percentage passing on
-PLCSIM, and time per phase. Reported with the sample size attached — `n=10, 3 repetitions`,
-never a bare percentage.
-
-### Phase 4 — Dashboard
-
-`dashboard/`, React, TypeScript and Vite, against the harness API.
-
-The API is `harness/src/apiServer.ts`, `npm run api`, and it was built first: it reads the SQLite
-store the runs already write and serves runs, per-run detail, metrics, the filtered audit trail, the
-gate and the mode banner. Read-only by construction and on loopback only — every write stays behind
-the guard in the MCP server, and the dashboard confirms a change through `ApplyChange` like any
-other client.
-
-Four views: the plant copilot (chat plus live loop phase), metrics and charts, the
-filterable audit log, and the state of the workshop gate with its five criteria shown green
-or red. Plus the permanent mode banner described above.
-
-**Closed 2026-08-27.** Six views shipped — Overview, Live run, Runs, Metrics, Audit trail, Workshop
-gate — plus the banner, a dark theme, and a live stream that moves the page as a run records.
-
-**The copilot's chat was cut on 2026-08-27 and shipped later the same day.** The cut is left here
-rather than edited away: it needed a model and an API key the machine did not have, so it would have
-been written and never run, and it was already cut number 1 on the list below. Its other half, the
-live loop phase, shipped as *Live run*.
-
-**The condition the cut named was met.** Twenty euros of API credit went into the account, and the
-chat exists. It is **not a tab**: it is docked in the corner of every view at once, behind a round
-robot button, because a copilot you have to navigate away from the numbers to reach is one you stop
-asking - and the question somebody wants to ask is nearly always about the view in front of them.
-The conversation survives moving between views, which is the property the dock is for. The estimate of about 1.5 cents a turn was pessimistic by an order of
-magnitude: measured turns against the real store cost **$0.0019 to $0.0022** on Haiku 4.5, most of
-it the brief that is sent with every question.
-
-It is given the same numbers the views are drawn from and **no tools**, so there is no path from
-anything typed into it to anything that changes a project. It declines safety questions outright -
-verified against a question that insisted - and says when a fact was not given to it rather than
-filling the gap. Still six views, plus the dock.
-
-A sixth view, *Guide*, arrives with phase 5b rather than here: it renders `INSTALL.md` and reports
-what this machine meets. It is listed there because a guide to installing something is worth
-nothing until there is something to install.
-
-Built on 2026-08-26 and 2026-08-27. What exists: Overview, Live run, Runs, Metrics, Audit trail,
-Workshop gate, the permanent mode banner, the docked copilot, and a dark theme. React, TypeScript, Vite, Tailwind,
-shadcn/ui and Chart.js. `npm run api` in `harness/`, `npm run dev` in `dashboard/`.
-
-A run in progress moves on screen: `/api/live` streams server-sent events, which is where the
-WebSocket half deferred out of phase 3 landed. The event says only *that* the store changed, never
-what — the page re-reads the endpoints that already serve the numbers, so one path produces a number
-and the stream cannot disagree with the table.
-
-### Phase 5 — The pitch — **done, 2026-08-28**
-
-README rewritten with the business pitch first, an end-to-end recording of the loop, the
-real numbers from phase 3, the security model, and Workshop Mode documented as roadmap with
-its entry conditions. Anything the repository does not actually do comes out of the README.
-
-All five delivered. The recording is a real one: run 40 of the specification set, printed as it ran,
-rather than a description of what a run would look like. The numbers are read from the store the
-runs write and are the same ones `npm run gate` and the dashboard produce.
-
-**Three claims came out because they were not true**, which was the part of this phase with teeth:
-
-- *"Tag tables (`PlcTagTable`) — export/import"* was listed as something this adds. **There is no
-  such tool and never was.** Tag tables reach Git inside `ExportSourceSnapshot` and nowhere else,
-  and there is no import at all. The README now says that.
-- A draft of the pitch put "an LLM writes PLC code" directly above the 96% and 67% figures, which
-  are the **pattern expander's**. Read together they would have been taken as a model's score. The
-  README now says which generator produced them before the table rather than after it.
-- A draft priced a generation at *"$0.008 on Opus-class models"*. The $0.0079 measured was
-  **Haiku 4.5**. The Opus figure is an estimate from the price ratio and is now marked as one.
-
-One code comment was corrected with them: `McpServerWrites.cs` said *"everything here calls
-`GuardedTool.Run`"*, and `ApplyChange` does not — correctly, since it is the confirmation half of
-the guard. A file that exists to be checkable by eye cannot have an unstated exception.
-
-### Phase 5b — Deployment: somebody else's machine
-
-Added 2026-08-27. Numbered 5b rather than 7 so that Workshop Mode stays last, which is a rule rather
-than a position in a list.
-
-**The constraint that decides everything here: the server cannot be deployed anywhere except a
-Windows machine that already has TIA Portal V20 installed and licensed.** Openness is an in-process
-API against an installed Portal, so there is no container, no Linux host and no cloud. This is not a
-service to host; it is a desktop tool to distribute. The unit of deployment is one person, one
-Windows PC, and everything — server, harness, API, dashboard, knowledge index — runs on it.
-
-That is also a property worth keeping rather than a limitation to engineer around: no audit trail
-leaves the machine that produced it, and nothing phones home.
-
-| Piece | Where it runs | What that machine must already have |
-|---|---|---|
-| `TiaMcpServer.exe` | The same PC as TIA Portal | TIA V20 licensed, .NET Framework 4.8, membership of `Siemens TIA Openness` with a re-login done |
-| PLCSIM Advanced | The same PC | Its own licence, the virtual adapter configured on the project's subnet |
-| `harness/` | The same PC, driving the server over stdio | Node 22.6 or newer |
-| API and dashboard | The same PC, loopback only | Node. It serves the audit trail, which is why the interface is not a flag |
-| Knowledge index | The same PC | Built locally from the recipe and the user's own documents |
-
-What the phase delivers:
-
-- **A versioned release artefact** — the built server, zipped, with its SHA-256 published. Byte
-  identity matters more here than usual: TIA binds its Openness whitelist to the exact executable, so
-  a rebuild costs every user a confirmation dialog. Releases are few and versioned for that reason.
-- **A precondition check that fails closed.** A PowerShell bootstrap that verifies TIA at the
-  configured location, the group membership, .NET, Node and PLCSIM, and **refuses with a sentence
-  naming the fix** rather than letting the failure surface an hour later as something unrelated.
-- **`INSTALL.md`, written for somebody who has never seen this repository**, including the first-run
-  trap that is guaranteed to bite: TIA asks for whitelist confirmation the first time a given
-  executable connects, and while that dialog is open `Connect` blocks and reports `Request timed
-  out` — which points at the server when the cause is on the screen.
-- **Host wiring** for Claude Code and for Claude Desktop: stdio, logs to stderr, one snippet each.
-- **The user guide, in the dashboard and in the repository — one file, rendered twice.** A sixth
-  view, *Guide*, renders `INSTALL.md` itself rather than a hand-written copy of it. The rule is the
-  one the knowledge brief states about checklists and applies here for the same reason: a document
-  that exists twice diverges, and the divergent copy is the one that gets shown. The file is what a
-  new user reads on GitHub before anything of this is running; the view is what they keep open once
-  it is, which is why neither can be dropped in favour of the other.
-- **What this machine actually has, checked rather than described.** The one thing the Guide view can
-  do that a Markdown file cannot: run the same precondition check as the bootstrap script and show,
-  item by item, what this machine meets and what it does not — TIA at the configured location, the
-  group membership, .NET, Node, PLCSIM, and whether an index and a metrics store exist. It reports;
-  it never installs anything and never changes a setting. That keeps the API read-only in the sense
-  that matters: it inspects, it does not act.
-- **Configuration, never paths.** `TiaPortalLocation`, project locations and `policy.json` are
-  per-machine, and the shipped policy denies by default.
-- **A version the numbers can be attributed to.** The server reports its version; the harness already
-  records the executable it measured through.
-
-**Blocking criterion**: installed from the release artefact alone, on a machine that has never built
-this project, the smoke path runs — connect, compile, download to PLCSIM, read a tag — **following
-`INSTALL.md` and nothing else**. A virtual machine counts; a second copy of the developer's own
-working tree does not. Until that has been done once, the install instructions are a guess, and a
-guide nobody has followed from the top is a guide that is wrong in the place it matters most.
-
-Explicitly out of scope: a central server, remote access to the dashboard, and any shared store.
-Exposing the API beyond loopback publishes a record of everything the server changed and where every
-backup lives, and that is a decision with consequences, not a deployment convenience.
-
-## Covering what TIA Portal can do — phases 6 to 10
-
-Added 2026-09-05, after an audit of what this server reaches against what the Openness API actually
-offers. The measurement, not the impression: 59 tools against roughly 1,800 public types across some
-sixty namespaces. The stated goal is now **all of it**.
-
-What the server covers today is one stretch of the work: *write code, compile it, simulate it,
-observe it*. What it barely touches is the stretch before that — building the station — and the one
-after — talking to a real machine. An integrator does three things: configures, programs, and
-commissions. This automates the second.
-
-**Two of the gaps are not extensions of what exists**, and saying so is the point of this section:
-
-- **Reading a live value from a physical PLC cannot be done through Openness at all.**
-  `OnlineProvider` offers `GoOnline`, `GoOffline`, `State` and the master-secret calls, and nothing
-  else. Watch and force tables are *offline* objects: Openness creates them and fills them in, and
-  never reads what they hold on the machine. That capability needs an **OPC UA client**, or an S7
-  communication library — a separate component speaking a different protocol, not another tool on
-  this server. Checked against `Siemens.Engineering.dll` for V20, not assumed.
-- **Commanding physical hardware is gated by phase 11**, and the gate is the reason this project
-  exists rather than an obstacle in front of it.
-
-Everything else in these phases is API that exists and is documented. It is work, not research.
-
-### Phase 6 — Addresses, subnets and tag tables
-
-The smallest of these and the one that removes a pain already felt. Today a download to PLCSIM only
-works if the CPU's address in the project matches the virtual controller's, and **there is no tool
-that sets an address** — it has to be typed into TIA Portal by hand.
-
-- ~~Setting a node's address~~ — done: `SetDeviceAddress`.
-- ~~Creating subnets and connecting interfaces to them~~ — done: `GetSubnets`, `CreateSubnet`,
-  `ConnectDeviceToSubnet`. PROFIBUS came with them rather than after them, because a subnet's
-  network type is taken from the interface instead of being a parameter.
-- ~~Creating tag tables, tags and constants~~ — done: `GetTagTables`, `GetTags`, `CreateTagTable`,
-  `CreateTag`, `CreateConstant`. A caveat measured while doing it: **Openness stores a data type
-  that does not exist, and a software compile does not catch it**, because it compiles blocks and
-  not tag tables. The tool description says so; the server does not refuse, because it cannot tell
-  an unknown type from a valid one.
-- ~~PROFINET device names~~ — done: `SetProfinetDeviceName`, and `GetNetworkTopology` now prints the
-  name each node holds. It is not a second spelling of the address: a controller resolves the name
-  over DCP at start-up, so a device whose project name differs from the one in the hardware never
-  joins its IO system, at any address. Setting one turns off the automatic naming TIA does from the
-  interface, because a name written while that is on does not survive.
-- Editing an existing tag — changing a type or an address — is deliberately not here. Nothing in
-  this phase overwrites; that is a separate decision with a backup story of its own.
-
-### Phase 7 — Building the station
-
-The largest gap and the largest namespace: `Siemens.Engineering.HW` holds 862 public types. Today a
-device can be created from an order number and nothing can be done to it afterwards.
-
-- ~~`HardwareObject.PlugNew`, `CanPlugNew`, `GetPlugLocations`~~ — done: `GetPlugLocations` reads a
-  rack slot by slot, free and occupied in one list, and `PlugModule` puts a module in a free one.
-  `CanPlugNew` is asked first, not out of politeness: `PlugNew` reports a refusal as a generic
-  failure, and "the slot is taken" and "the rack does not accept this module" need different
-  answers. Nothing is replaced, and plugging the same module twice reports the one that is there.
-  The backup taken is the module layout — `hardware/modules.txt`, which a snapshot now carries too,
-  because a program on a rack with a different input card is a different system.
-- ~~Where a module lives in the process image~~ — done: `GetIoAddresses` reads the input and output
-  ranges of a whole rack as `%I`/`%Q` spans, and `SetModuleAddress` moves one of them. Only the
-  start moves; the length belongs to the module. `Address.Length` is **in bits** — measured, since
-  the unit is in no signature — and `hardware/modules.txt` now carries the spans, because a backup
-  taken before an address moves has to contain the address.
-- ~~`PlugCopy`, `PlugMove` and `DeviceItem.Delete`~~ — done: `UnplugModule`, `MoveModule`,
-  `CopyModule`. The decision unplugging needed: the backup restores slot, order number and
-  addresses — enough to plug an identical card back, and the removal answers with that recipe — but
-  **not** parameters set by hand in TIA Portal, which this server does not write and therefore
-  cannot restore. The tool says so. A built-in item cannot be unplugged and the CPU is refused:
-  removing it takes the program with it. Moving keeps the module and everything set on it, which is
-  what makes it different from unplugging and plugging again.
-- ~~Parameters through `SetAttribute`~~ — done: `GetDeviceParameters` lists what a device item can
-  actually be told to do, and `SetDeviceParameter` sets one. The value arrives as text and is
-  converted to the type the parameter already holds, so an enumeration is refused with the words it
-  takes — spellings that appear in no documentation a model has read. A read-only attribute is
-  refused before TIA is asked, which is the commonest mistake with an attribute bag. It also closed
-  the gap `UnplugModule` had to admit to: a removal now records the module's parameters.
-- Importing GSD/GSDML for third-party devices.
-
-This is what turns the server from "it edits a project somebody else built" into "it builds one".
-
-### Phase 8 — Knowing what uses what
-
-- ~~`CrossReferenceService.GetCrossReferences`~~ — done: `GetCrossReferences` answers *who calls
-  this block*, which is exactly the question to ask **before** rewriting it. For a loop where a
-  model edits code it did not write, this is worth more than its size suggests. The answer comes in
-  three lists: what uses the block and breaks if its interface changes, what the block uses, and
-  every other relation Openness reports — because it has thirteen of them, and dropping the eleven
-  that are neither would tell a caller that a block in use is used by nobody.
-- Watch and force tables, created offline, belong here too.
-
-### Phase 9 — Reading a real PLC, over OPC UA
-
-Not Openness. A client that connects to the CPU's OPC UA server and reads variables from a machine
-that is running.
-
-It sits after phases 6 and 7 for a reason: reading a real machine is only useful once one can be
-configured. It also has a precondition the server can already check — `GetOpcUaInterfaces` says
-whether the CPU publishes anything at all, and an empty list means there is nothing to read until
-somebody configures an interface.
-
-**This reads. It does not command.** That distinction is the whole reason it comes before phase 11.
-
-- ~~Browsing and reading a server~~ — done: `BrowseOpcUaServer` and `ReadOpcUaValues`, in their own
-  assembly, `TiaMcpServer.OpcUa`, so their tests run on CI against an OPC UA server started in the
-  test process. Three rules came with it, each with a test that fails when the rule is removed: the
-  endpoint must be listed in the policy as `opcua/<host>:<port>`; an endpoint offering no message
-  security is refused; and the first certificate a server presents is pinned, so a different one
-  at the same address is refused until a person removes the pin.
-- Measured against PLCSIM Advanced and a real S7-1500: not yet. Everything so far ran against the
-  OPC Foundation's own server stack, which is not a Siemens CPU.
-- Subscriptions, so a value can be watched rather than polled. Still reads; not started.
-
-### Phase 10 — The rest of the surface
-
-In descending order of what they give back for the work:
-
-- **Graphical languages.** LAD, FBD and GRAPH have no authoring API: they are generated as SimaticML
-  XML and imported. Expensive, and GRAPH is the worst of the three.
-- Technological objects (axes, cams), alarms and text lists, libraries and master copies, project
-  comparison, certificates and syslog.
-- **HMI, classic WinCC (Basic/Comfort/Advanced)** — *decided 2026-10-13, and moved ahead of the rest
-  of this phase*: the class panels are classic WinCC, and the user asked for generated screens.
-  Measured that day: classic HMI has no object model for screen items in Openness, but screens, HMI
-  tag tables and text lists export to XML and import back, linked by name, and a hand-written
-  screen and tag table compiled with 0 errors. The work is MCP tools for that round trip, a
-  generator, and a screenshot comparison against a reference. See `STATUS.md`, 2026-10-13.
-- **HMI Unified**, roughly 400 types. It is the largest remaining surface and the one that gives a
-  four-station cell the least. Doing it should be a decision, not momentum.
-
-The whole list of what is still open, in priority order and with progress, is kept in `STATUS.md`
-under "Everything still open"; what a company-grade tool needs beyond this roadmap is in
-`ENTERPRISE-READINESS.md`.
-
-### Phase 11 — Workshop Mode, supervised and last
-
-Last, and only under supervision. Deliberately.
-
-**It was phase 6 until 2026-09-05 and its number moved, not its position.** Five phases were
-inserted before it, and the rule has never been a number: new code that commands physical machinery
-is not the newest code in the repository, and it comes after everything else.
-
-### The knowledge layer
-
-`KNOWLEDGE-LAYER.md` holds a separate work brief — hardware documentation retrieval and a cited
-pre-flight review, delivered as Claude Code skills. It is **deliberately not numbered as a phase
-here**: it runs alongside this order and is cut from the bottom up, and every one of its seven
-stages delivers something on its own.
-
-## Order, not dates
-
-The phases run in the order they are numbered. **There is no calendar**, and its removal on
-2026-08-18 was deliberate: the one that used to be here made a phase look finished when its week
-ran out rather than when its deliverables were done. Phase 1 was read as finished with three of
-its deliverables missing, which is exactly the failure a calendar invites. **A phase ends when
-what it promised exists and is tested**, and nothing else ends it.
-
-Sequence is still real, and it is the only scheduling claim made here: nothing downstream can be
-measured before the download works (phase 0), nothing may write to a project before the guard
-exists (phase 1), and Workshop Mode comes last because new code commanding physical machinery
-must not be the newest code in the repository.
-
-### What gets cut if something has to be, in this order
-
-1. ~~The live chat in the dashboard.~~ **Cut on 2026-08-27 and built on 2026-08-27**, once there
-   was a key to build it against. The data views remain, which are the ones that cannot be
-   faked. **Taken, 2026-08-27** — see phase 4.
-2. The cell drops from four stations to two.
-3. The harness uses pre-generated specifications instead of calling the model.
-
-**Phase 1 is not cut.** It is the one that makes the following year possible.
-
-## Completion plan — every open item, to the end
-
-Written 2026-10-13, when the user asked for a plan that finishes **all** of the open technical debt
-and work, not a selection of it. It orders everything in `STATUS.md` ("Everything still open") and
-`ENTERPRISE-READINESS.md` into waves. **Nothing in it is optional and nothing is cut**; the cut
-list above applies to the phases before it, not to this plan.
-
-The rules of the rest of this document hold here too:
-
-- **Order, not dates.** A wave ends when every item in it meets its "done when", and not before.
-- **Done means measured.** An item that touches TIA Portal, PLCSIM or a CPU is done when it ran
-  against the real thing, not when its tests pass against a double.
-- **Each item ships the way everything ships**: on its own branch, tests that failed before the
-  fix, `/code-review high` (a second round when it touches governance or security), `STATUS.md`
-  updated, and a commit the user makes herself.
-- **A wave may start before the previous one ends** when it depends on nothing in it. The
-  dependencies are written next to each item; where none is written, there is none.
-- Knowledge-layer stages and Workshop Mode keep their own gates: each starts on the user's explicit
-  word, and Workshop Mode only with a supervisor present.
-
-### Wave A — close what is in flight
-
-| # | Item | Done when |
-|---|---|---|
-| A1 | ~~Edges in the LAD generator (`work/lad-edges`)~~ — merged as PR #43 | Reviewed, committed, merged. Already measured in TIA Portal |
-| A2 | ~~Server 0.0.19 registered in Claude Code~~ — done; 0.0.20 is next (`work/release-0.0.20`) | `GetState` answers from 0.0.19 |
-| A3 | ~~The server reports its own version~~ — done on `work/release-0.0.20`: `GetState` returns `serverVersion`, and the harness stores it in `runs.server_version` (schema 3) | `GetState` returns the assembly version; the harness records it next to the path |
-| A4 | ~~Work while the user has TIA Portal open~~ — done: process choice and never closing her project (PR #55, measured 2026-10-27 against her window). The leftover after a killed server is kept on purpose (decided 2026-10-28, see `STATUS.md`); the Openness suite still to run. Was: `Connect` attaches to `TiaPortal.GetProcesses().First()` (`Portal.cs`), whatever it holds: on 2026-10-15 it picked a leftover instance with no window while the user's window held the project, and `OpenProject` then failed because the project was locked. Prefer the process whose `ProjectPath` is the requested project, then one with a user interface; `OpenProject` on a project another instance has open attaches to that instance instead of failing; say which instance was chosen. Also: a server killed mid-session leaves the TIA Portal it started running with no window | With the project open in the user's TIA Portal window, a read, a guarded write and a compile through the MCP succeed and show up in that window, without the user closing anything; no instance is left behind after a session ends |
-
-### Wave B — a class exercise from nothing to a compiled project
-
-What the hopper exercise of 2026-10-08 could not do without a person in TIA Portal.
-
-| # | Item | Done when | Depends on |
-|---|---|---|---|
-| B1 | MCP tools `CreateProject` and `AddDevice` — merged in PR #44 and tested in TIA Portal (`Test39`); the S7-1200 round trip below is still to run | A new S7-1200 project is created, saved and reopened through the MCP; refusal tests in `Test16GuardedWrites` | A2 |
-| B2 | MCP tool `DeleteBlock`, with a backup first — merged in PR #44 and tested in TIA Portal (`Test39`); restoring from the backup is still to run | A superseded block is removed and its backup restores it | A2 |
-| B3 | Global `IEC_TIMER` DB generated with the program | The hopper program compiles with no DB written by hand | |
-| B4 | Calls from Main generated | The generated program runs in PLCSIM without editing Main | |
-| B5 | Network and block titles and comments through `.s7res` | A generated block shows its titles in TIA Portal | |
-| B6 | One block per GEMMA state, as the class writes it | The hopper exercise comes out in the teacher's block layout | C-GEMMA below |
-| B7 | S7-1500 `time_type` template on TON calls | The same chart compiles on S7-1200 and S7-1500 | |
-| B8 | The whole hopper exercise regenerated end to end through the MCP | 0 errors, the 13 PLCSIM test cases pass, nothing added by hand | B1–B7 |
-
-### Wave C — the `grafcet` skill and GEMMA
-
-| # | Item | Done when |
-|---|---|---|
-| C1 | GEMMA model: states used, evolutions with conditions, signalling, the master step of each | The 0968 GEMMA is written in it without loss |
-| C2 | GEMMA checks: every used state reachable, D1 reachable from every state, a way back to A1 | Each check has a test that fails without it |
-| C3 | GEMMA drawn in the standard layout — on 2026-10-15 drawn once by a throw-away script outside the repository (the A, F and D zones, every state with the used ones solid, each evolution with its condition, no crossing lines); the layout is proven, the code is not in the skill | The 0968 guide drawn by the skill from its GEMMA model, as clean as the 2026-10-15 drawing |
-| C4 | Labels no longer overlap on several outgoing transitions; wide charts not cut — the same script showed the fix: jumps drawn as renvois (an arrow with the target step), `/SE → 13` as a short branch on the left of each step | The 0968 master chart draws cleanly from the skill |
-| C8 | The teacher's style, as drawn in his notebook on 2026-10-15: the selection remembered by the lamps with `S`/`R` (steps that last only while the button is held), stored actions drawn as a row of `S`/`R` boxes, production branching on the lamp | The skill reads, draws and generates the 0968 selection in that style; the hand-edited program of 2026-10-15 comes out of the generator unchanged |
-| C5 | Forcing orders (`F/G_PROD:{30}`) in the notation, the checker and the generator | The hierarchical 0968 design is checked whole |
-| C6 | `transient-evolution` false positives | The 11 warnings on 0968 are gone and the true case still warns |
-| C7 | The reader understands DB-member TON calls | No "unsupported" warning on the hopper program |
-
-### Wave D — HMI, classic WinCC
-
-**Held to the full list in `HMI-COVERAGE.md`** (2026-10-20): every device that carries a screen, every tag kind, every screen item, animation (movement included), event, script and runtime feature of classic WinCC and WinCC Unified, each with its status and its "done when". The rows below are the milestones; that document is the checklist they are measured against.
-
-The panels used in class (`6AV2 124-0JC01-0AX0`) are classic WinCC; the round trip was measured on
-2026-10-13.
-
-| # | Item | Done when | Depends on |
-|---|---|---|---|
-| D1 | Read tools: export screens, templates, HMI tag tables, text and graphic lists — `GetHmiInfo`, `ExportHmi` merged in PR #44, tested on a new panel; the teacher's project through the MCP is still to run | The teacher's project exported through the MCP, read-only | A2 |
-| D2 | Write tools: import screens, HMI tag tables and text lists, guarded, with a backup — `ImportHmiScreen`, `ImportHmiTagTable`, `ImportHmiTextList` merged in PR #44, tested in TIA Portal, links checked before every import | A screen imported through the MCP compiles; refusal tests in `Test16GuardedWrites` | D1 |
-| D3 | HMI tags generated from PLC tags — `GenerateHmiTags` merged in PR #44; on a panel with a PLC connection it is measured only by the 2026-10-13 probe | Every memory bit of a program gets its HMI tag, and the HMI compiles | D2 |
-| D4 | Screen generator: buttons, pilot lights, I/O fields, bars, screen navigation — `GenerateHmiScreen` built 2026-10-14, with animations on every item, button and field events, symbolic and date/time fields, text lists; offline, two class screens match their exports but for images and groups; not yet imported into TIA Portal | The teacher's `principal` screen regenerated from a description, attribute for attribute | D3 |
-| D5 | Documentation read and cited: WinCC Comfort/Advanced, the Openness HMI chapter, the tutorials named by the user | Each fact the generator relies on carries its source | |
-| D6 | Runtime screenshot compared with a reference picture — the XML half exists (`CompareHmiScreens`); the runtime picture does not | A generated screen and the teacher's differ by less than a threshold fixed before measuring | D4 |
-| D7 | ISA-101 style as an option (grey background, colour only for abnormal states) | One flag switches the generated screen to it | D4 |
-| D8 | Simulating the panel against PLCSIM, so a button press reaches the PLC | Pressing MARXA on the simulated panel sets `Marxa` in PLCSIM | D4, E1 for S7-1200 |
-
-### Wave U — WinCC Unified
-
-**Held to the full list in `HMI-COVERAGE.md`** (2026-10-20): every device that carries a screen, every tag kind, every screen item, animation (movement included), event, script and runtime feature of classic WinCC and WinCC Unified, each with its status and its "done when". The rows below are the milestones; that document is the checklist they are measured against.
-
-Added 2026-10-17, when the user asked for the same depth on Unified as on classic WinCC. The class
-uses it too (`0967 - unified_00`: a PC station with WinCC Unified PC RT, simulated and opened at
-`https://localhost/WebRH`). Unified is a different Openness object model
-(`Siemens.Engineering.HmiUnified`), not an extension of the classic one, so nothing in wave D carries
-over except the method.
-
-What started it, measured 2026-10-17: a Unified PC RT, even a brand-new empty one, compiled as
-"Compiling aborted" or "errors: 3" with **no error text** in the Info → Compile tab. Compiling through
-Openness (`ICompilable.Compile()` on the device, walking `CompilerResult.Messages` recursively) gave the
-three texts at once, under a "Runtime settings" node the user interface did not show: the
-encrypted-transfer password and its confirmation did not match, the password broke the password
-rules, and no start screen was set. With encrypted transfer filled in correctly (or off and empty)
-and a start screen, it compiled 0/0. Removing screen items, shortening the path and suspecting the
-installation were all false leads; so were the files under `AdditionalFiles\ValidationFiles`, which
-*Save as* copies from the previous state and are not the compile in progress.
-
-| # | Item | Done when | Depends on |
-|---|---|---|---|
-| U1 | Compile a Unified device and return **every** message, nested ones included — done 2026-10-17 on `work/roadmap-unified` (`Test41UnifiedCompile`); a station that also holds a PLC program is refused | The 2026-10-17 empty project returns its three Runtime settings errors with their text through the MCP | A2 |
-| U2 | Read tools: screens, screen items with their properties, tags and tag tables, connections, runtime settings | The class `0967 - unified_00` project read through the MCP, read-only | |
-| U3 | Tags, tag tables and the connection to the PLC, guarded, with a backup | HMI tags created for a program's memory bits, linked to the PLC, and the device compiles | U2 |
-| U4 | Screens and screen items created with their properties: rectangles, circles, text, I/O fields, buttons, bars, gauges, trends | The class screen rebuilt through the MCP and compiling | U3 |
-| U5 | Dynamizations and events: tag, script and resource-list dynamizations, button events | A lamp changes colour and a button sets a PLC bit, both generated | U4 |
-| U6 | Runtime settings: start screen, encrypted transfer, users and roles — **a password never reaches a log, the audit trail or a backup in clear** | A new device is made compilable through the MCP; a test fails if the password appears in any written file | U1 |
-| U7 | Alarms, tag and alarm logging, the audit viewer, and which of them need an option or a licence | One of each configured and compiled; the licence needs written down from the documentation | U4 |
-| U8 | Faceplates, library types and screen templates — instances, release and copy from a global library built 2026-10-30 on `work/unified-faceplates`; the type itself is drawn by hand, as Openness V20 cannot create one; screen templates open | A faceplate created, used twice and compiled | U4 |
-| U9 | Download to the simulated runtime and report the result, reading the runtime's own log when TIA Portal says only "Action canceled" | The simulation starts through the MCP and `WebRH` shows the screen | U1, U6 |
-| U10 | The simulated Unified panel against PLCSIM, so a press reaches the PLC | A button on the simulated panel sets a tag in PLCSIM | U5, U9 |
-| U11 | Documentation read and cited: WinCC Unified system manual and the Openness Unified chapter | Each fact the generators rely on carries its source | |
-
-### Wave E — simulation for the class hardware
-
-| # | Item | Done when |
-|---|---|---|
-| E1 | Classic S7-PLCSIM V20 driven by the MCP (undocumented gRPC; measure, never guess) | An S7-1200 class project is downloaded and a tag read back |
-| E2 | The hopper test cases run on the S7-1200 original, not the S7-1500 stand-in | The 13 cases pass on S7-1200 |
-
-### Wave F — somebody else's machine
-
-| # | Item | Done when |
-|---|---|---|
-| F1 | Phase 5b blocking criterion | Installed on a machine that never built the project, following only `INSTALL.md`, up to reading a PLCSIM tag |
-| F0 | Local first (decided 2026-10-17, see "Decisions taken"): the screens the user works with every day run on her machine at `127.0.0.1` with no Docker and no sign-in; the shared part stays optional | The Sala de control shows her projects, compilations and audit trail with Docker Desktop closed and no network |
-| F2 | Web platform phase 4 — the optional shared part | The teacher signs in from another machine and reads a project |
-| F3 | Web platform phase 5: descriptions, images, snapshots, metrics, the diff | Each one shown for a real project |
-| F4 | TIA Portal V21 | The test suite passes against V21, as the institut runs it |
-| F5 | A user guide | A classmate completes an exercise with it and without help |
-
-### Wave G — technical debt and audit findings
-
-| # | Item | Done when |
-|---|---|---|
-| G1 | Audit F5, second half: pure rules out of `SclBlockGenerator` and `SourceSnapshotExporter` | Those rules tested in `TiaMcpServer.Portable`, without TIA Portal |
-| G2 | Audit F8–F12 (inherited ledger, one Node process per write, the retrieved-data marker, a TypeScript linter, the commented property in `Responses`) | Each closed with its test or its CI check |
-| G3 | The `NoWarn` ledger in `TiaMcpServer.csproj` emptied | The list is gone and the build is still warning-free |
-| G4 | Methods over 30 lines | None left, except where `CLAUDE.md`'s note on rigour is argued in the code |
-| G5 | Dependency scan and SBOM in CI | CI fails on a known vulnerable package; each release carries an SBOM |
-| G6 | Project content always treated as data by the model | A test feeds an instruction hidden in a block comment and the model does not follow it |
-
-### Wave H — the rest of TIA Portal
-
-| # | Item | Done when |
-|---|---|---|
-| H1 | GSD/GSDML devices (left from phase 7) | A third-party device from a GSDML file is plugged and compiled |
-| H2 | OPC UA measured against PLCSIM Advanced and a real S7-1500; subscriptions | A value read and watched from both |
-| H3 | FBD and STL imported as documents; S7-GRAPH on S7-1500 | One block in each compiles |
-| H4 | Alarms (program alarms, ProDiag) and text lists | An alarm raised in PLCSIM appears on the panel |
-| H5 | Technology objects (axis, PID) | One of each configured and compiled |
-| H6 | Libraries, types and master copies — reading a project or global library, copying types from a global library and releasing a version in work built 2026-10-30 (`GetLibraryTypes`, `CopyLibraryTypes`, `ReleaseLibraryType`); a global library of one's own, publishing to it, a new version in work, moving Unified faceplates between versions and a PLC data type into a program built 2026-11-01 (`CreateGlobalLibrary`, `PublishLibraryTypes`, `EditLibraryType`, `UpdateUnifiedFaceplates`, `CreatePlcTypeFromLibrary`); master copies of blocks, tag tables and PLC data types (read, folders, made, created from) built 2026-11-07 (`GetMasterCopies`, `CreateMasterCopyFolder`, `CreateMasterCopy`, `CreateFromMasterCopy`); default version and deleting a type or version built 2026-11-15; **closed 2026-11-24 (roadmap 2.2, `work/v21-library-closing`)**: block types into a program (`CreatePlcBlockFromLibrary`), a new version of a block or data type through its instance (`EditLibraryType` with `softwarePath`; V21 refuses one without an instance, measured), instances moved to another version (`UpdatePlcLibraryInstances`; V21's `UpdateProject` was measured to remove them), versions compared by content (`CompareLibraryTypeVersions`; in a global library V21 exports nothing, so only what describes them), new versions to a global library (`UpdateGlobalLibraryTypes`), a global library archived and retrieved (`ArchiveGlobalLibrary`, `RetrieveGlobalLibrary`), the type folder tree (`GetLibraryTypes` folders, `CreateLibraryTypeFolder`), master copies and folders deleted (`DeleteMasterCopy`, `DeleteMasterCopyFolder`); done criterion met by `Test81LibraryWorkflow`. Left: other master copy source kinds (measured only: a watch table is refused on V21, block and tag table groups and devices are taken) | A type is created, versioned and instantiated — **met 2026-11-24** |
-| H7 | Project compare and archive (`.zap`). An `ArchiveProject` tool over `Project.Archive` is wanted first: on 2026-10-20 the hopper exercise had to be handed in as a `.zap20` and the archive was made by hand in TIA Portal, because the MCP can only retrieve one (`RetrieveProject`) | Two versions compared; a project archived through the MCP and the archive retrieved back |
-| H8 | ~~WinCC Unified~~ — moved to its own wave, U, on 2026-10-17 | See wave U |
-| H9 | SINAMICS Startdrive | A drive added and parameterised |
-
-### Wave I — what a company will audit
-
-| # | Item | Done when |
-|---|---|---|
-| I1 | Four eyes: a plan confirmed by a second person | A write waits until another account confirms it in the web platform |
-| I2 | Knowledge layer stages 0, 2, 2b, 4 and 5, each on the user's word | Each meets the "done when" in `KNOWLEDGE-LAYER.md` |
-| I3 | A local model for customers who cannot send code out | The harness gate runs against it and its rate is recorded |
-| I4 | Style guide check of generated code (Siemens programming style guide) | Findings reported on the hopper program |
-| I5 | IEC 62443 self-assessment | A written gap list against the standard's requirements |
-| I6 | Product law review (Cyber Resilience Act, Openness terms, AI Act, MIT notice) | Written answers, from someone qualified to give them |
-| I7 | Support process: how bugs are reported, fixed and released | Written, and used once |
-
-### Wave K — every other branch of TIA Portal
-
-Added 2026-10-17, when the user set the goal of becoming expert in every branch of TIA Portal, not only
-the ones a class exercise has needed so far. The numbers are names, not the order. **The order agreed
-that day:** K15 first (it turns the class activities into tests), then K2 and K3 (they are the
-subject of module 0967), then K11 (it is the repository's original Git goal), then the rest; **K12
-and K14 last**.
-
-| # | Item | Done when | Depends on |
-|---|---|---|---|
-| K15 | The class exercises (0965, 0967, 0968 and every later one) kept as regression cases: each one's statement, its solution and its checks | Every release of the server solves each kept exercise again with 0 errors and its checks passing | |
-| K1 | PROFINET in depth: device names, topology, I-Device, IO-Link masters and ports | An I-Device link between two CPUs and an IO-Link port configured and compiled through the MCP | |
-| K2 | Communication between controllers: PUT/GET, S7 connections, open user communication (TSEND/TRCV), Modbus TCP client and server | Two simulated CPUs exchange a value over each of them | |
-| K3 | The CPU's OPC UA server configured through the MCP — today it is only read from (phase 9) | A server interface with chosen tags is created, downloaded to PLCSIM Advanced and browsed | |
-| K4 | PROFIBUS and AS-i networks | One of each configured and compiled | |
-| K5 | Diagnostics: the diagnostic buffer, module state, the CPU web server | A fault provoked in PLCSIM is read back with its diagnostic text | |
-| K6 | Protection: block know-how protection, CPU access levels, copy protection, user management (UMAC) — **a password never reaches a log, the audit trail or a backup in clear** | Each one set and removed through the MCP; a test fails if a password appears in any written file | |
-| K7 | Classic WinCC beyond wave D: recipes, panel user administration, HMI alarms and bit messages | One of each configured on the class panel and compiled | D2 |
-| K8 | PLC data types (UDTs), arrays and multi-instance programming as industry writes it | A station's program rewritten on UDTs and multi-instances compiles and passes its tests | |
-| K9 | PLC tests as a tool: test cases written once and run automatically against PLCSIM — the hopper cases are run by hand today | The hopper cases run through the MCP and report pass or fail per case | E1 for S7-1200 |
-| K10 | Siemens programming style guide check of generated code — raises the priority of I4 | Findings reported on the hopper program, each with the rule it breaks | |
-| K11 | TIA Portal's Version Control Interface, linked to the repository's Git goal | A project's blocks round-trip through a VCI workspace and a Git commit | |
-| K13 | Openness Add-Ins, which run inside TIA Portal — a second route to A4 | A small read-only Add-In runs in the user's open TIA Portal and its trade-off against A4 is written down | |
-| K16 | Study sheets per topic, each fact with its source, built from what the waves above measured | One sheet per wave, reviewed by the user | |
-| K12 | Multiuser Engineering: several engineers on one project — **last** | Two sessions check in changes to one server project without conflict | |
-| K14 | Fail-safe CPUs and Safety: **read and learn only. The MCP never generates or writes safety logic**, in any mode — the safety function belongs to certified tools and people — **last** | The safety program of a project is read and explained, and a test proves every write tool refuses a safety block | |
-
-### Wave L — the class corpus
-
-Added 2026-10-20, when the user decided that **all** of the class corpus goes in: the knowledge layer
-and the generators. The corpus is the year's class material on her external disk, extracted on
-2026-10-17 to `C:\Users\mamem\tools\class-corpus` (63 TIA Portal projects of 0965, 0967 and 0968,
-147 PDFs, the statements, her reports, the MPS station manuals) and summarised in `CLASS-STYLE.md`
-beside it.
-
-**What "goes in" means, and what it does not.** The documents and projects are class material and
-classmates' work, so the material itself never enters the public repository, exactly like the
-manufacturer manuals: what is versioned is the code that indexes and uses it, and a recipe template.
-The index, the recipe with its hashes and every exported project stay on this machine. No
-classmate's name appears in a test, an asset or a commit.
-
-| # | Item | Done when | Depends on |
-|---|---|---|---|
-| L1 | A second, private recipe: the corpus documents listed with title, kind (statement, report, manual, data sheet), local path and SHA-256, kept outside the repository; the recipe reader accepts a local source where it now requires a URL | Every document on the disk is in the private recipe, and a file that hashes differently is refused | |
-| L2 | Ingestion of the formats the corpus holds besides PDF (Word, the text already extracted), page or section numbered so a citation can still name where it comes from | All corpus documents indexed; the ones that cannot be are listed by name with the reason | L1 |
-| L3 | The retrieval gate extended with questions the corpus answers and questions it does not, thresholds fixed in code before the first run, as in stage 3 | The gate passes on the class corpus at the stage-3 thresholds | L2 |
-| L4 | The 63 projects searchable as knowledge: block by block and network by network, through the survey exports and `lad_summary.py` turned into indexed text | "How does the class do the emergency network of `0_GEMMA`" comes back cited with project, block and network | L2 |
-| L5 | The generators write in the class style by default (`CLASS-STYLE.md`): FC per GEMMA state numbered in call order, Main only calls, `X<n>` steps with S/R titled `ETAPA n`, outputs in one block, F4 direct, a watchdog timer per step, physical and HMI commands ORed, Catalan names | The 0968 E3 skeleton comes out of the generator in the teacher's layout and compiles with 0 errors. Overlaps B3–B6 and C8 | B5 |
-| L6 | Static checks learned from the corpus, starting with the defect found in the E3 final project (a comparison of a value with itself, which resets a counter every cycle) | The check finds the five E3 networks and nothing in the projects that do not have the defect | |
-| L7 | The exercises kept as regression cases — this is K15 fed by the corpus: each exercise with a statement and a solution on the disk becomes a case with its checks | Every kept exercise is regenerated by the server with 0 errors and its checks passing | L5, B8 |
-| L8 | Study sheets built from the corpus — K16 — each fact with its source | One sheet per module (0965, 0967, 0968), reviewed by the user | L3 |
-
-### Wave J — Workshop Mode, last and supervised
-
-Phase 11, unchanged: the five measured conditions, an in-person design review, and a teacher or
-workshop supervisor present with the emergency stop in reach. It comes after everything above
-because new code that commands machinery must not be the newest code in the repository.
 
 ## Decisions taken
 
