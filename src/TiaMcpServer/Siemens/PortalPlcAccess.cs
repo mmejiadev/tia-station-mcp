@@ -63,7 +63,7 @@ namespace TiaMcpServer.Siemens
         }
 
         /// <summary>Leaves the PLCs of a station just added at full access, as <see cref="SetPlcFullAccess"/> does.</summary>
-        /// <param name="deviceName">The station <see cref="AddDevice"/> just created.</param>
+        /// <param name="devicePath">The station <see cref="AddDevice"/> just created: its name, or <c>Group/Name</c> for one created in a device group.</param>
         /// <param name="backupDirectory">Where the anonymous user's state is recorded, if it is changed. Required.</param>
         /// <returns>Each PLC's protection before and after, empty for a station with no PLC, and the anonymous user's.</returns>
         /// <exception cref="PortalException">No project is open, the station is not there, or TIA Portal refused.</exception>
@@ -71,9 +71,9 @@ namespace TiaMcpServer.Siemens
         /// The station did not exist a moment ago, so there is no earlier state of it to keep; the anonymous user did,
         /// and belongs to the whole project, so its state is recorded before it is changed.
         /// </remarks>
-        public PlcAccessReport SetFullAccessOfAddedDevice(string deviceName, string backupDirectory)
+        public PlcAccessReport SetFullAccessOfAddedDevice(string devicePath, string backupDirectory)
         {
-            _logger?.LogInformation("Leaving the PLCs of the new station {DeviceName} at full access...", deviceName);
+            _logger?.LogInformation("Leaving the PLCs of the new station {DevicePath} at full access...", devicePath);
 
             try
             {
@@ -82,8 +82,8 @@ namespace TiaMcpServer.Siemens
                     throw new PortalException(PortalErrorCode.InvalidState, "Open a project first");
                 }
 
-                var device = CurrentProject!.Devices.Find(deviceName)
-                    ?? throw new PortalException(PortalErrorCode.NotFound, $"Station not found: {deviceName}");
+                var device = GetDeviceByPath(devicePath)
+                    ?? throw new PortalException(PortalErrorCode.NotFound, $"Station not found: {devicePath}");
 
                 var plcs = AllDeviceItems(device.DeviceItems).Where(PlcAccessOpener.IsPlc).ToList();
 
@@ -96,9 +96,9 @@ namespace TiaMcpServer.Siemens
             {
                 var pex = ex as PortalException ?? new PortalException(PortalErrorCode.WriteFailed, $"Leaving the new PLC at full access failed: {ex.Message}", null, ex);
 
-                pex.Data["deviceName"] = deviceName;
+                pex.Data["devicePath"] = devicePath;
 
-                _logger?.LogError(pex, "SetFullAccessOfAddedDevice failed for {DeviceName}", deviceName);
+                _logger?.LogError(pex, "SetFullAccessOfAddedDevice failed for {DevicePath}", devicePath);
                 throw pex;
             }
         }

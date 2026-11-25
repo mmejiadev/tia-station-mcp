@@ -14,6 +14,7 @@ namespace TiaMcpServer.Siemens
         /// <summary>Adds a PC station with an HMI runtime and a network card plugged into it.</summary>
         /// <param name="stationName">Name for the station, for example <c>PC-System_1</c>.</param>
         /// <param name="runtimeTypeIdentifier">The runtime, exactly as <see cref="FindCatalogEntries"/> gives it.</param>
+        /// <param name="groupName">A device group at the top of the project to create it in, made when it is not there; empty for the top of the project.</param>
         /// <returns>The station's name.</returns>
         /// <exception cref="PortalException">
         /// No project is open, the name is taken, the runtime is not a measured HMI runtime or not in
@@ -27,9 +28,9 @@ namespace TiaMcpServer.Siemens
         /// <see cref="GetSoftwarePaths"/>. The network card, <see cref="PcHmiRuntime.NetworkCard"/>, is
         /// what lets the station join the PLC's subnet with <see cref="ConnectDeviceToSubnet"/>.
         /// </remarks>
-        public string AddPcStation(string stationName, string runtimeTypeIdentifier)
+        public string AddPcStation(string stationName, string runtimeTypeIdentifier, string groupName = "")
         {
-            _logger?.LogInformation("Adding PC station {StationName} with {Runtime}...", stationName, runtimeTypeIdentifier);
+            _logger?.LogInformation("Adding PC station {StationName} with {Runtime} to group {GroupName}...", stationName, runtimeTypeIdentifier, groupName);
 
             try
             {
@@ -37,9 +38,13 @@ namespace TiaMcpServer.Siemens
 
                 var runtime = RequireCatalogued(runtimeTypeIdentifier);
                 var networkCard = RequireNetworkCard();
-                var device = CurrentProject!.Devices.CreateWithItem(PcHmiRuntime.PcStationTypeIdentifier, stationName, stationName);
+                var device = CreateInDeviceGroup(groupName, devices =>
+                {
+                    var created = devices.CreateWithItem(PcHmiRuntime.PcStationTypeIdentifier, stationName, stationName);
+                    PlugModulesOrRemoveStation(created, runtime, networkCard);
 
-                PlugModulesOrRemoveStation(device, runtime, networkCard);
+                    return created;
+                });
 
                 return device.Name;
             }
@@ -49,8 +54,9 @@ namespace TiaMcpServer.Siemens
 
                 pex.Data["stationName"] = stationName;
                 pex.Data["runtimeTypeIdentifier"] = runtimeTypeIdentifier;
+                pex.Data["groupName"] = groupName;
 
-                _logger?.LogError(pex, "AddPcStation failed for {StationName} ({Runtime})", stationName, runtimeTypeIdentifier);
+                _logger?.LogError(pex, "AddPcStation failed for {StationName} ({Runtime}) in group {GroupName}", stationName, runtimeTypeIdentifier, groupName);
                 throw pex;
             }
         }
@@ -62,6 +68,7 @@ namespace TiaMcpServer.Siemens
                 throw new PortalException(PortalErrorCode.InvalidParams, "stationName is required");
             }
 
+            StationNameRule.RequireStationName(nameof(stationName), stationName);
             PcHmiRuntime.RequireMeasured(runtimeTypeIdentifier);
 
             if (IsProjectNull())

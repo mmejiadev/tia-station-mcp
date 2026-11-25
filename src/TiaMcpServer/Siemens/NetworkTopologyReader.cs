@@ -47,7 +47,7 @@ namespace TiaMcpServer.Siemens
 
             foreach (var device in devices)
             {
-                var root = ProjectPath.AddressableDeviceName(device.Name);
+                var root = DevicePathRoot.Of(device);
 
                 foreach (var deviceItem in device.DeviceItems)
                 {
@@ -61,9 +61,10 @@ namespace TiaMcpServer.Siemens
         }
 
         /// <remarks>
-        /// The rule, and why it exists, are in <see cref="ProjectPath.AddressableDeviceName"/>. It
-        /// moved there when the hardware reader started building device paths of its own: two
-        /// readers spelling the same rule separately is how they come to disagree.
+        /// The rule, and why it exists, are in <see cref="ProjectPath.AddressableDeviceName"/> and
+        /// <see cref="DevicePathRoot"/>. It moved there when the hardware reader started building
+        /// device paths of its own: two readers spelling the same rule separately is how they come
+        /// to disagree.
         /// </remarks>
         private void Collect(DeviceItem deviceItem, string parentPath, List<NetworkNodeInfo> nodes)
         {
