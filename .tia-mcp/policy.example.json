@@ -20,7 +20,14 @@
       "PLC_0",
       "PLC_0/*",
       "simulation/*",
-      "project"
+      "project",
+
+      // Devices under the names TIA Portal gives by default (HMI_1, PLC_3, PC-System_2...), with
+      // everything in them, so a device the server has just created can be written without naming
+      // it first. Remove these three to allow only the devices listed by name.
+      "HMI_*",
+      "PLC_*",
+      "PC-System_*"
 
       // Uncomment to let ReadOpcUaValues and BrowseOpcUaServer reach the PLCSIM controller the
       // harness creates. Reading changes nothing, but it is still contact with a machine.
