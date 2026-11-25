@@ -1,9 +1,50 @@
 ﻿# Project status
 
 > Living document. Update it at the end of every working session.
-> Last updated: **2026-11-24**
+> Last updated: **2026-11-25**
 
 ## ▶ RESUME HERE
+
+### The roadmap brought up to date with what closed on 2026-11-24 - 2026-11-25, branch `work/roadmap-and-unified-runtime`
+
+The reorganised `docs/ROADMAP.md` (2026-11-22, below) was written before the work of 2026-11-24 merged, so it is committed
+here with that work marked: section **2.1 "Both"** (the PLC-HMI connection without a template and the template on V21, done
+2026-11-11, with devices in a group and the secret in the policy added 2026-11-24, PR #87), section **2.2** (libraries, met
+2026-11-24, PR #84), the **PEEK/POKE** items of 2.3 (closed 2026-11-24, PR #85, two left), the **tag address** nit, and the
+**drives** item of 2.4 with its study (`DRIVES-AND-SERVOS.md`, PR #86) and the measurements still to run. Added at her request: in 2.3 and 2.7, **TIA Portal's
+instructions as they are really programmed**, a study and checks per family, starting with `NORM_X` and `SCALE_X`
+(normalising and scaling analog values). Nothing was measured or built; this branch also carries the two entries of 2026-11-22 below, which had stayed uncommitted.
+
+### Simulating the Unified panel: what Openness offers, measured - 2026-11-22, branch `work/v21-unified-runtime`
+
+First step of HMI-COVERAGE S2 and S3 for WinCC Unified. A read-only probe on a new PC station with WinCC Unified PC RT (V21), in
+a TIA Portal the test started, found:
+
+- The Unified HMI's device item offers a **`DownloadProvider`** and no `OnlineProvider` and no `ICompilable` (the compile goes
+  through the station, as `Test41UnifiedCompile` already does). The station's network card item offers an `OnlineProvider`.
+- That `DownloadProvider.Configuration` is **null** for the HMI, and its `Download` takes either **a directory**
+  (`Download(DirectoryInfo, DownloadConfigurationDelegate)`, a download to a folder) or an `IConfiguration` the HMI does not
+  have. So Openness gives no connection to download through and **no way to start the runtime simulation**; nothing about it is
+  in `HmiUnified` either (the API documentation has no simulation member there, only in `Step7`).
+- The runtime is installed on this PC (`C:\Program Files\Siemens\Automation\WinCCUnified`, with `WebRH`, `StationConfigurator`
+  and `SIMATICRuntimeManager.exe`), and two of its trace services run. Whether a package downloaded to a directory can be loaded
+  into that runtime from outside TIA Portal's window is **not measured**, and doing it changes the machine's runtime, not a project.
+
+Test classes that touch Openness types in a signature or a generic constraint make MSTest fail the discovery of **every** class in
+the assembly ("no detectó pruebas ... Referencia a objeto no establecida"), because Openness is resolved only at initialisation:
+keep those types inside the method bodies, and write `global::Siemens.Engineering` there, as `TiaMcpServer.Siemens.Engineering`
+is a class of ours.
+
+### The roadmap reorganised - 2026-11-22, branch `work/roadmap-reorganised`
+
+`docs/ROADMAP.md` was rewritten at the user's request, because it had grown into phases, waves and tables that no longer
+matched the work. It now has four parts: **what is built** (twenty areas, each with what it is and what it settled), **what
+is missing** (eleven areas, each with its "done when", in the order she fixed: HMI and libraries first, multiuser, safety and
+Workshop Mode last), **class material** (the exercises and the corpus, which by her decision of today are not items of the
+construction) and **reference** (the starting point, the two modes, the architecture, the prior art and the decisions taken,
+unchanged). The phase numbers and the waves A to L cited elsewhere in this file are those of the previous version, in git
+history. Nothing was measured; the table of what is built was checked against the sections of this file, and the figures are
+today's (179 tools, 1,387 governance tests).
 
 ### A PLC, its HMI and their connection, as a device group template built by the server alone - 2026-11-24, branch `work/v21-hmi-connection-template`
 
