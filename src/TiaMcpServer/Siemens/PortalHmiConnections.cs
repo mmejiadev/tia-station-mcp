@@ -107,13 +107,6 @@ namespace TiaMcpServer.Siemens
         }
 
         /// <remarks>
-        /// Each end's nodes are looked for in its whole station: a PC station's interface is on its network card and not
-        /// on the runtime, and a PLC may reach the subnet through a CP or CM in its rack, which is the CPU's sibling and
-        /// not its child. The first pair on one subnet is taken, so a PC with a second card on another network, or a CPU
-        /// with X1 and X2 on two, still finds the one they share. Used by the HMI connection and by the connections
-        /// between PLCs.
-        /// </remarks>
-        /// <remarks>
         /// By name and station: whether Openness hands out one proxy per item is not promised, so the objects are not
         /// compared. Shared by every check that asks whether two items are the same.
         /// </remarks>
@@ -129,6 +122,13 @@ namespace TiaMcpServer.Siemens
                 ?? throw new PortalException(PortalErrorCode.InvalidState, $"'{path}' offers no connections");
         }
 
+        /// <remarks>
+        /// Each end's nodes are looked for in its whole station: a PC station's interface is on its network card and not
+        /// on the runtime, and a PLC may reach the subnet through a CP or CM in its rack, which is the CPU's sibling and
+        /// not its child. The first pair on one subnet is taken, so a PC with a second card on another network, or a CPU
+        /// with X1 and X2 on two, still finds the one they share. Used by the HMI connection and by the connections
+        /// between PLCs.
+        /// </remarks>
         private static (Node Local, Node Partner) RequireSharedSubnet(DeviceItem local, DeviceItem partner, string localPath, string partnerPath)
         {
             var localStation = FindOwningDevice(local)

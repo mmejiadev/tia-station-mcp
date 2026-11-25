@@ -5,6 +5,83 @@
 
 ## ▶ RESUME HERE
 
+### A PLC, its HMI and their connection, as a device group template built by the server alone - 2026-11-24, branch `work/v21-hmi-connection-template`
+
+Roadmap 2.1, "Both": the connection without a template and the template measured on V21. Checked against `main` first:
+both were already done on 2026-11-11 (`CreateHmiConnection`, `Test66`; the template on `HmiTemplateProject.zap21`, `Test62`,
+PR #69), and of the review findings listed on `5edb73e` all but three were fixed then. What was left is below. Measured on
+TIA Portal V21 by a throw-away probe (not kept), in a TIA Portal the tests started, on new projects and a retrieved fixture:
+
+- **A device group and devices in it are created through Openness.** `DeviceUserGroupComposition.Create` makes the group and
+  `DeviceUserGroup.Devices.CreateWithItem` a CPU 1512C or a PC station in it, plugged as one at the top.
+- **The network tools could not reach a device in a group.** `GetNetworkTopology` gave `PLC_1/PLC_1/PROFINET interface_1` for
+  a PLC in `Cell`, and `CreateSubnet`, `ConnectDeviceToSubnet` and `SetNodeAddress` answered "Device item not found" for the
+  paths it had just given; `SetFullAccessOfAddedDevice` looked only at the top of the project. So a group could not be wired.
+- **A placed template keeps its connection, to its own PLC.** The fixture's group placed twice: `HMI_Connection_1` to `PLC_1`
+  and `HMI_Connection_2` to `PLC_2`, both valid; the copy is not wired to the first copy's PLC. The subnet does not come with
+  the group: the nodes arrive on no subnet even where the template's were on one (closes the open point of 2026-11-11).
+  Placing a group built through Openness a second time renamed `Cell` to `Cell_1` (the fixture's `Group_1` became `Group_2`).
+- Without a password for the PLC's confidential data, the HMI's connection does not compile either ("Invalid certificate
+  configuration, please recompile your PLC").
+
+**Built:**
+
+- **`AddDevice` and `AddPcStation` take `groupName`**: the station is created in that device group at the top of the
+  project, made when it is not there and removed again when the creation fails; a name with `/` or a device's name is refused.
+  The policy target is `Group/Station`. `PortalDeviceGroups`.
+- **Device paths start at the group** (`DevicePathRoot`), in the network topology and the hardware layout, so every path
+  `GetNetworkTopology` gives resolves. Devices outside a group keep their paths.
+- **`CreateDevicesFromTemplate` proposes on the secret too**: `secret/NAME` (`ChangeTarget.Secret`), nested with the project
+  and the library through `TargetToPropose`. A policy that let a session place templates no longer lets it use every password
+  stored on the machine; **an existing policy needs `secret/NAME` added** to keep placing with a secret.
+- Descriptions that V21 made false corrected: `CreateDeviceGroupTemplate` no longer says the group must be made by hand.
+  `PlcProtection` moved to its own file (`PortalDeviceTemplates.cs` was past 300 lines); a misplaced remarks block in
+  `PortalHmiConnections` moved to its method; the tests share one made-up secret store (`MadeUpSecrets`).
+
+The 2026-11-09 review findings, closed: the policy target (project, library, and now the secret); the subnet found first;
+the topology recorded; `SubnetConfigurator.Connect`; nested groups; devices without Ethernet and PLCs already protected
+named; `UnifiedRollback.Undo`; empty addresses; the description. **Not done:** a per-device `renamedByTiaPortal`, as the
+names inside a device group master copy are not readable through Openness (2026-11-24, 2.2), so a device's name in the
+template cannot be compared; the answer gives the names as they now are, and the group's flag. The placement still walks the
+devices about three times.
+
+**Tests:** Governance **1458** passed, 2 skipped (`ChangeTargetSecretTests`, 4 new). Against TIA Portal V21:
+`Test84DeviceGroupTemplates` 9/9 (new: the cell built in a group through the server, made a template, placed with a secret,
+its PLC compiling with 0 errors and its HMI connected; placed twice, each HMI connected to its own PLC; no HMI error about the
+connection; topology paths and `CreateSubnet` in a group; a group path refused; a group taken back when the device fails).
+Then, after the last change, `Test16GuardedWrites` (one new refusal: a policy allowing the project and the library but not the
+secret), `Test62`, `Test66`, `Test12`, `Test24`, `Test26`, `Test43` and `Test84` together: **183/183** (21 min). Build: 0 warnings.
+
+**Independent review, 2026-11-25** (two rounds, security first). Fixed, each with a test:
+
+- **A station named with `/` could be created outside the group a policy meant.** `AddDevice(deviceName: "Cell/PLC_9")`
+  proposed `Cell/PLC_9`, the same target as `PLC_9` in group `Cell`, so a rule `Cell/*` let a top-level station through.
+  `StationNameRule` (Portable) now refuses `/` in `deviceName` and `stationName`, and holds the group's one-level rule too
+  (`StationNameRuleTests`, 4; `Test84` `AddDevice_ANameWithTheSeparator_ThrowsInvalidParamsAndAddsNothing`).
+- **The rollback changed the error's category.** A device refused in a new group was rewrapped as `WriteFailed` (an operation
+  failure), the same order number at the top being `InvalidParams`. The group is now removed and the creation's own exception
+  rethrown; only a failed removal replaces it (`AddDevice_AnUnknownTypeInANewGroup_ThrowsInvalidParamsAsAtTheTop`), and a group
+  that was already there is left with its stations (`AddDevice_AnUnknownTypeInAnExistingGroup_KeepsTheGroupAndItsStation`).
+- `Test16` `AddDevice_InAGroupThePolicyDoesNotName_IsRefusedOnGroupAndStation`: a rule naming the station alone, as policies
+  written before groups do, refuses it in a group, for `AddDevice` and `AddPcStation`.
+- The remarks of `DescribeAddedDevice` had been left on the new `AddDeviceInGroup`; moved back.
+
+Checked and not changed: every caller of the topology and layout readers (the snapshot and backup files, whose rows for a
+device in a group now start with the group: a one-time diff), every lookup that splits device paths (the item, device and
+software lookups already read `Group/Device/Item`), the secret (its name matches the store's, case aside; its value reaches no
+log, message, audit entry, plan or backup), and `Backups.Allocate`, which sanitises `/` in a target.
+
+**Tests after the review:** Governance **1462** passed, 2 skipped. Against TIA Portal V21, in a TIA Portal the tests started:
+`Test84` **12/12**; `Test16`, `Test62`, `Test66`, `Test43` **150/150**; `Test12`, `Test13`, `Test24`, `Test26`, `Test27`,
+`Test29`, `Test39`, `Test65`, `Test7` **84/84**. Build: 0 warnings, 0 errors.
+
+**Open:** the reorganised roadmap with section 2.1 is not on this branch (it is uncommitted in the main checkout), so its
+"Both" item is not marked here: both halves are done. A deny rule written without the group (`PLC_0/Safety/*`) does not
+reach a `PLC_0` created in a group (`Cell/PLC_0/...`): that was so for any grouped device before this branch, but the branch makes
+grouped devices easy to create, so a policy with a broad allow should write its denies with `*` in front. `.tia-mcp/policy.example.json`
+still lists five target families and names neither groups nor `secret/`. A device group of more than one level (`groupName` is one level); the
+HMI runtime's password and start screen, which a new Unified runtime still needs (`mejoras`).
+
 ### Drives and servomotors: what Openness V21 offers, studied offline - 2026-11-24, branch `work/drives-and-servos-study`
 
 A study, no product code: **`docs/DRIVES-AND-SERVOS.md`**, built like `PEEK-POKE.md` (every statement sourced or tagged
