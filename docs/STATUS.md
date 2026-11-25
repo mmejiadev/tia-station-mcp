@@ -5,6 +5,24 @@
 
 ## ▶ RESUME HERE
 
+### Release 0.0.21, and versions tagged from now on - 2026-11-25, branch `work/release-0.0.21`
+
+The version had stayed `0.0.20` since 2026-10-16 while 43 pull requests (#46 to #88) merged under it, and the server
+registered in Claude Code (`tools/tia-station-mcp-0.0.20-v21`, built 2026-11-10) lacked everything since #68. So the version
+is now **0.0.21** (`AssemblyVersion`; `GetState` reports it and `Test5McpServer` checks it against the project file), and
+**`CHANGELOG.md`** records what each release brings, with an upgrade note: TIA Portal trusts the new executable only after
+asking again, and the write tools added since 0.0.20 need their targets in the write policy. `policy.example.json` now
+allows, in Study Mode, the devices TIA Portal names by default (`HMI_*`, `PLC_*`, `PC-System_*`): creating an HMI kept
+being refused because `HMI_1` was named nowhere, though the server builds such devices reliably now.
+
+At her request, releases are **tagged from now on**: an annotated tag `vX.Y.Z` on the merge commit in `main` that carries the
+version, the artefact packed by `scripts/New-Release.ps1` from that clean tag, and a GitHub release holding the zip and its
+SHA-256. A tag is made only on her word, as any commit or push.
+
+**Next:** merge, tag `v0.0.21`, pack, install into `C:\Users\mamem\tools\tia-station-mcp-0.0.21-v21` with the current
+`policy.json`, register it in Claude Code in place of 0.0.20-v21 (kept for going back), and add the new policy targets she
+approves.
+
 ### The roadmap brought up to date with what closed on 2026-11-24 - 2026-11-25, branch `work/roadmap-and-unified-runtime`
 
 The reorganised `docs/ROADMAP.md` (2026-11-22, below) was written before the work of 2026-11-24 merged, so it is committed
